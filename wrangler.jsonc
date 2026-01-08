@@ -17,7 +17,14 @@
 	"ai": {
 		"binding": "AI",
 		"remote": true
-	}
+	},
+	"d1_databases": [
+		{
+			"binding": "DB",
+			"database_name": "clue-dvd-games",
+			"database_id": "local"
+		}
+	]
 	/**
 	 * Smart Placement
 	 * https://developers.cloudflare.com/workers/configuration/smart-placement/#smart-placement

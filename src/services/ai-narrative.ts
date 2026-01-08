@@ -1,10 +1,44 @@
 /**
  * Clue DVD Game - AI Narrative Enhancement
  * Uses Cloudflare Workers AI to generate rich narrative content
+ *
+ * IMPORTANT: All AI prompts are grounded with verified game data from ai-context.ts
+ * to prevent hallucination and ensure accuracy to the physical game.
  */
 
 import type { Scenario, ScenarioNarrative, SuspectContext, DramaticEvent } from "../types/scenario";
 import type { Suspect, Item, Location, TimePeriod, MysteryTheme } from "../data/game-elements";
+import { SUSPECTS } from "../data/game-elements";
+import {
+  buildAIContext,
+  getCompactContext,
+  getSolutionContext,
+  getSuspectContext,
+  getNPCContext,
+  getLocationContext,
+  CORE_GAME_CONTEXT,
+} from "../data/ai-context";
+
+// Valid AI model for text generation (must match Cloudflare Workers types)
+const AI_MODEL = "@cf/meta/llama-3.1-8b-instruct-fp8" as const;
+
+// Type for the text generation response
+interface AiTextResponse {
+  response?: string;
+}
+
+// Helper to safely extract response text from AI response
+function extractResponseText(response: unknown): string | null {
+  if (
+    response &&
+    typeof response === "object" &&
+    "response" in response &&
+    typeof (response as AiTextResponse).response === "string"
+  ) {
+    return (response as AiTextResponse).response!;
+  }
+  return null;
+}
 
 // ============================================
 // AI NARRATIVE GENERATOR
@@ -14,7 +48,7 @@ export async function enhanceNarrativeWithAI(
   ai: Ai,
   scenario: Scenario
 ): Promise<ScenarioNarrative> {
-  const { solution, theme, clues } = scenario;
+  const { solution, theme } = scenario;
 
   // Generate opening narration
   const openingNarration = await generateOpeningNarration(ai, theme, solution);
@@ -48,9 +82,16 @@ export async function enhanceNarrativeWithAI(
 async function generateOpeningNarration(
   ai: Ai,
   theme: MysteryTheme,
-  solution: { suspect: Suspect; item: Item; location: Location; time: TimePeriod }
+  _solution: { suspect: Suspect; item: Item; location: Location; time: TimePeriod }
 ): Promise<string> {
-  const prompt = `You are Inspector Brown from Scotland Yard, narrating the opening of a Clue mystery game set in 1920s England at Tudor Mansion.
+  // Build grounding context to prevent hallucination
+  const gameContext = getCompactContext();
+
+  const prompt = `${gameContext}
+
+---
+
+You are Inspector Brown from Scotland Yard, narrating the opening of a Clue mystery game set in 1920s England at Tudor Mansion.
 
 Theme: "${theme.name}" - ${theme.description}
 Period: ${theme.period}
@@ -58,24 +99,28 @@ Atmosphere: ${theme.atmosphericElements.join(", ")}
 
 Write a dramatic, engaging opening narration (2-3 paragraphs) that:
 1. Sets the scene at Tudor Mansion during this event
-2. Introduces the mystery of a stolen valuable item
+2. Introduces the mystery of a stolen valuable item (THEFT, not murder)
 3. Creates suspense and intrigue
 4. Speaks in the voice of a British detective from the 1920s
+5. You may mention that Mr. Boddy (the host) has called Scotland Yard
+6. You may reference Ashe the butler if appropriate
 
-Do NOT reveal any details about WHO committed the crime, WHAT was stolen, WHERE, or WHEN. Keep the mystery intact.
+CRITICAL: Do NOT reveal any details about WHO committed the crime, WHAT was stolen, WHERE, or WHEN. Keep the mystery intact.
+CRITICAL: Only reference suspects, items, locations, and times from the QUICK REFERENCE above.
 
 Write only the narration, no meta commentary.`;
 
   try {
-    const response = await ai.run("@cf/meta/llama-3.1-8b-instruct", {
+    const response = await ai.run(AI_MODEL, {
       messages: [{ role: "user", content: prompt }],
       max_tokens: 500,
     });
 
-    if ("response" in response && typeof response.response === "string") {
-      return response.response;
+    const text = extractResponseText(response);
+    if (text) {
+      return text;
     }
-    return scenario.narrative?.openingNarration || generateFallbackOpening(theme);
+    return generateFallbackOpening(theme);
   } catch {
     return generateFallbackOpening(theme);
   }
@@ -84,9 +129,17 @@ Write only the narration, no meta commentary.`;
 async function generateAtmosphericDescription(
   ai: Ai,
   theme: MysteryTheme,
-  location: Location
+  _location: Location
 ): Promise<string> {
-  const prompt = `Describe the atmosphere of Tudor Mansion during "${theme.name}" in the 1920s.
+  // Include location context for accurate room descriptions
+  const locationContext = getLocationContext();
+
+  const prompt = `${CORE_GAME_CONTEXT}
+${locationContext}
+
+---
+
+Describe the atmosphere of Tudor Mansion during "${theme.name}" in the 1920s.
 
 The atmospheric elements are: ${theme.atmosphericElements.join(", ")}
 
@@ -95,16 +148,20 @@ Write a vivid, sensory description (1 paragraph) that captures:
 - Sounds, sights, and perhaps scents
 - The tension beneath the surface
 
+You may reference specific rooms from the LOCATIONS list above (e.g., "shadows in the Library", "candlelight in the Dining Room").
+Remember: This is a THEFT mystery, not murder. The setting is England, 1920s.
+
 Write in third person, present tense. Be evocative but concise.`;
 
   try {
-    const response = await ai.run("@cf/meta/llama-3.1-8b-instruct", {
+    const response = await ai.run(AI_MODEL, {
       messages: [{ role: "user", content: prompt }],
       max_tokens: 200,
     });
 
-    if ("response" in response && typeof response.response === "string") {
-      return response.response;
+    const text = extractResponseText(response);
+    if (text) {
+      return text;
     }
     return generateFallbackAtmosphere(theme);
   } catch {
@@ -119,31 +176,48 @@ async function generateSuspectBackstories(
   const { solution, theme } = scenario;
   const contexts: SuspectContext[] = [];
 
+  // Build full suspect context for grounding
+  const suspectContext = getSuspectContext();
+
   // Get list of suspects from the scenario's clues to include
   const allSuspectIds = new Set(
     scenario.narrative.suspectBackstories.map((s) => s.suspectId)
   );
 
   for (const suspectId of allSuspectIds) {
-    const suspect = scenario.narrative.suspectBackstories.find(
+    const existingContext = scenario.narrative.suspectBackstories.find(
       (s) => s.suspectId === suspectId
     );
 
-    if (!suspect) continue;
+    if (!existingContext) continue;
+
+    // Look up the actual suspect data for accurate info
+    const suspectData = SUSPECTS.find((s) => s.id === suspectId);
+    if (!suspectData) continue;
 
     // For the guilty suspect, generate subtle hints; for others, generate alibis
     const isGuilty = suspectId === solution.suspect.id;
 
-    const prompt = `For a 1920s Clue mystery game, write brief details for a suspect.
+    const prompt = `${CORE_GAME_CONTEXT}
+${suspectContext}
 
-Suspect: Based on ID ${suspectId}
-Theme: "${theme.name}"
-${isGuilty ? "This suspect IS the guilty party (but don't make it obvious)" : "This suspect is innocent"}
+---
 
-Provide (one sentence each):
-1. A subtle motive hint (without being too obvious)
-2. Their claimed alibi for the evening
+For a 1920s Clue mystery game, write brief details for this specific suspect:
+
+Suspect: ${suspectData.displayName}
+Role: ${suspectData.role}
+Description: ${suspectData.description}
+Known Traits: ${suspectData.traits.join(", ")}
+Theme of the gathering: "${theme.name}"
+${isGuilty ? "This suspect IS the guilty party (but don't make it too obvious)" : "This suspect is innocent"}
+
+Based on their actual character traits above, provide (one sentence each):
+1. A subtle motive hint that fits their personality and role
+2. Their claimed alibi for the evening (must reference a REAL location from the game)
 3. One suspicious behavior noticed by others
+
+CRITICAL: Stay true to the character's description and traits. Reference only locations and times from the game data.
 
 Format as JSON:
 {
@@ -153,24 +227,29 @@ Format as JSON:
 }`;
 
     try {
-      const response = await ai.run("@cf/meta/llama-3.1-8b-instruct", {
+      const response = await ai.run(AI_MODEL, {
         messages: [{ role: "user", content: prompt }],
         max_tokens: 200,
       });
 
-      if ("response" in response && typeof response.response === "string") {
-        const parsed = JSON.parse(response.response);
+      const text = extractResponseText(response);
+      if (text) {
+        const parsed = JSON.parse(text) as {
+          motiveHint?: string;
+          alibiClaim?: string;
+          suspiciousBehavior?: string;
+        };
         contexts.push({
           suspectId,
-          motiveHint: parsed.motiveHint || suspect.motiveHint,
-          alibiClaim: parsed.alibiClaim || suspect.alibiClaim,
-          suspiciousBehavior: parsed.suspiciousBehavior || suspect.suspiciousBehavior,
+          motiveHint: parsed.motiveHint || existingContext.motiveHint,
+          alibiClaim: parsed.alibiClaim || existingContext.alibiClaim,
+          suspiciousBehavior: parsed.suspiciousBehavior || existingContext.suspiciousBehavior,
         });
       } else {
-        contexts.push(suspect);
+        contexts.push(existingContext);
       }
     } catch {
-      contexts.push(suspect);
+      contexts.push(existingContext);
     }
   }
 
@@ -184,13 +263,31 @@ async function generateDramaticEvents(
   const { theme, clues } = scenario;
   const clueCount = clues.length;
 
-  const prompt = `For a 1920s Clue mystery game with theme "${theme.name}", generate 3 dramatic events that occur during gameplay.
+  // Include full context for grounded event generation
+  const gameContext = buildAIContext({
+    includeSuspects: true,
+    includeLocations: true,
+    includeTimes: true,
+    includeNPCs: true,
+    includeItems: false, // Events shouldn't hint at the item
+  });
+
+  const prompt = `${gameContext}
+
+---
+
+For a 1920s Clue mystery game with theme "${theme.name}", generate 3 dramatic events that occur during gameplay.
 
 These events add tension but don't reveal the solution. They should:
 - Happen at different points in the game
 - Create atmosphere and suspense
-- Involve some of the suspects
+- Reference ONLY suspects from the list above (use their exact names)
+- Reference ONLY locations from the list above
+- Reference ONLY times from the list above
 - Be appropriate for 1920s Tudor Mansion setting
+- Remember: This is about THEFT, not murder or violence
+
+IMPORTANT: In the "affectedSuspects" array, use the exact suspect IDs (e.g., "SUSPECT01", "SUSPECT02").
 
 Format as JSON array:
 [
@@ -200,18 +297,23 @@ Format as JSON array:
 ]`;
 
   try {
-    const response = await ai.run("@cf/meta/llama-3.1-8b-instruct", {
+    const response = await ai.run(AI_MODEL, {
       messages: [{ role: "user", content: prompt }],
       max_tokens: 400,
     });
 
-    if ("response" in response && typeof response.response === "string") {
-      const parsed = JSON.parse(response.response);
+    const text = extractResponseText(response);
+    if (text) {
+      const parsed = JSON.parse(text) as Array<{
+        triggerAfterClue?: number;
+        description?: string;
+        affectedSuspects?: string[];
+      }>;
       if (Array.isArray(parsed)) {
-        return parsed.map((event: { triggerAfterClue?: number; description?: string; affectedSuspects?: string[] }, i: number) => ({
-          triggerAfterClue: event.triggerAfterClue || Math.floor((i + 1) * (clueCount / 4)),
-          description: event.description || "An unexpected sound echoes through the mansion.",
-          affectedSuspects: event.affectedSuspects || [],
+        return parsed.map((event, i) => ({
+          triggerAfterClue: event.triggerAfterClue ?? Math.floor((i + 1) * (clueCount / 4)),
+          description: event.description ?? "An unexpected sound echoes through the mansion.",
+          affectedSuspects: event.affectedSuspects ?? [],
         }));
       }
     }
@@ -227,31 +329,51 @@ async function generateClosingNarration(
 ): Promise<string> {
   const { solution, theme } = scenario;
 
-  const prompt = `You are Inspector Brown from Scotland Yard, delivering the dramatic conclusion to a Clue mystery.
+  // Include solution-specific context for accurate character portrayal
+  const solutionContext = getSolutionContext(
+    solution.suspect.id,
+    solution.item.id,
+    solution.location.id,
+    solution.time.id
+  );
+
+  const prompt = `${CORE_GAME_CONTEXT}
+${getNPCContext()}
+${solutionContext}
+
+---
+
+You are Inspector Brown from Scotland Yard, delivering the dramatic conclusion to a Clue mystery.
 
 The solution has been revealed:
 - The thief: ${solution.suspect.displayName} (${solution.suspect.role})
-- The stolen item: ${solution.item.nameUS}
+- Their traits: ${solution.suspect.traits.join(", ")}
+- The stolen item: ${solution.item.nameUS} (${solution.item.category})
 - The location of the theft: ${solution.location.name}
-- The time: ${solution.time.name}
+- The time: ${solution.time.name} (${solution.time.lightCondition} conditions)
 - Event theme: "${theme.name}"
 
 Write a dramatic closing narration (2 paragraphs) that:
-1. Dramatically reveals how you pieced together the clues
-2. Explains the thief's motive and opportunity
-3. Concludes with a satisfying resolution
-4. Uses authentic 1920s British detective language
+1. Dramatically reveals how you (Inspector Brown) pieced together the clues
+2. Explains the thief's motive based on their CHARACTER TRAITS above
+3. Explains why this location and time presented the opportunity
+4. Concludes with a satisfying resolution
+5. Uses authentic 1920s British detective language
+6. Remember: This is THEFT, not murder - the item is recovered, the thief is caught
+
+The thief's personality (${solution.suspect.traits.join(", ")}) should inform their motive.
 
 Write only the narration.`;
 
   try {
-    const response = await ai.run("@cf/meta/llama-3.1-8b-instruct", {
+    const response = await ai.run(AI_MODEL, {
       messages: [{ role: "user", content: prompt }],
       max_tokens: 400,
     });
 
-    if ("response" in response && typeof response.response === "string") {
-      return response.response;
+    const text = extractResponseText(response);
+    if (text) {
+      return text;
     }
     return generateFallbackClosing(scenario);
   } catch {
@@ -292,22 +414,39 @@ export async function enhanceClueText(
   speaker: string,
   theme: MysteryTheme
 ): Promise<string> {
-  const prompt = `Enhance this clue for a 1920s Clue mystery game. Keep the same information but make it more atmospheric and fitting for a ${speaker === "Ashe" ? "butler" : "detective"} character.
+  // Include NPC context for accurate speaking styles
+  const npcContext = getNPCContext();
+
+  const prompt = `${CORE_GAME_CONTEXT}
+${npcContext}
+
+---
+
+Enhance this clue for a 1920s Clue mystery game. Keep the same information but make it more atmospheric.
 
 Original: "${clueText}"
 Theme: "${theme.name}"
 Speaker: ${speaker}
 
-Rewrite in one or two sentences, maintaining the clue's logic but adding period-appropriate flavor.`;
+${speaker === "Ashe"
+    ? "Ashe is the butler: deferential, proper, uses phrases like 'If I may say, sir...', 'I happened to notice...', 'The master's collection...'"
+    : "Inspector Brown is the detective: formal, uses 'I observed...', 'The evidence suggests...', 'Most curious...'"
+  }
+
+CRITICAL: Keep ALL factual information from the original clue intact - names, locations, times, items. Only enhance the delivery style.
+CRITICAL: Do not add new information or change any names/places mentioned.
+
+Rewrite in one or two sentences, maintaining the clue's logic but adding period-appropriate flavor for the speaker.`;
 
   try {
-    const response = await ai.run("@cf/meta/llama-3.1-8b-instruct", {
+    const response = await ai.run(AI_MODEL, {
       messages: [{ role: "user", content: prompt }],
       max_tokens: 150,
     });
 
-    if ("response" in response && typeof response.response === "string") {
-      return response.response;
+    const text = extractResponseText(response);
+    if (text) {
+      return text;
     }
     return clueText;
   } catch {

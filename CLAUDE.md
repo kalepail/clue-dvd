@@ -64,12 +64,14 @@ This is an AI-powered scenario generator for the **Clue DVD Game (2006)** by Par
 
 ```
 src/
-├── index.ts                    # Hono API endpoints
+├── index.ts                    # Hono API endpoints (30+ routes)
 ├── data/
-│   ├── game-elements.ts        # All 42 cards + themes (VERIFIED DATA)
-│   └── card-symbols.ts         # Symbol positions for all 42 cards (COMPLETE)
+│   ├── game-elements.ts        # All 42 cards + 12 themes (VERIFIED)
+│   ├── card-symbols.ts         # Symbol positions for all 42 cards (COMPLETE)
+│   └── game-constants.ts       # Game constants, NPCs, special locations
 ├── services/
-│   ├── scenario-generator.ts   # Core generation logic
+│   ├── scenario-generator.ts   # Core scenario generation logic
+│   ├── setup-generator.ts      # DVD-style and direct setup generators
 │   └── ai-narrative.ts         # Cloudflare AI narrative enhancement
 └── types/
     └── scenario.ts             # TypeScript interfaces
@@ -90,37 +92,67 @@ The physical cards have hidden symbols visible only through the red magnifying g
 
 ## What's Built
 
-### Working Endpoints
+### API Endpoints
+
+#### Game Elements
 - `GET /api/suspects` - List all 10 suspects
-- `GET /api/items` - List all 11 items
-- `GET /api/locations` - List all 11 locations
-- `GET /api/times` - List all 10 times
+- `GET /api/items` - List all 11 items (filter by category)
+- `GET /api/locations` - List all 11 locations (filter by type)
+- `GET /api/times` - List all 10 times (filter by light condition)
+- `GET /api/themes` - List all 12 mystery themes
+- `GET /api/npcs` - List NPCs (Inspector Brown, Ashe, Mr. Boddy)
+- `GET /api/special-locations` - Evidence Room, Case File, Butler's Pantry
+
+#### Symbol System
+- `GET /api/symbols` - Symbol overview and distribution
+- `GET /api/symbols/cards` - All cards with symbols
+- `GET /api/symbols/cards/:cardId` - Specific card symbols
+- `GET /api/symbols/search?symbol=X&position=Y` - Find cards by symbol/position
+
+#### Setup Generators
+- `GET /api/setup/dvd` - DVD-style setup (uses magnifying glass)
+- `GET /api/setup/direct` - Direct setup (by card name)
+- `POST /api/setup/verify-symbol` - Find symbol for a given solution
+
+#### Scenarios
 - `POST /api/scenarios/generate` - Generate a scenario
 - `POST /api/scenarios/generate-enhanced` - AI-enhanced narrative
+- `POST /api/scenarios/validate` - Validate scenario
+
+#### Info
+- `GET /api/stats` - Game statistics
+- `GET /api/constants` - All game constants
+- `GET /api/random-solution` - Quick random solution
+
+### Core Data Files
+- **game-elements.ts**: 10 suspects, 11 items, 11 locations, 10 times, 12 themes
+- **card-symbols.ts**: 252 symbol assignments with helper functions
+- **game-constants.ts**: NPCs, special locations, difficulty levels, secret passages
 
 ### Core Generation Logic
 - Random solution selection (WHO/WHAT/WHERE/WHEN)
 - Clue generation that eliminates non-solution elements
 - Validation to ensure clues don't eliminate the solution
 - Seeded randomization for reproducible scenarios
+- DVD-style setup using symbol system
 
 ---
 
-## What's Needed
+## What's Needed (For Frontend)
 
-### Phase 1: Game Sessions
+### Phase 1: Basic Frontend
+- Display available scenarios
+- Show setup instructions
+- Present clues in sequence
+
+### Phase 2: Game Sessions
 - Create/manage game sessions with Durable Objects
 - Track revealed clues, player turns, accusations
 
-### Phase 2: Clue Delivery
+### Phase 3: Clue Delivery
 - Serve Inspector's Notes on demand
 - Serve Butler testimonies in sequence
 - Track which clues have been revealed
-
-### Phase 3: Physical Game Integration
-- Setup instructions (which cards go where)
-- Accusation verification
-- No card tracking (players manage physical cards)
 
 ---
 
