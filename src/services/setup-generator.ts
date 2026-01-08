@@ -6,7 +6,6 @@
  */
 
 import {
-  ALL_CARD_SYMBOLS,
   SUSPECT_SYMBOLS,
   ITEM_SYMBOLS,
   LOCATION_SYMBOLS,
@@ -17,8 +16,6 @@ import {
   type CardSymbols,
   POSITION_NAMES,
 } from "../data/card-symbols";
-
-import { SUSPECTS, ITEMS, LOCATIONS, TIME_PERIODS } from "../data/game-elements";
 
 // ============================================
 // TYPES
@@ -47,16 +44,6 @@ export interface DVDSetup {
     timeName: string;
   };
   narrativeIntro: string;
-}
-
-export interface DirectSetup {
-  instructions: string[];
-  solution: {
-    suspect: string;
-    item: string;
-    location: string;
-    time: string;
-  };
 }
 
 // ============================================
@@ -261,42 +248,6 @@ function generateFallbackDVDSetup(rng: () => number): DVDSetup {
       timeName: time.cardName,
     },
     narrativeIntro: "Inspector Brown has prepared the Case File for this mystery.",
-  };
-}
-
-// ============================================
-// DIRECT SETUP (WITHOUT SYMBOLS)
-// ============================================
-
-/**
- * Generate direct setup instructions (tells players exactly which cards).
- * Simpler than DVD-style but doesn't use the magnifying glass.
- */
-export function generateDirectSetup(seed?: number): DirectSetup {
-  const rng = seed !== undefined ? seededRandom(seed) : Math.random;
-
-  const suspect = SUSPECTS[Math.floor(rng() * SUSPECTS.length)];
-  const item = ITEMS[Math.floor(rng() * ITEMS.length)];
-  const location = LOCATIONS[Math.floor(rng() * LOCATIONS.length)];
-  const time = TIME_PERIODS[Math.floor(rng() * TIME_PERIODS.length)];
-
-  return {
-    instructions: [
-      "Separate all cards by type (Suspects, Items, Locations, Times).",
-      `Find and place the "${suspect.displayName}" suspect card in the Case File Envelope.`,
-      `Find and place the "${item.nameUS}" item card in the Case File Envelope.`,
-      `Find and place the "${location.name}" location card in the Case File Envelope.`,
-      `Find and place the "${time.name}" time card in the Case File Envelope.`,
-      "Seal the Case File Envelope - these are the solution cards.",
-      "Shuffle the remaining cards and deal evenly to all players.",
-      "Place any leftover cards face-up in the Evidence Room.",
-    ],
-    solution: {
-      suspect: suspect.displayName,
-      item: item.nameUS,
-      location: location.name,
-      time: time.name,
-    },
   };
 }
 

@@ -44,56 +44,38 @@ export function useApi<T>() {
 }
 
 // Convenience functions for common API calls
+// Note: Game session management is now handled client-side via useGameStore
 export const api = {
   // Stats
   getStats: () => fetch("/api/stats").then((r) => r.json()),
 
-  // Games
-  listGames: () => fetch("/api/games").then((r) => r.json()),
-  getGame: (id: string) => fetch(`/api/games/${id}`).then((r) => r.json()),
-  getGameHistory: (id: string) =>
-    fetch(`/api/games/${id}/history`).then((r) => r.json()),
+  // Game Elements
+  getSuspects: () => fetch("/api/suspects").then((r) => r.json()),
+  getItems: () => fetch("/api/items").then((r) => r.json()),
+  getLocations: () => fetch("/api/locations").then((r) => r.json()),
+  getTimes: () => fetch("/api/times").then((r) => r.json()),
+  getThemes: () => fetch("/api/themes").then((r) => r.json()),
 
-  createGame: (options: {
+  // Scenario Generation
+  generateScenario: (options: {
     themeId?: string;
     difficulty?: string;
-    playerCount?: number;
+    seed?: number;
   }) =>
-    fetch("/api/games", {
+    fetch("/api/scenarios/generate", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(options),
     }).then((r) => r.json()),
 
-  startGame: (id: string) =>
-    fetch(`/api/games/${id}/start`, { method: "POST" }).then((r) => r.json()),
-
-  // Clues (AI-enhanced)
-  revealNextClue: (id: string) =>
-    fetch(`/api/games/${id}/ai/clues/next`, { method: "POST" }).then((r) =>
-      r.json()
-    ),
-
-  // Accusation (AI-enhanced)
-  makeAccusation: (
-    id: string,
-    accusation: {
-      player: string;
-      suspectId: string;
-      itemId: string;
-      locationId: string;
-      timeId: string;
-    }
-  ) =>
-    fetch(`/api/games/${id}/ai/accuse`, {
+  generateEnhancedScenario: (options: {
+    themeId?: string;
+    difficulty?: string;
+    seed?: number;
+  }) =>
+    fetch("/api/scenarios/generate-enhanced", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(accusation),
+      body: JSON.stringify(options),
     }).then((r) => r.json()),
-
-  // AI features
-  getAIContext: (id: string) =>
-    fetch(`/api/games/${id}/ai/context`).then((r) => r.json()),
-  getCommentary: (id: string) =>
-    fetch(`/api/games/${id}/ai/commentary`).then((r) => r.json()),
 };

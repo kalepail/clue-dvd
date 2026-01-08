@@ -7,8 +7,9 @@
  */
 
 import type { Scenario, ScenarioNarrative, SuspectContext, DramaticEvent } from "../types/scenario";
+import type { GeneratedScenario } from "../types/campaign";
 import type { Suspect, Item, Location, TimePeriod, MysteryTheme } from "../data/game-elements";
-import { SUSPECTS } from "../data/game-elements";
+import { SUSPECTS, ITEMS, LOCATIONS, TIME_PERIODS, MYSTERY_THEMES } from "../data/game-elements";
 import {
   buildAIContext,
   getCompactContext,
@@ -73,6 +74,214 @@ export async function enhanceNarrativeWithAI(
     dramaticEvents,
     closingNarration,
   };
+}
+
+// ============================================
+// GENERATED SCENARIO AI ENHANCEMENT
+// ============================================
+
+/**
+ * Enhance a GeneratedScenario with AI-generated narrative elements.
+ * This function works with the new campaign-based scenario format.
+ */
+export async function enhanceScenarioWithAI(
+  ai: Ai,
+  scenario: GeneratedScenario
+): Promise<GeneratedScenario> {
+  // Look up full game elements from IDs
+  const suspect = SUSPECTS.find((s) => s.id === scenario.solution.suspectId);
+  const item = ITEMS.find((i) => i.id === scenario.solution.itemId);
+  const location = LOCATIONS.find((l) => l.id === scenario.solution.locationId);
+  const time = TIME_PERIODS.find((t) => t.id === scenario.solution.timeId);
+  const theme = MYSTERY_THEMES.find((t) => t.id === scenario.theme.id);
+
+  if (!suspect || !item || !location || !time || !theme) {
+    // Return unchanged if we can't find elements
+    return scenario;
+  }
+
+  // Generate enhanced narrative elements
+  const [opening, atmosphere, closing] = await Promise.all([
+    generateEnhancedOpening(ai, theme, { suspect, item, location, time }),
+    generateEnhancedAtmosphere(ai, theme, location),
+    generateEnhancedClosing(ai, scenario, { suspect, item, location, time }, theme),
+  ]);
+
+  return {
+    ...scenario,
+    narrative: {
+      ...scenario.narrative,
+      opening,
+      atmosphere,
+      closing,
+    },
+  };
+}
+
+/**
+ * Generate enhanced opening narration for GeneratedScenario
+ */
+async function generateEnhancedOpening(
+  ai: Ai,
+  theme: MysteryTheme,
+  _solution: { suspect: Suspect; item: Item; location: Location; time: TimePeriod }
+): Promise<string> {
+  const gameContext = getCompactContext();
+
+  const prompt = `${gameContext}
+
+---
+
+You are Inspector Brown from Scotland Yard, narrating the opening of a Clue mystery game set in 1920s England at Tudor Mansion.
+
+Theme: "${theme.name}" - ${theme.description}
+Period: ${theme.period}
+Atmosphere: ${theme.atmosphericElements.join(", ")}
+
+Write a dramatic, engaging opening narration (2-3 paragraphs) that:
+1. Sets the scene at Tudor Mansion during this event
+2. Introduces the mystery of a stolen valuable item (THEFT, not murder)
+3. Creates suspense and intrigue
+4. Speaks in the voice of a British detective from the 1920s
+5. You may mention that Mr. Boddy (the host) has called Scotland Yard
+6. You may reference Ashe the butler if appropriate
+
+CRITICAL: Do NOT reveal any details about WHO committed the crime, WHAT was stolen, WHERE, or WHEN. Keep the mystery intact.
+CRITICAL: Only reference suspects, items, locations, and times from the QUICK REFERENCE above.
+
+Write only the narration, no meta commentary.`;
+
+  try {
+    const response = await ai.run(AI_MODEL, {
+      messages: [{ role: "user", content: prompt }],
+      max_tokens: 500,
+    });
+
+    const text = extractResponseText(response);
+    if (text) {
+      return text;
+    }
+    return generateFallbackOpening(theme);
+  } catch {
+    return generateFallbackOpening(theme);
+  }
+}
+
+/**
+ * Generate enhanced atmospheric description for GeneratedScenario
+ */
+async function generateEnhancedAtmosphere(
+  ai: Ai,
+  theme: MysteryTheme,
+  _location: Location
+): Promise<string> {
+  const locationContext = getLocationContext();
+
+  const prompt = `${CORE_GAME_CONTEXT}
+${locationContext}
+
+---
+
+Describe the atmosphere of Tudor Mansion during "${theme.name}" in the 1920s.
+
+The atmospheric elements are: ${theme.atmosphericElements.join(", ")}
+
+Write a vivid, sensory description (1 paragraph) that captures:
+- The mood and ambiance
+- Sounds, sights, and perhaps scents
+- The tension beneath the surface
+
+You may reference specific rooms from the LOCATIONS list above (e.g., "shadows in the Library", "candlelight in the Dining Room").
+Remember: This is a THEFT mystery, not murder. The setting is England, 1920s.
+
+Write in third person, present tense. Be evocative but concise.`;
+
+  try {
+    const response = await ai.run(AI_MODEL, {
+      messages: [{ role: "user", content: prompt }],
+      max_tokens: 200,
+    });
+
+    const text = extractResponseText(response);
+    if (text) {
+      return text;
+    }
+    return generateFallbackAtmosphere(theme);
+  } catch {
+    return generateFallbackAtmosphere(theme);
+  }
+}
+
+/**
+ * Generate enhanced closing narration for GeneratedScenario
+ */
+async function generateEnhancedClosing(
+  ai: Ai,
+  _scenario: GeneratedScenario,
+  solution: { suspect: Suspect; item: Item; location: Location; time: TimePeriod },
+  theme: MysteryTheme
+): Promise<string> {
+  const solutionContext = getSolutionContext(
+    solution.suspect.id,
+    solution.item.id,
+    solution.location.id,
+    solution.time.id
+  );
+
+  const prompt = `${CORE_GAME_CONTEXT}
+${getNPCContext()}
+${solutionContext}
+
+---
+
+You are Inspector Brown from Scotland Yard, delivering the dramatic conclusion to a Clue mystery.
+
+The solution has been revealed:
+- The thief: ${solution.suspect.displayName} (${solution.suspect.role})
+- Their traits: ${solution.suspect.traits.join(", ")}
+- The stolen item: ${solution.item.nameUS} (${solution.item.category})
+- The location of the theft: ${solution.location.name}
+- The time: ${solution.time.name} (${solution.time.lightCondition} conditions)
+- Event theme: "${theme.name}"
+
+Write a dramatic closing narration (2 paragraphs) that:
+1. Dramatically reveals how you (Inspector Brown) pieced together the clues
+2. Explains the thief's motive based on their CHARACTER TRAITS above
+3. Explains why this location and time presented the opportunity
+4. Concludes with a satisfying resolution
+5. Uses authentic 1920s British detective language
+6. Remember: This is THEFT, not murder - the item is recovered, the thief is caught
+
+The thief's personality (${solution.suspect.traits.join(", ")}) should inform their motive.
+
+Write only the narration.`;
+
+  try {
+    const response = await ai.run(AI_MODEL, {
+      messages: [{ role: "user", content: prompt }],
+      max_tokens: 400,
+    });
+
+    const text = extractResponseText(response);
+    if (text) {
+      return text;
+    }
+    return generateEnhancedFallbackClosing(solution, theme);
+  } catch {
+    return generateEnhancedFallbackClosing(solution, theme);
+  }
+}
+
+/**
+ * Fallback closing for GeneratedScenario
+ */
+function generateEnhancedFallbackClosing(
+  solution: { suspect: Suspect; item: Item; location: Location; time: TimePeriod },
+  _theme: MysteryTheme
+): string {
+  return `And so the truth is revealed! ${solution.suspect.displayName} stole the ${solution.item.nameUS} from the ${solution.location.name} during ${solution.time.name}.
+
+The evidence was there all along, hidden in plain sight. A motive, an opportunity, and the cunning to nearly escape detection. But justice prevails at Tudor Mansion, and Scotland Yard has closed another case!`;
 }
 
 // ============================================

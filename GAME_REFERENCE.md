@@ -3,6 +3,8 @@
 > **VERIFIED FROM PHYSICAL CARDS** (January 2026)
 > All card names confirmed against actual game components
 
+> **NOTE**: This project's web app **replaces the DVD** as game master. Players still use the physical board, cards, pawns, and magnifying glass. The DVD is no longer needed.
+
 ---
 
 ## Game Overview
@@ -12,10 +14,11 @@
 | **Full Name** | Clue DVD Game (US) / Cluedo DVD Game (UK) |
 | **Publisher** | Parker Brothers / Hasbro |
 | **Release** | 2006 (US), October 2005 (UK) |
-| **Players** | 3-5 |
+| **Players** | 1-6 (expanded from original 3-5) |
 | **Duration** | ~45-60 minutes per mystery |
 | **Theme** | THEFT investigation (not murder) |
 | **Setting** | Tudor Mansion, September 1925 - May 1926 |
+| **Game Master** | Web app (replaces DVD) |
 
 ### The Four Mystery Categories
 
@@ -114,16 +117,26 @@ These are **valuables stolen from Mr. Boddy's collection**, NOT weapons.
 
 ---
 
-## DVD Mystery Cases (10 + General)
+## Mystery Themes (12 Total)
 
-The DVD contains 10 pre-programmed cases plus a General Case mode.
+The original DVD contained 10 pre-programmed cases. **The web app uses these themes as context for AI-generated mysteries**, creating unlimited unique scenarios.
 
-Known case names from research:
-- The Hunt (fall hunting party)
-- The Costume Party (mid-winter masquerade)
-- (Other case names to be verified from physical game)
+| Theme | Setting |
+|-------|---------|
+| The Monte Carlo Affair | September 1925 |
+| The Garden Party | Fall 1925 |
+| A Bad Sport | Fall 1925 |
+| The Hunt | Fall 1925 |
+| The Autumn Leaves | Late Fall 1925 |
+| The Costume Party | Winter 1925 |
+| Spring Cleaning | Spring 1926 |
+| A Princess Is Born | Spring 1926 |
+| A Grand Ball | Spring 1926 |
+| The Last Straw | May 1926 |
+| Christmas at the Mansion | December 1925 |
+| A Dark and Stormy Night | Winter 1925-1926 |
 
-**General Case Mode**: Random solution, unlimited replayability
+**AI Generation**: Each theme provides narrative context for the AI to generate period-appropriate clues and commentary
 
 ---
 
@@ -183,7 +196,7 @@ Clues work by **elimination**. Examples from DVD testimonies:
 
 ## Card Symbol System - VERIFIED
 
-Each card has hidden symbols on the back, visible only through the red magnifying glass. The DVD uses these to select solution cards during setup.
+Each card has hidden symbols on the back, visible only through the red magnifying glass. **The web app displays these symbols so players can find the matching physical cards** to set up the game.
 
 ### Symbols (5 types)
 - Spyglass
@@ -200,9 +213,16 @@ Each card has hidden symbols on the back, visible only through the red magnifyin
 5. Lower Left
 6. Lower Right
 
-### Setup Process
-1. DVD announces a symbol and position (e.g., "Find the fingerprint in the upper right position")
-2. Players use magnifying glass to find matching card in each category
-3. Those 4 cards go into the Case File Envelope
+### Physical Setup Process (Using Web App)
+1. **Web app generates mystery** and displays symbol grids for 4 solution cards
+2. **Players use magnifying glass** to find physical cards matching the displayed symbols
+3. **Place solution cards in envelope** (Case File)
+4. **Deal remaining cards** and begin play
 
 **Complete symbol data**: See `src/data/card-symbols.ts` (252 total assignments)
+
+### Why Symbols Still Matter
+The symbol system enables **physical/digital mirroring**. Players can:
+- Use the web app as game master for unlimited new mysteries
+- Still enjoy the tactile experience of physical cards and the magnifying glass
+- Set up the physical game to match the app-generated solution

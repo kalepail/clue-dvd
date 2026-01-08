@@ -1,123 +1,115 @@
-// Game element data embedded for client-side use
-const SUSPECTS = [
-  { id: "S01", name: "Miss Scarlet" },
-  { id: "S02", name: "Colonel Mustard" },
-  { id: "S03", name: "Mrs. White" },
-  { id: "S04", name: "Mr. Green" },
-  { id: "S05", name: "Mrs. Peacock" },
-  { id: "S06", name: "Professor Plum" },
-  { id: "S07", name: "Mrs. Meadow-Brook" },
-  { id: "S08", name: "Prince Azure" },
-  { id: "S09", name: "Lady Lavender" },
-  { id: "S10", name: "Rusty" },
-];
-
-const ITEMS = [
-  { id: "I01", name: "Spyglass" },
-  { id: "I02", name: "Revolver" },
-  { id: "I03", name: "Rare Book" },
-  { id: "I04", name: "Medal" },
-  { id: "I05", name: "Billfold" },
-  { id: "I06", name: "Gold Pen" },
-  { id: "I07", name: "Letter Opener" },
-  { id: "I08", name: "Crystal Paperweight" },
-  { id: "I09", name: "Pocket Watch" },
-  { id: "I10", name: "Jade Hairpin" },
-  { id: "I11", name: "Scarab Brooch" },
-];
-
-const LOCATIONS = [
-  { id: "L01", name: "Hall" },
-  { id: "L02", name: "Lounge" },
-  { id: "L03", name: "Dining Room" },
-  { id: "L04", name: "Kitchen" },
-  { id: "L05", name: "Ballroom" },
-  { id: "L06", name: "Conservatory" },
-  { id: "L07", name: "Billiard Room" },
-  { id: "L08", name: "Library" },
-  { id: "L09", name: "Study" },
-  { id: "L10", name: "Rose Garden" },
-  { id: "L11", name: "Fountain" },
-];
-
-const TIMES = [
-  { id: "T01", name: "Dawn" },
-  { id: "T02", name: "Breakfast" },
-  { id: "T03", name: "Late Morning" },
-  { id: "T04", name: "Lunch" },
-  { id: "T05", name: "Early Afternoon" },
-  { id: "T06", name: "Tea Time" },
-  { id: "T07", name: "Dusk" },
-  { id: "T08", name: "Dinner" },
-  { id: "T09", name: "Night" },
-  { id: "T10", name: "Midnight" },
-];
+import { Users, Package, MapPin, Clock } from "lucide-react";
+import { SUSPECTS, ITEMS, LOCATIONS, TIMES } from "../../shared/game-elements";
+import type { EliminationState, MarkCategory } from "../../shared/api-types";
+import { Card, CardContent, CardHeader, CardTitle } from "@/client/components/ui/card";
+import { Badge } from "@/client/components/ui/badge";
+import { cn } from "@/client/lib/utils";
 
 interface Props {
-  state: {
-    eliminatedSuspects: string[];
-    eliminatedItems: string[];
-    eliminatedLocations: string[];
-    eliminatedTimes: string[];
-  };
+  eliminated: EliminationState;
+  onToggle?: (category: MarkCategory, elementId: string) => void;
 }
 
 function CategorySection({
   title,
+  icon: Icon,
+  category,
   items,
   eliminated,
+  onToggle,
 }: {
   title: string;
+  icon: React.ElementType;
+  category: MarkCategory;
   items: { id: string; name: string }[];
   eliminated: string[];
+  onToggle?: (category: MarkCategory, elementId: string) => void;
 }) {
   const remaining = items.filter((i) => !eliminated.includes(i.id));
+
   return (
-    <div className="card">
-      <h3 className="mb-1">
-        {title}{" "}
-        <span className="text-muted" style={{ fontWeight: 400, fontSize: "0.9rem" }}>
-          ({remaining.length} remaining)
-        </span>
-      </h3>
-      <div className="game-grid" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(100px, 1fr))" }}>
-        {items.map((item) => (
-          <div
-            key={item.id}
-            className={`game-item ${eliminated.includes(item.id) ? "eliminated" : ""}`}
-            style={{ padding: "0.75rem", fontSize: "0.85rem" }}
-          >
-            {item.name}
-          </div>
-        ))}
-      </div>
-    </div>
+    <Card className="mb-4">
+      <CardHeader>
+        <CardTitle className="text-base flex items-center justify-between">
+          <span className="flex items-center gap-2">
+            <Icon className="h-4 w-4" />
+            {title}
+          </span>
+          <Badge variant="secondary" className="font-normal">
+            {remaining.length} remaining
+          </Badge>
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+          {items.map((item) => {
+            const isEliminated = eliminated.includes(item.id);
+            return (
+              <button
+                key={item.id}
+                onClick={() => onToggle?.(category, item.id)}
+                disabled={!onToggle}
+                title={onToggle ? (isEliminated ? "Click to unmark" : "Click to mark as eliminated") : undefined}
+                className={cn(
+                  "px-3 py-2 text-sm rounded-md border transition-all text-left",
+                  onToggle && "cursor-pointer hover:border-primary",
+                  !onToggle && "cursor-default",
+                  isEliminated
+                    ? "bg-muted/50 text-muted-foreground line-through border-border/50 opacity-60"
+                    : "bg-card border-border hover:bg-accent"
+                )}
+              >
+                {item.name}
+              </button>
+            );
+          })}
+        </div>
+      </CardContent>
+    </Card>
   );
 }
 
-export default function EliminationTracker({ state }: Props) {
+export default function EliminationTracker({ eliminated, onToggle }: Props) {
   return (
     <div>
-      <h2 className="mb-2">Investigation Board</h2>
+      <div className="mb-4">
+        <h2 className="text-xl font-semibold mb-1">Investigation Board</h2>
+        <p className="text-sm text-muted-foreground">
+          Click items to mark/unmark as eliminated based on your deductions.
+        </p>
+      </div>
+
       <CategorySection
         title="Suspects"
+        icon={Users}
+        category="suspect"
         items={SUSPECTS}
-        eliminated={state.eliminatedSuspects}
+        eliminated={eliminated.suspects}
+        onToggle={onToggle}
       />
       <CategorySection
         title="Items"
+        icon={Package}
+        category="item"
         items={ITEMS}
-        eliminated={state.eliminatedItems}
+        eliminated={eliminated.items}
+        onToggle={onToggle}
       />
       <CategorySection
         title="Locations"
+        icon={MapPin}
+        category="location"
         items={LOCATIONS}
-        eliminated={state.eliminatedLocations}
+        eliminated={eliminated.locations}
+        onToggle={onToggle}
       />
       <CategorySection
         title="Times"
+        icon={Clock}
+        category="time"
         items={TIMES}
-        eliminated={state.eliminatedTimes}
+        eliminated={eliminated.times}
+        onToggle={onToggle}
       />
     </div>
   );

@@ -1,31 +1,26 @@
 import { useState, useEffect } from "react";
-import { api } from "../hooks/useApi";
+import { Plus, Users, Clock, Sparkles, Trash2 } from "lucide-react";
+import { gameStore, type LocalGameListItem } from "../hooks/useGameStore";
 import NewGameModal from "../components/NewGameModal";
-
-interface Game {
-  id: string;
-  status: string;
-  theme: { id: string; name: string };
-  difficulty: string;
-  playerCount: number;
-  createdAt: string;
-  clueCount: number;
-}
+import { Button } from "@/client/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/client/components/ui/card";
+import { Badge } from "@/client/components/ui/badge";
+import { IconStat } from "@/client/components/ui/icon-stat";
 
 interface Props {
   onNavigate: (path: string) => void;
 }
 
 export default function HomePage({ onNavigate }: Props) {
-  const [games, setGames] = useState<Game[]>([]);
+  const [games, setGames] = useState<LocalGameListItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [showNewGame, setShowNewGame] = useState(false);
 
-  const loadGames = async () => {
+  const loadGames = () => {
     setLoading(true);
     try {
-      const data = await api.listGames();
-      setGames((data as { games: Game[] }).games || []);
+      const gameList = gameStore.listGames();
+      setGames(gameList);
     } catch (err) {
       console.error("Failed to load games:", err);
     }
@@ -38,11 +33,31 @@ export default function HomePage({ onNavigate }: Props) {
 
   const handleGameCreated = (gameId: string) => {
     setShowNewGame(false);
+    loadGames(); // Refresh the list
     onNavigate(`/game/${gameId}`);
   };
 
-  const getStatusBadge = (status: string) => {
-    return <span className={`badge badge-${status.replace("_", "-")}`}>{status.replace("_", " ")}</span>;
+  const handleDeleteGame = (e: React.MouseEvent, gameId: string) => {
+    e.stopPropagation(); // Prevent navigating to the game
+    if (window.confirm("Are you sure you want to delete this investigation?")) {
+      gameStore.deleteGame(gameId);
+      loadGames();
+    }
+  };
+
+  const getStatusVariant = (status: string) => {
+    switch (status) {
+      case "setup":
+        return "setup";
+      case "in_progress":
+        return "in-progress";
+      case "solved":
+        return "solved";
+      case "abandoned":
+        return "abandoned";
+      default:
+        return "secondary";
+    }
   };
 
   const formatDate = (dateStr: string) => {
@@ -56,52 +71,70 @@ export default function HomePage({ onNavigate }: Props) {
 
   return (
     <div>
-      <div className="flex flex-between mb-3">
+      <div className="flex justify-between items-center gap-6 mb-6">
         <h2>Your Investigations</h2>
-        <button className="btn btn-primary" onClick={() => setShowNewGame(true)}>
+        <Button onClick={() => setShowNewGame(true)}>
+          <Plus className="mr-2 h-4 w-4" />
           New Game
-        </button>
+        </Button>
       </div>
 
       {loading ? (
-        <div className="loading">Loading investigations...</div>
-      ) : games.length === 0 ? (
-        <div className="card text-center">
-          <h3>No Investigations Yet</h3>
-          <p className="text-muted mt-1">
-            Begin your first mystery at Tudor Mansion
-          </p>
-          <button
-            className="btn btn-primary mt-2"
-            onClick={() => setShowNewGame(true)}
-          >
-            Start New Investigation
-          </button>
+        <div className="text-center py-12 text-muted-foreground">
+          <div className="loading-spinner mx-auto mb-4" />
+          Loading investigations...
         </div>
+      ) : games.length === 0 ? (
+        <Card className="text-center p-8">
+          <CardHeader>
+            <CardTitle>No Investigations Yet</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-muted-foreground mb-4">
+              Begin your first mystery at Tudor Mansion
+            </p>
+            <Button onClick={() => setShowNewGame(true)}>
+              <Sparkles className="mr-2 h-4 w-4" />
+              Start New Investigation
+            </Button>
+          </CardContent>
+        </Card>
       ) : (
-        <div className="game-grid">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {games.map((game) => (
-            <div
+            <Card
               key={game.id}
-              className="card"
-              style={{ cursor: "pointer" }}
+              className="cursor-pointer hover:border-primary transition-colors group relative"
               onClick={() => onNavigate(`/game/${game.id}`)}
             >
-              <div className="flex flex-between mb-1">
-                {getStatusBadge(game.status)}
-                <span className="text-muted" style={{ fontSize: "0.8rem" }}>
-                  {formatDate(game.createdAt)}
-                </span>
-              </div>
-              <h3 style={{ fontSize: "1rem", marginBottom: "0.5rem" }}>
-                {game.theme.name}
-              </h3>
-              <div className="text-muted" style={{ fontSize: "0.85rem" }}>
-                <div>Difficulty: {game.difficulty}</div>
-                <div>Players: {game.playerCount}</div>
-                <div>Clues: {game.clueCount}</div>
-              </div>
-            </div>
+              <CardContent className="p-4">
+                <div className="flex justify-between items-center mb-3">
+                  <Badge variant={getStatusVariant(game.status) as "setup" | "in-progress" | "solved" | "abandoned"}>
+                    {game.status.replace("_", " ")}
+                  </Badge>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-muted-foreground">
+                      {formatDate(game.createdAt)}
+                    </span>
+                    <button
+                      onClick={(e) => handleDeleteGame(e, game.id)}
+                      className="opacity-0 group-hover:opacity-100 transition-opacity p-1 hover:bg-destructive/10 rounded"
+                      title="Delete game"
+                    >
+                      <Trash2 className="h-4 w-4 text-destructive" />
+                    </button>
+                  </div>
+                </div>
+                <h3 className="text-base mb-3">
+                  {game.theme?.name || "Mystery"}
+                </h3>
+                <div className="space-y-1">
+                  <IconStat icon={Sparkles} className="capitalize">{game.difficulty}</IconStat>
+                  <IconStat icon={Users}>{game.playerCount} Players</IconStat>
+                  <IconStat icon={Clock}>{game.cluesRevealed}/{game.totalClues} Clues</IconStat>
+                </div>
+              </CardContent>
+            </Card>
           ))}
         </div>
       )}

@@ -1,419 +1,301 @@
-/* Clue DVD Game - 1920s Mystery Theme */
-:root {
-  --color-bg: #1a1512;
-  --color-bg-secondary: #2a231e;
-  --color-bg-card: #342c25;
+@import "tailwindcss";
+
+/*
+ * Clue DVD Game - 1920s Mystery Theme
+ * Custom theme built on Tailwind CSS v4
+ */
+
+@theme {
+  /* Colors - 1920s Mystery Palette */
+  --color-background: #1a1512;
+  --color-foreground: #e8e0d5;
+
+  --color-card: #342c25;
+  --color-card-foreground: #e8e0d5;
+
+  --color-popover: #342c25;
+  --color-popover-foreground: #e8e0d5;
+
+  --color-primary: #c4a35a;
+  --color-primary-foreground: #1a1512;
+
+  --color-secondary: #2a231e;
+  --color-secondary-foreground: #e8e0d5;
+
+  --color-muted: #2a231e;
+  --color-muted-foreground: #a89b8c;
+
+  --color-accent: #3d342c;
+  --color-accent-foreground: #e8e0d5;
+
+  --color-destructive: #8b3a3a;
+  --color-destructive-foreground: #f5efe6;
+
+  --color-success: #3a6b4a;
+  --color-success-foreground: #f5efe6;
+
+  --color-border: #4a4035;
+  --color-input: #2a231e;
+  --color-ring: #c4a35a;
+
+  /* Additional theme colors */
   --color-gold: #c4a35a;
   --color-gold-light: #ddc88a;
   --color-cream: #f5efe6;
-  --color-text: #e8e0d5;
-  --color-text-muted: #a89b8c;
-  --color-accent-red: #8b3a3a;
-  --color-accent-green: #3a6b4a;
-  --color-border: #4a4035;
+
+  /* Typography */
   --font-display: "Cinzel", serif;
   --font-body: "Crimson Text", serif;
+
+  /* Border radius */
+  --radius-sm: 0.25rem;
+  --radius-md: 0.375rem;
+  --radius-lg: 0.5rem;
+  --radius-xl: 0.75rem;
 }
 
+/* Base styles */
 * {
-  box-sizing: border-box;
-  margin: 0;
-  padding: 0;
+  @apply border-border;
 }
 
 body {
+  @apply bg-background text-foreground antialiased;
   font-family: var(--font-body);
-  background-color: var(--color-bg);
-  color: var(--color-text);
-  min-height: 100vh;
   line-height: 1.6;
 }
 
 #root {
-  min-height: 100vh;
-  display: flex;
-  flex-direction: column;
+  @apply min-h-screen flex flex-col;
 }
 
 /* Typography */
-h1, h2, h3, h4, h5 {
+h1, h2, h3, h4, h5, h6 {
   font-family: var(--font-display);
-  color: var(--color-gold);
-  font-weight: 600;
+  @apply text-primary font-semibold tracking-wide;
 }
 
 h1 {
-  font-size: 2.5rem;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
+  @apply text-4xl uppercase tracking-widest;
 }
 
 h2 {
-  font-size: 1.75rem;
-  letter-spacing: 0.05em;
+  @apply text-2xl tracking-wide;
 }
 
 h3 {
-  font-size: 1.25rem;
+  @apply text-xl;
 }
 
-/* Layout */
-.container {
-  max-width: 1200px;
-  margin: 0 auto;
-  padding: 2rem;
-}
-
-.header {
-  background: linear-gradient(to bottom, var(--color-bg-secondary), var(--color-bg));
-  padding: 1.5rem 2rem;
-  border-bottom: 2px solid var(--color-gold);
-  text-align: center;
-}
-
-.header h1 {
-  margin-bottom: 0.25rem;
-}
-
-.header .subtitle {
-  color: var(--color-text-muted);
-  font-style: italic;
-  font-size: 1.1rem;
-}
-
-/* Cards */
-.card {
-  background-color: var(--color-bg-card);
-  border: 1px solid var(--color-border);
-  border-radius: 8px;
-  padding: 1.5rem;
-  margin-bottom: 1.5rem;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-}
-
-.card-header {
-  border-bottom: 1px solid var(--color-border);
-  padding-bottom: 1rem;
-  margin-bottom: 1rem;
-}
-
-/* Buttons */
-.btn {
-  font-family: var(--font-display);
-  font-size: 0.9rem;
-  letter-spacing: 0.05em;
-  padding: 0.75rem 1.5rem;
-  border: 2px solid var(--color-gold);
-  background-color: transparent;
-  color: var(--color-gold);
-  cursor: pointer;
-  transition: all 0.2s ease;
-  text-transform: uppercase;
-}
-
-.btn:hover:not(:disabled) {
-  background-color: var(--color-gold);
-  color: var(--color-bg);
-}
-
-.btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.btn-primary {
-  background-color: var(--color-gold);
-  color: var(--color-bg);
-}
-
-.btn-primary:hover:not(:disabled) {
-  background-color: var(--color-gold-light);
-}
-
-.btn-danger {
-  border-color: var(--color-accent-red);
-  color: var(--color-accent-red);
-}
-
-.btn-danger:hover:not(:disabled) {
-  background-color: var(--color-accent-red);
-  color: var(--color-cream);
-}
-
-.btn-success {
-  border-color: var(--color-accent-green);
-  color: var(--color-accent-green);
-}
-
-.btn-success:hover:not(:disabled) {
-  background-color: var(--color-accent-green);
-  color: var(--color-cream);
-}
-
-/* Form Elements */
-select, input {
-  font-family: var(--font-body);
-  font-size: 1rem;
-  padding: 0.75rem 1rem;
-  background-color: var(--color-bg-secondary);
-  border: 1px solid var(--color-border);
-  color: var(--color-text);
-  border-radius: 4px;
-  width: 100%;
-}
-
-select:focus, input:focus {
-  outline: none;
-  border-color: var(--color-gold);
-}
-
-label {
-  display: block;
-  margin-bottom: 0.5rem;
-  color: var(--color-gold-light);
-  font-size: 0.9rem;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-}
-
-.form-group {
-  margin-bottom: 1.25rem;
-}
-
-/* Clue Display */
+/* Custom component styles that work with shadcn */
 .clue-card {
-  background: linear-gradient(135deg, var(--color-bg-card) 0%, #3d342c 100%);
-  border-left: 4px solid var(--color-gold);
-  padding: 1.25rem 1.5rem;
-  margin-bottom: 1rem;
-  position: relative;
+  @apply bg-gradient-to-br from-card to-accent border-l-4 border-primary;
+  @apply p-5 mb-4 relative rounded-r-lg;
 }
 
 .clue-card::before {
   content: attr(data-number);
-  position: absolute;
-  top: -10px;
-  left: -10px;
-  width: 30px;
-  height: 30px;
-  background-color: var(--color-gold);
-  color: var(--color-bg);
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  @apply absolute -top-2.5 -left-2.5 w-8 h-8;
+  @apply bg-primary text-primary-foreground rounded-full;
+  @apply flex items-center justify-center;
   font-family: var(--font-display);
-  font-weight: 700;
-  font-size: 0.9rem;
+  @apply font-bold text-sm;
 }
 
-.clue-speaker {
-  font-family: var(--font-display);
-  color: var(--color-gold-light);
-  font-size: 0.85rem;
-  margin-bottom: 0.5rem;
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
-}
-
-.clue-text {
-  font-size: 1.1rem;
-  font-style: italic;
-  line-height: 1.7;
-}
-
-.clue-eliminated {
-  margin-top: 0.75rem;
-  padding-top: 0.75rem;
-  border-top: 1px dashed var(--color-border);
-  color: var(--color-accent-red);
-  font-size: 0.9rem;
-}
-
-/* Game Grid */
-.game-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-  gap: 1rem;
-}
-
-.game-item {
-  padding: 1rem;
-  background-color: var(--color-bg-secondary);
-  border: 1px solid var(--color-border);
-  border-radius: 6px;
-  text-align: center;
-  transition: all 0.2s ease;
-  cursor: pointer;
-}
-
-.game-item:hover {
-  border-color: var(--color-gold);
-  transform: translateY(-2px);
-}
-
-.game-item.eliminated {
-  opacity: 0.4;
-  text-decoration: line-through;
-  cursor: not-allowed;
-}
-
-.game-item.selected {
-  border-color: var(--color-gold);
-  background-color: var(--color-bg-card);
-  box-shadow: 0 0 10px rgba(196, 163, 90, 0.3);
-}
-
-/* Progress Bar */
+/* Progress bar */
 .progress-bar {
-  height: 8px;
-  background-color: var(--color-bg-secondary);
-  border-radius: 4px;
-  overflow: hidden;
-  margin: 1rem 0;
+  @apply h-2 bg-secondary rounded-full overflow-hidden;
 }
 
 .progress-fill {
-  height: 100%;
-  background: linear-gradient(90deg, var(--color-gold), var(--color-gold-light));
-  transition: width 0.5s ease;
+  @apply h-full bg-gradient-to-r from-primary to-gold-light transition-all duration-500;
 }
 
-/* Status Badge */
-.badge {
-  display: inline-block;
-  padding: 0.25rem 0.75rem;
-  font-size: 0.75rem;
-  font-family: var(--font-display);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  border-radius: 12px;
-  background-color: var(--color-bg-secondary);
-  border: 1px solid currentColor;
+/* Game grid items */
+.game-item {
+  @apply p-4 bg-secondary border border-border rounded-lg text-center;
+  @apply transition-all duration-200 cursor-pointer;
 }
 
-.badge-setup { color: var(--color-text-muted); }
-.badge-in-progress { color: var(--color-gold); }
-.badge-solved { color: var(--color-accent-green); }
-.badge-abandoned { color: var(--color-accent-red); }
-
-/* Two Column Layout */
-.two-columns {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 2rem;
+.game-item:hover {
+  @apply border-primary -translate-y-0.5;
 }
 
-@media (max-width: 768px) {
-  .two-columns {
-    grid-template-columns: 1fr;
-  }
+.game-item.eliminated {
+  @apply opacity-40 line-through cursor-default;
 }
 
-/* Loading State */
-.loading {
-  text-align: center;
-  padding: 3rem;
-  color: var(--color-text-muted);
+.game-item.selected {
+  @apply border-primary bg-card shadow-lg shadow-primary/20;
 }
 
-.loading::after {
-  content: "";
-  display: inline-block;
-  width: 20px;
-  height: 20px;
-  border: 2px solid var(--color-gold);
-  border-right-color: transparent;
-  border-radius: 50%;
-  animation: spin 1s linear infinite;
-  margin-left: 0.5rem;
-  vertical-align: middle;
-}
-
-@keyframes spin {
-  to { transform: rotate(360deg); }
-}
-
-/* Navigation */
-.nav {
-  display: flex;
-  gap: 1rem;
-  margin-top: 1rem;
-  justify-content: center;
-}
-
-.nav-link {
-  color: var(--color-text-muted);
-  text-decoration: none;
-  padding: 0.5rem 1rem;
-  border-bottom: 2px solid transparent;
-  transition: all 0.2s ease;
-  font-family: var(--font-display);
-  text-transform: uppercase;
-  font-size: 0.85rem;
-  letter-spacing: 0.05em;
-}
-
-.nav-link:hover,
-.nav-link.active {
-  color: var(--color-gold);
-  border-bottom-color: var(--color-gold);
-}
-
-/* Game History */
+/* History items */
 .history-item {
-  display: flex;
-  gap: 1rem;
-  padding: 1rem;
-  border-bottom: 1px solid var(--color-border);
-}
-
-.history-item:last-child {
-  border-bottom: none;
+  @apply flex gap-4 p-4 border-b border-border last:border-b-0;
 }
 
 .history-sequence {
   font-family: var(--font-display);
-  color: var(--color-gold);
-  min-width: 2rem;
+  @apply text-primary min-w-8;
 }
 
 .history-actor {
-  color: var(--color-gold-light);
-  font-weight: 600;
+  @apply text-gold-light font-semibold;
 }
 
 .history-details {
-  color: var(--color-text-muted);
-  font-size: 0.9rem;
+  @apply text-muted-foreground text-sm;
 }
 
-/* Flex utilities */
-.flex {
-  display: flex;
+/* Badge variants */
+.badge-setup { @apply text-muted-foreground; }
+.badge-in-progress { @apply text-primary; }
+.badge-solved { @apply text-success; }
+.badge-abandoned { @apply text-destructive; }
+
+/* Loading spinner */
+.loading-spinner {
+  @apply inline-block w-5 h-5 border-2 border-primary border-r-transparent rounded-full animate-spin;
 }
 
-.flex-between {
-  justify-content: space-between;
-  align-items: center;
+/* Animations */
+@keyframes spin {
+  to { transform: rotate(360deg); }
 }
 
-.flex-center {
-  justify-content: center;
-  align-items: center;
+/* ============================================
+   SOLUTION CARDS - Magnifying Glass Effect
+   ============================================
+   Mimics the physical Clue DVD Game red magnifying glass
+   that reveals blue symbols hidden under red shapes.
+*/
+
+.solution-cards-container {
+  @apply text-center space-y-4 mt-6;
 }
 
-.gap-1 { gap: 0.5rem; }
-.gap-2 { gap: 1rem; }
-.gap-3 { gap: 1.5rem; }
+.solution-cards-title {
+  @apply flex items-center justify-center gap-2 text-xl;
+}
 
-.mt-1 { margin-top: 0.5rem; }
-.mt-2 { margin-top: 1rem; }
-.mt-3 { margin-top: 1.5rem; }
+.solution-cards-subtitle {
+  @apply text-muted-foreground text-sm;
+}
 
-.mb-1 { margin-bottom: 0.5rem; }
-.mb-2 { margin-bottom: 1rem; }
-.mb-3 { margin-bottom: 1.5rem; }
+.solution-cards-instruction {
+  @apply text-muted-foreground text-xs mt-4 italic;
+}
 
-.text-center { text-align: center; }
-.text-muted { color: var(--color-text-muted); }
+.solution-cards-grid {
+  @apply grid grid-cols-2 lg:grid-cols-4 gap-4 max-w-4xl mx-auto;
+}
+
+/* Individual Solution Card */
+.solution-card {
+  @apply relative p-3 rounded-lg transition-all duration-300;
+  background: linear-gradient(135deg, #8b3a3a 0%, #6b2a2a 100%);
+  border: 2px solid #4a2020;
+  cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='32' height='32' viewBox='0 0 24 24' fill='none' stroke='%23c4a35a' stroke-width='2'%3E%3Ccircle cx='11' cy='11' r='8'/%3E%3Cline x1='21' y1='21' x2='16.65' y2='16.65'/%3E%3C/svg%3E") 16 16, pointer;
+}
+
+.solution-card:hover {
+  @apply shadow-lg;
+  box-shadow: 0 0 20px rgba(196, 163, 90, 0.4);
+  transform: scale(1.02);
+}
+
+.solution-card-loading {
+  @apply flex items-center justify-center min-h-[180px];
+}
+
+.solution-card-label {
+  @apply absolute -top-2.5 left-1/2 -translate-x-1/2 px-3 py-0.5;
+  @apply bg-primary text-primary-foreground rounded-full text-xs font-bold;
+  font-family: var(--font-display);
+  letter-spacing: 0.1em;
+}
+
+.solution-card-inner {
+  @apply pt-4 pb-2;
+}
+
+/* Symbol Grid - 2x3 layout */
+.symbol-grid {
+  @apply grid gap-2 mx-auto;
+  grid-template-columns: repeat(2, 1fr);
+  grid-template-rows: repeat(3, 1fr);
+  width: 90px;
+  height: 108px;
+}
+
+/* Individual Symbol Slot */
+.symbol-slot {
+  @apply relative w-10 h-8 rounded overflow-hidden;
+  background: rgba(0, 0, 0, 0.2);
+}
+
+/* Red Obfuscation Layer - hides the symbols */
+.symbol-obfuscation {
+  @apply absolute inset-0 z-10 rounded;
+  background: radial-gradient(ellipse at center, #9b4444 0%, #7a3333 100%);
+  transition: opacity 0.4s ease-out;
+}
+
+/* Blue Symbol Icon - hidden under red */
+.symbol-icon {
+  @apply absolute inset-0 flex items-center justify-center text-base;
+  color: #4488ff;
+  text-shadow: 0 0 3px rgba(68, 136, 255, 0.8);
+  opacity: 0;
+  transform: scale(0.8);
+  transition: opacity 0.4s ease-out, transform 0.3s ease-out;
+  filter: brightness(1.2);
+}
+
+/* Revealed State - magnifying glass effect */
+.solution-card.revealed .symbol-obfuscation {
+  opacity: 0;
+}
+
+.solution-card.revealed .symbol-icon {
+  opacity: 1;
+  transform: scale(1);
+}
+
+/* Pulse animation on reveal */
+.solution-card.revealed .symbol-grid {
+  animation: symbolReveal 0.5s ease-out;
+}
+
+@keyframes symbolReveal {
+  0% { filter: brightness(1); }
+  50% { filter: brightness(1.3); }
+  100% { filter: brightness(1); }
+}
+
+/* Magnifying glass hint */
+.magnifying-hint {
+  @apply flex items-center justify-center gap-1 mt-2 text-cream/60 text-xs;
+  transition: opacity 0.3s ease;
+}
+
+.solution-card.revealed .magnifying-hint {
+  opacity: 0;
+}
+
+/* Card type color variations */
+.solution-card[data-type="suspect"] {
+  background: linear-gradient(135deg, #8b3a3a 0%, #6b2a2a 100%);
+}
+
+.solution-card[data-type="item"] {
+  background: linear-gradient(135deg, #8b6a3a 0%, #6b4a2a 100%);
+}
+
+.solution-card[data-type="location"] {
+  background: linear-gradient(135deg, #3a6b8b 0%, #2a4a6b 100%);
+}
+
+.solution-card[data-type="time"] {
+  background: linear-gradient(135deg, #5a3a8b 0%, #3a2a6b 100%);
+}

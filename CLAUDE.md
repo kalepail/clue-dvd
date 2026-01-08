@@ -1,15 +1,23 @@
-# Clue DVD Game Scenario Generator
+# Clue DVD Game - AI Game Master
 
 ## Project Overview
 
-This is an AI-powered scenario generator for the **Clue DVD Game (2006)** by Parker Brothers/Hasbro. The goal is to create new playable mystery scenarios that work with the physical game components.
+This is an **AI-powered web app that replaces the DVD** for the **Clue DVD Game (2006)** by Parker Brothers/Hasbro. The web app acts as the game master, generating new mystery scenarios while players use the **original physical game components** (board, cards, pawns, magnifying glass).
 
 **CRITICAL**: This is specifically the **2006 DVD Game**, NOT classic Clue. Key differences:
 - About **THEFT** not murder
 - **4 categories**: WHO stole WHAT from WHERE at WHEN
-- Uses **DVD** with interactive elements (Inspector Brown, Ashe the Butler)
+- **AI replaces DVD** - generates Inspector Brown clues, Butler testimonies, commentary
 - **Stolen items** (valuables) not weapons
 - **10 time periods** as the fourth deduction category
+
+### How It Works
+
+1. **Web app generates mystery** - Random solution (WHO/WHAT/WHERE/WHEN) with AI-enhanced narrative
+2. **App shows card symbols** - Players use red magnifying glass to find matching physical cards
+3. **Players set up physical game** - Place solution cards in envelope, deal remaining cards
+4. **App delivers clues** - Inspector's Notes, Butler testimonies served through the app
+5. **Physical gameplay** - Move pawns, make suggestions, use physical cards to deduce
 
 ---
 
@@ -64,15 +72,28 @@ This is an AI-powered scenario generator for the **Clue DVD Game (2006)** by Par
 
 ```
 src/
-├── index.ts                    # Hono API endpoints (30+ routes)
+├── index.ts                    # Hono app entry - mounts route modules
+├── routes/
+│   ├── info.ts                 # Health, stats, constants
+│   ├── game-elements.ts        # Suspects, items, locations, times, themes, NPCs
+│   ├── symbols.ts              # Card symbol system endpoints
+│   ├── setup.ts                # Setup endpoints (symbol lookup)
+│   ├── scenarios.ts            # Scenario generation
+│   ├── games.ts                # Game session CRUD
+│   └── games-ai.ts             # AI-enhanced game features
 ├── data/
 │   ├── game-elements.ts        # All 42 cards + 12 themes (VERIFIED)
 │   ├── card-symbols.ts         # Symbol positions for all 42 cards (COMPLETE)
 │   └── game-constants.ts       # Game constants, NPCs, special locations
 ├── services/
 │   ├── scenario-generator.ts   # Core scenario generation logic
-│   ├── setup-generator.ts      # DVD-style and direct setup generators
+│   ├── setup-generator.ts      # Symbol lookup utilities
+│   ├── game-session.ts         # Game session management
 │   └── ai-narrative.ts         # Cloudflare AI narrative enhancement
+├── shared/
+│   ├── api-types.ts            # API request/response types (shared with frontend)
+│   └── game-elements.ts        # Card data shared with frontend
+├── client/                     # React frontend
 └── types/
     └── scenario.ts             # TypeScript interfaces
 ```
@@ -82,11 +103,14 @@ src/
 - `CARD_SYMBOLS.md` - Red magnifying glass symbol system documentation
 
 ### Symbol System
-The physical cards have hidden symbols visible only through the red magnifying glass. The DVD uses these to select solution cards during setup. **Complete symbol data for all 42 cards is now available in `src/data/card-symbols.ts`.**
+The physical cards have hidden symbols visible only through the red magnifying glass. **The web app displays these symbols so players can find the matching physical cards** using the magnifying glass. Complete symbol data for all 42 cards is in `src/data/card-symbols.ts`.
 
 - **5 symbol types**: spyglass, fingerprint, whistle, notepad, clock
 - **6 positions per card**: Top Left, Top Right, Middle Left, Middle Right, Lower Left, Lower Right
 - **252 total symbol assignments** (42 cards × 6 positions)
+
+### DVD Content as AI Context
+The original DVD content (Inspector Brown's voice, Ashe's testimonies, theme narratives, character personalities) is used to **inform the AI-generated content**. The AI mimics the style and tone of the original DVD characters when generating clues and commentary.
 
 ---
 
@@ -109,10 +133,8 @@ The physical cards have hidden symbols visible only through the red magnifying g
 - `GET /api/symbols/cards/:cardId` - Specific card symbols
 - `GET /api/symbols/search?symbol=X&position=Y` - Find cards by symbol/position
 
-#### Setup Generators
-- `GET /api/setup/dvd` - DVD-style setup (uses magnifying glass)
-- `GET /api/setup/direct` - Direct setup (by card name)
-- `POST /api/setup/verify-symbol` - Find symbol for a given solution
+#### Symbol Lookup
+- `POST /api/setup/verify-symbol` - Find symbols for a given solution (for physical card mirroring)
 
 #### Scenarios
 - `POST /api/scenarios/generate` - Generate a scenario
@@ -138,21 +160,15 @@ The physical cards have hidden symbols visible only through the red magnifying g
 
 ---
 
-## What's Needed (For Frontend)
+## What's Built (Frontend)
 
-### Phase 1: Basic Frontend
-- Display available scenarios
-- Show setup instructions
-- Present clues in sequence
-
-### Phase 2: Game Sessions
-- Create/manage game sessions with Durable Objects
-- Track revealed clues, player turns, accusations
-
-### Phase 3: Clue Delivery
-- Serve Inspector's Notes on demand
-- Serve Butler testimonies in sequence
-- Track which clues have been revealed
+The React frontend provides:
+- **Game creation** - Select theme, difficulty, player count
+- **Solution card display** - Shows symbol grids for physical card mirroring
+- **Clue reveal** - AI-generated clues served one at a time
+- **Elimination tracker** - Track eliminated suspects/items/locations/times
+- **Accusation system** - Make accusations with AI-judged responses
+- **Game history** - Timeline of all clues and events
 
 ---
 
@@ -164,6 +180,9 @@ The physical cards have hidden symbols visible only through the red magnifying g
 4. **ALWAYS** reference `src/data/game-elements.ts` for card names
 5. **NEVER** make up card names - use only verified data
 6. Generated clues must **NEVER** eliminate the solution
+7. **WEB APP REPLACES DVD** - The app is the game master, not a companion to the DVD
+8. **PHYSICAL COMPONENTS STILL USED** - Players use the real board, cards, and magnifying glass
+9. **DVD CONTENT INFORMS AI** - Original DVD themes, character voices, and narrative style guide AI generation
 
 ---
 

@@ -24,13 +24,12 @@ CREATE TABLE IF NOT EXISTS games (
   difficulty TEXT NOT NULL DEFAULT 'intermediate' CHECK (difficulty IN ('beginner', 'intermediate', 'expert')),
 
   -- Player configuration
-  player_count INTEGER NOT NULL DEFAULT 3 CHECK (player_count >= 3 AND player_count <= 5),
+  player_count INTEGER NOT NULL DEFAULT 3 CHECK (player_count >= 1 AND player_count <= 6),
 
   -- AI-generated narrative (stored as JSON)
   narrative TEXT,
 
-  -- Setup instructions used (DVD-style or direct)
-  setup_type TEXT NOT NULL DEFAULT 'dvd' CHECK (setup_type IN ('dvd', 'direct')),
+  -- Setup instructions (symbol-based for physical card mirroring)
   setup_instructions TEXT,
 
   -- Game seed for reproducibility
