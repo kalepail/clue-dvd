@@ -324,3 +324,58 @@ h3 {
 .solution-card[data-type="time"] {
   background: linear-gradient(135deg, #5a3a8b 0%, #3a2a6b 100%);
 }
+
+/* ============================================
+   SOLUTION REVEAL CARDS - Win Screen
+   ============================================
+*/
+
+.solution-reveal-grid {
+  @apply grid grid-cols-2 md:grid-cols-4 gap-4 max-w-4xl mx-auto;
+}
+
+.reveal-card {
+  @apply w-full h-40 relative;
+  perspective: 1200px;
+}
+
+.reveal-card-inner {
+  @apply w-full h-full relative transition-transform duration-500;
+  transform-style: preserve-3d;
+}
+
+.reveal-card-flipped .reveal-card-inner {
+  transform: rotateY(180deg);
+}
+
+.reveal-card-face {
+  @apply absolute inset-0 rounded-xl border-2 flex flex-col items-center justify-center text-center px-3;
+  backface-visibility: hidden;
+}
+
+.reveal-card-front {
+  background: linear-gradient(135deg, #8b3a3a 0%, #6b2a2a 100%);
+  border-color: #4a2020;
+  color: var(--color-cream);
+}
+
+.reveal-card-back {
+  background: linear-gradient(135deg, #2a231e 0%, #1f1a16 100%);
+  border-color: var(--color-primary);
+  color: var(--color-foreground);
+  transform: rotateY(180deg);
+}
+
+.reveal-card-label {
+  font-family: var(--font-display);
+  letter-spacing: 0.2em;
+  @apply text-xs uppercase mb-2;
+}
+
+.reveal-card-hint {
+  @apply text-xs text-cream/70;
+}
+
+.reveal-card-value {
+  @apply text-lg font-semibold;
+}

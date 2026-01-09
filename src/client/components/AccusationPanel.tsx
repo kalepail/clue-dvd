@@ -43,6 +43,8 @@ export default function AccusationPanel({ eliminated, onClose, onAccuse }: Props
     correct: boolean;
     message: string;
     aiResponse?: string;
+    correctCount: number;
+    wrongCount: number;
   } | null>(null);
 
   const remainingSuspects = SUSPECTS.filter(
@@ -73,6 +75,15 @@ export default function AccusationPanel({ eliminated, onClose, onAccuse }: Props
     setSubmitting(false);
   };
 
+  const renderAccuracy = (correctCount: number) => {
+    const icons = Array.from({ length: 4 }, (_, idx) => (
+      idx < correctCount
+        ? <CheckCircle key={`ok-${idx}`} className="h-5 w-5 text-success" />
+        : <XCircle key={`bad-${idx}`} className="h-5 w-5 text-destructive" />
+    ));
+    return <div className="flex items-center justify-center gap-2">{icons}</div>;
+  };
+
   return (
     <Dialog open={true} onOpenChange={(open) => !open && onClose()}>
       <DialogContent className="sm:max-w-[500px]">
@@ -99,6 +110,20 @@ export default function AccusationPanel({ eliminated, onClose, onAccuse }: Props
               {result.correct ? "Correct!" : "Incorrect!"}
             </div>
             <p className="text-muted-foreground">{result.message}</p>
+            {!result.correct && (
+              <div className="space-y-2">
+                {renderAccuracy(result.correctCount)}
+                <p className="text-sm text-muted-foreground">
+                  {result.correctCount}/4 correct
+                </p>
+                <p className="text-sm text-muted-foreground">
+                  Turn in {result.wrongCount} card{result.wrongCount === 1 ? "" : "s"} face up to the Evidence Room.
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  Your turn is over.
+                </p>
+              </div>
+            )}
             {result.aiResponse && (
               <div className="italic p-4 bg-secondary rounded-lg text-sm">
                 "{result.aiResponse}"

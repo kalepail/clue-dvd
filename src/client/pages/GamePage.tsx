@@ -259,20 +259,22 @@ export default function GamePage({ gameId, onNavigate }: Props) {
     itemId: string;
     locationId: string;
     timeId: string;
-  }): Promise<{ correct: boolean; message: string; aiResponse?: string }> => {
+  }): Promise<{ correct: boolean; message: string; aiResponse?: string; correctCount: number; wrongCount: number }> => {
     try {
       const result = gameStore.makeAccusation(gameId, {
-        player: "Detective",
+        player: game.currentTurn?.playerName || "Detective",
+        playerSuspectId: game.currentTurn?.suspectId,
         ...accusation,
       });
       loadGame();
-      setShowAccusation(false);
       return {
         correct: result.correct,
         message: result.message,
+        correctCount: result.correctCount,
+        wrongCount: result.wrongCount,
       };
     } catch {
-      return { correct: false, message: "Failed to make accusation" };
+      return { correct: false, message: "Failed to make accusation", correctCount: 0, wrongCount: 4 };
     }
   };
 
@@ -465,7 +467,7 @@ export default function GamePage({ gameId, onNavigate }: Props) {
               <p className="text-muted-foreground">
                 {game.theme?.description || "A theft has occurred at Tudor Mansion"}
               </p>
-              {game.currentTurn && (
+              {isInProgress && game.currentTurn && (
                 <div className="mt-4 inline-flex items-center gap-3 rounded-full border border-primary/60 bg-secondary/70 px-4 py-2">
                   <span className="text-xs uppercase tracking-widest text-muted-foreground">
                     Current Turn
@@ -690,24 +692,26 @@ export default function GamePage({ gameId, onNavigate }: Props) {
       {isSolved && game.solution && (
         <Card className="border-success text-center">
           <CardHeader>
-            <CardTitle className="text-success flex items-center justify-center gap-2">
-              <CheckCircle className="h-6 w-6" />
+            <CardTitle className="text-success flex items-center justify-center gap-2 text-3xl">
+              <CheckCircle className="h-7 w-7" />
               Case Solved!
             </CardTitle>
             <CardDescription className="text-base">
-              The mystery has been unraveled. The truth is revealed:
+              {game.solvedBy?.playerName
+                ? `${game.solvedBy.playerName} solved the case.`
+                : "The mystery has been unraveled."}
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
-            <div className="grid grid-cols-2 gap-4 text-lg max-w-md mx-auto">
-              <div className="text-right text-muted-foreground">Who:</div>
-              <div className="text-left font-semibold">{game.solution.suspectName}</div>
-              <div className="text-right text-muted-foreground">What:</div>
-              <div className="text-left font-semibold">{game.solution.itemName}</div>
-              <div className="text-right text-muted-foreground">Where:</div>
-              <div className="text-left font-semibold">{game.solution.locationName}</div>
-              <div className="text-right text-muted-foreground">When:</div>
-              <div className="text-left font-semibold">{game.solution.timeName}</div>
+            <div className="solution-reveal-grid">
+              {[
+                { label: "WHO", value: game.solution.suspectName },
+                { label: "WHAT", value: game.solution.itemName },
+                { label: "WHERE", value: game.solution.locationName },
+                { label: "WHEN", value: game.solution.timeName },
+              ].map((card, index) => (
+                <RevealCard key={card.label} label={card.label} value={card.value} index={index} />
+              ))}
             </div>
 
             {/* Closing Narrative */}
@@ -716,9 +720,6 @@ export default function GamePage({ gameId, onNavigate }: Props) {
                 <p className="italic text-muted-foreground">{game.narrative.closing}</p>
               </div>
             )}
-
-            {/* Solution Cards with Magnifying Glass Effect */}
-            <SolutionCards solution={game.solution} />
 
             <Button variant="outline" onClick={() => onNavigate("/")}>
               <ArrowLeft className="mr-2 h-4 w-4" />
@@ -883,5 +884,38 @@ export default function GamePage({ gameId, onNavigate }: Props) {
         </div>
       )}
     </div>
+  );
+}
+
+function RevealCard({
+  label,
+  value,
+  index,
+}: {
+  label: string;
+  value: string;
+  index: number;
+}) {
+  const [flipped, setFlipped] = useState(false);
+
+  return (
+    <button
+      className={`reveal-card ${flipped ? "reveal-card-flipped" : ""}`}
+      onClick={() => setFlipped((current) => !current)}
+      aria-label={`Reveal ${label}`}
+      style={{ transitionDelay: `${index * 60}ms` }}
+      type="button"
+    >
+      <div className="reveal-card-inner">
+        <div className="reveal-card-face reveal-card-front">
+          <span className="reveal-card-label">{label}</span>
+          <span className="reveal-card-hint">Tap to reveal</span>
+        </div>
+        <div className="reveal-card-face reveal-card-back">
+          <span className="reveal-card-label">{label}</span>
+          <span className="reveal-card-value">{value}</span>
+        </div>
+      </div>
+    </button>
   );
 }

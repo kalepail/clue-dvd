@@ -87,6 +87,12 @@ export interface LocalGame {
     note2: boolean;
   };
 
+  // Win state
+  solvedBy: {
+    playerName: string;
+    suspectId: string;
+  } | null;
+
   // Action history (local)
   actions: GameAction[];
 }
@@ -273,6 +279,7 @@ class GameStore {
       roomsUnlocked: false,
       readInspectorNotes: {},
       inspectorNoteAnnouncements: { note1: false, note2: false },
+      solvedBy: null,
       actions: [],
     };
 
@@ -298,6 +305,7 @@ class GameStore {
     game.turnCount = 0;
     game.readInspectorNotes = {};
     game.inspectorNoteAnnouncements = { note1: false, note2: false };
+    game.solvedBy = null;
 
     const resolvedPlayers = game.players.length > 0
       ? game.players
@@ -501,6 +509,7 @@ class GameStore {
     id: string,
     accusation: {
       player: string;
+      playerSuspectId?: string;
       suspectId: string;
       itemId: string;
       locationId: string;
@@ -509,6 +518,8 @@ class GameStore {
   ): {
     correct: boolean;
     message: string;
+    correctCount: number;
+    wrongCount: number;
     solution?: {
       suspectId: string;
       suspectName: string;
@@ -531,6 +542,13 @@ class GameStore {
       accusation.locationId === solution.locationId &&
       accusation.timeId === solution.timeId;
 
+    const correctCount =
+      (accusation.suspectId === solution.suspectId ? 1 : 0) +
+      (accusation.itemId === solution.itemId ? 1 : 0) +
+      (accusation.locationId === solution.locationId ? 1 : 0) +
+      (accusation.timeId === solution.timeId ? 1 : 0);
+    const wrongCount = 4 - correctCount;
+
     // Add accusation action
     this.addAction(game, "accusation_made", accusation.player, {
       suspectId: accusation.suspectId,
@@ -546,6 +564,10 @@ class GameStore {
     if (correct) {
       game.status = "solved";
       game.phase = "resolution";
+      game.solvedBy = {
+        playerName: accusation.player,
+        suspectId: accusation.playerSuspectId || "",
+      };
       this.addAction(game, "accusation_correct", accusation.player, {
         message: "The mystery has been solved!",
       });
@@ -580,6 +602,8 @@ class GameStore {
       message: correct
         ? "Congratulations! You solved the mystery!"
         : "That's not correct. The investigation continues...",
+      correctCount,
+      wrongCount,
       solution: correct ? fullSolution : undefined,
     };
   }
@@ -770,6 +794,7 @@ class GameStore {
       inspectorNotes: scenario.inspectorNotes || [],
       readInspectorNotes: game.readInspectorNotes,
       inspectorNoteAnnouncements: game.inspectorNoteAnnouncements,
+      solvedBy: game.solvedBy,
       currentClueIndex: game.currentClueIndex,
       totalClues: scenario.clues.length,
       cluesRemaining: scenario.clues.length - game.currentClueIndex,
@@ -818,6 +843,7 @@ export interface GameDataFormatted {
   inspectorNotes: { id: string; text: string; relatedClues?: number[] }[];
   readInspectorNotes: Record<string, string[]>;
   inspectorNoteAnnouncements: { note1: boolean; note2: boolean };
+  solvedBy: { playerName: string; suspectId: string } | null;
   currentClueIndex: number;
   totalClues: number;
   cluesRemaining: number;
