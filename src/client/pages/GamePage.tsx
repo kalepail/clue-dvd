@@ -1,5 +1,5 @@
-import { useState, useEffect, useCallback } from "react";
-import { ArrowLeft, Search, Gavel, CheckCircle, Users, Sparkles, Clock, BookOpen } from "lucide-react";
+import { useState, useEffect, useCallback, useRef } from "react";
+import { ArrowLeft, Search, Gavel, CheckCircle, Users, Sparkles, Clock, BookOpen, DoorOpen, Bell } from "lucide-react";
 import { gameStore, type GameDataFormatted } from "../hooks/useGameStore";
 import ClueDisplay from "../components/ClueDisplay";
 import AccusationPanel from "../components/AccusationPanel";
@@ -12,6 +12,7 @@ import { Badge } from "@/client/components/ui/badge";
 import { Progress } from "@/client/components/ui/progress";
 import { IconStat } from "@/client/components/ui/icon-stat";
 import type { EliminationState } from "../../shared/api-types";
+import { getLocationName } from "../../shared/game-elements";
 
 interface Props {
   gameId: string;
@@ -38,8 +39,29 @@ export default function GamePage({ gameId, onNavigate }: Props) {
   } | null>(null);
   const [showAccusation, setShowAccusation] = useState(false);
   const [showNarrative, setShowNarrative] = useState(false);
+  const [secretPassageResult, setSecretPassageResult] = useState<{
+    outcome: "good" | "neutral" | "bad";
+    description: string;
+  } | null>(null);
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
+  const [showInterruption, setShowInterruption] = useState(false);
+  const [showInterruptionIntro, setShowInterruptionIntro] = useState(false);
+  const [interruptionMessage, setInterruptionMessage] = useState("");
+  const [interruptionType, setInterruptionType] = useState<"turn_in_card" | "unlock_rooms" | "inspector_note">("turn_in_card");
+  const pauseStartRef = useRef<number | null>(null);
+  const pauseAccumulatedRef = useRef(0);
+  const [showInspectorNotes, setShowInspectorNotes] = useState(false);
+  const [selectedInspectorNote, setSelectedInspectorNote] = useState<string | null>(null);
+  const [showLookAway, setShowLookAway] = useState(false);
+  const [revealedInspectorNote, setRevealedInspectorNote] = useState<string | null>(null);
+  const [revealedNoteId, setRevealedNoteId] = useState<string | null>(null);
+  const [noteWasFirstRead, setNoteWasFirstRead] = useState(false);
   // Local state for player's elimination tracking (not persisted to server)
   const [playerMarks, setPlayerMarks] = useState<EliminationState>(emptyEliminated);
+  const [turnAnnouncement, setTurnAnnouncement] = useState<string | null>(null);
+  const [showTurnAnnouncement, setShowTurnAnnouncement] = useState(false);
+  const previousTurnKey = useRef<string | null>(null);
+  const gameProgress = game?.totalClues ? game.currentClueIndex / game.totalClues : 0;
 
   const loadGame = useCallback(() => {
     setLoading(true);
@@ -60,6 +82,146 @@ export default function GamePage({ gameId, onNavigate }: Props) {
   useEffect(() => {
     loadGame();
   }, [loadGame]);
+
+  useEffect(() => {
+    if (!game?.startedAt || game.status !== "in_progress") return;
+    const startMs = new Date(game.startedAt).getTime();
+    const tick = () => {
+      const diffMs = Date.now() - startMs - pauseAccumulatedRef.current;
+      setElapsedSeconds(Math.max(0, Math.floor(diffMs / 1000)));
+    };
+    tick();
+    const interval = window.setInterval(tick, 1000);
+    return () => window.clearInterval(interval);
+  }, [game?.startedAt, game?.status]);
+
+  useEffect(() => {
+    const isPaused = showInterruption || showInterruptionIntro;
+    if (isPaused && pauseStartRef.current === null) {
+      pauseStartRef.current = Date.now();
+    }
+    if (!isPaused && pauseStartRef.current !== null) {
+      pauseAccumulatedRef.current += Date.now() - pauseStartRef.current;
+      pauseStartRef.current = null;
+    }
+  }, [showInterruption, showInterruptionIntro]);
+
+  useEffect(() => {
+    if (!game?.startedAt || game.status !== "in_progress") return;
+    if (game.nextInterruptionAtMinutes == null) return;
+    if (showInterruption || showInterruptionIntro) return;
+
+    const targetSeconds = game.nextInterruptionAtMinutes * 60;
+    const remainingSeconds = targetSeconds - elapsedSeconds;
+    const delay = Math.max(0, remainingSeconds * 1000);
+
+    const timer = window.setTimeout(() => {
+      try {
+        const result = gameStore.triggerInspectorInterruption(gameId);
+        setInterruptionMessage(result.message);
+        setInterruptionType("inspector_note");
+        setShowInterruptionIntro(true);
+        loadGame();
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Failed to trigger interruption");
+      }
+    }, delay);
+    return () => window.clearTimeout(timer);
+  }, [
+    game?.startedAt,
+    game?.status,
+    game?.nextInterruptionAtMinutes,
+    gameId,
+    loadGame,
+    elapsedSeconds,
+    showInterruption,
+    showInterruptionIntro,
+  ]);
+
+  useEffect(() => {
+    if (!game || game.status !== "in_progress") return;
+    if (game.roomsUnlocked) return;
+    if (!game.lockedRooms || game.lockedRooms.length === 0) return;
+
+    const totalButler = game.totalButlerClues;
+    const revealedButler = game.revealedButlerClues;
+    const butlerThresholdMet = totalButler > 0
+      ? revealedButler >= Math.ceil(totalButler * 0.75)
+      : false;
+
+    const timeThresholdMet = elapsedSeconds >= 22 * 60;
+    const turnThresholdMet = game.turnCount >= 10;
+
+    if (!butlerThresholdMet && !timeThresholdMet && !turnThresholdMet) return;
+    if (showInterruption || showInterruptionIntro) return;
+
+    try {
+      const result = gameStore.triggerRoomUnlock(gameId);
+      setInterruptionMessage(result.message);
+      setInterruptionType("unlock_rooms");
+      setShowInterruptionIntro(true);
+      loadGame();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to trigger room unlock");
+    }
+  }, [
+    game,
+    elapsedSeconds,
+    gameId,
+    loadGame,
+    showInterruption,
+    showInterruptionIntro,
+  ]);
+
+  useEffect(() => {
+    if (!game || game.status !== "in_progress") return;
+    if (showInterruption || showInterruptionIntro) return;
+
+    const note1Ready = gameProgress >= 0.5;
+    const note2Ready = gameProgress >= 0.65;
+
+    if (note1Ready && !game.inspectorNoteAnnouncements.note1) {
+      try {
+        const result = gameStore.announceInspectorNote(gameId, "N1");
+        setInterruptionMessage(result.message);
+        setInterruptionType("inspector_note");
+        setShowInterruptionIntro(true);
+        loadGame();
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Failed to announce inspector note");
+      }
+      return;
+    }
+
+    if (note2Ready && !game.inspectorNoteAnnouncements.note2) {
+      try {
+        const result = gameStore.announceInspectorNote(gameId, "N2");
+        setInterruptionMessage(result.message);
+        setInterruptionType("turn_in_card");
+        setShowInterruptionIntro(true);
+        loadGame();
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Failed to announce inspector note");
+      }
+    }
+  }, [
+    game,
+    gameProgress,
+    gameId,
+    loadGame,
+    showInterruption,
+    showInterruptionIntro,
+  ]);
+  useEffect(() => {
+    if (!game?.currentTurn) return;
+    const turnKey = `${game.currentTurnIndex}-${game.currentTurn.suspectId}`;
+    if (previousTurnKey.current === turnKey) return;
+    previousTurnKey.current = turnKey;
+    setTurnAnnouncement(`${game.currentTurn.suspectName}'s turn`);
+    setShowTurnAnnouncement(true);
+    const timer = window.setTimeout(() => setShowTurnAnnouncement(false), 1600);
+    return () => window.clearTimeout(timer);
+  }, [game?.currentTurn, game?.currentTurnIndex]);
 
   const handleStartGame = () => {
     try {
@@ -112,6 +274,87 @@ export default function GamePage({ gameId, onNavigate }: Props) {
     } catch {
       return { correct: false, message: "Failed to make accusation" };
     }
+  };
+
+  const handleSecretPassage = () => {
+    try {
+      const result = gameStore.useSecretPassage(gameId);
+      setSecretPassageResult(result);
+      loadGame();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to use secret passage");
+    }
+  };
+
+  const handleOpenInspectorNotes = () => {
+    setShowInspectorNotes(true);
+    setSelectedInspectorNote(null);
+    setShowLookAway(false);
+    setRevealedInspectorNote(null);
+  };
+
+  const closeInspectorNotes = () => {
+    if (noteWasFirstRead) {
+      try {
+        gameStore.endTurn(gameId);
+        loadGame();
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Failed to end turn");
+      }
+    }
+    setShowInspectorNotes(false);
+    setSelectedInspectorNote(null);
+    setShowLookAway(false);
+    setRevealedInspectorNote(null);
+    setRevealedNoteId(null);
+    setNoteWasFirstRead(false);
+  };
+
+  const handleSelectInspectorNote = (noteId: string) => {
+    setSelectedInspectorNote(noteId);
+    setShowLookAway(true);
+  };
+
+  const handleRevealInspectorNote = () => {
+    if (!selectedInspectorNote) return;
+    const readerId = game.currentTurn?.suspectId || "unknown";
+    const readByPlayer = game.readInspectorNotes[readerId] || [];
+    if (readByPlayer.includes(selectedInspectorNote)) {
+      const note = game.inspectorNotes.find((item) => item.id === selectedInspectorNote);
+      if (note) {
+        setRevealedInspectorNote(note.text);
+        setRevealedNoteId(selectedInspectorNote);
+        setNoteWasFirstRead(false);
+        setShowLookAway(false);
+      } else {
+        setError("Inspector note not found");
+      }
+      return;
+    }
+
+    try {
+      const result = gameStore.readInspectorNote(gameId, selectedInspectorNote, readerId);
+      setRevealedInspectorNote(result.text);
+      setRevealedNoteId(selectedInspectorNote);
+      setNoteWasFirstRead(true);
+      setShowLookAway(false);
+      loadGame();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to read inspector note");
+    }
+  };
+
+  const closeSecretPassage = () => {
+    setSecretPassageResult(null);
+  };
+
+  const acknowledgeInterruptionIntro = () => {
+    setShowInterruptionIntro(false);
+    setShowInterruption(true);
+  };
+
+  const closeInterruption = () => {
+    setShowInterruption(false);
   };
 
   const handleToggleMark = (
@@ -177,9 +420,42 @@ export default function GamePage({ gameId, onNavigate }: Props) {
   const progress = game.totalClues > 0
     ? (game.currentClueIndex / game.totalClues) * 100
     : 0;
+  const minutes = Math.floor(elapsedSeconds / 60);
+  const seconds = elapsedSeconds % 60;
+  const elapsedLabel = `${minutes}:${seconds.toString().padStart(2, "0")}`;
+  const nextInterruptionSeconds = game.nextInterruptionAtMinutes !== null
+    ? Math.max(0, game.nextInterruptionAtMinutes * 60 - elapsedSeconds)
+    : null;
+  const nextInterruptionLabel = nextInterruptionSeconds !== null
+    ? `${Math.floor(nextInterruptionSeconds / 60)}:${(nextInterruptionSeconds % 60)
+        .toString()
+        .padStart(2, "0")}`
+    : null;
+  const note1Available = gameProgress >= 0.5;
+  const note2Available = gameProgress >= 0.65;
+  const currentReaderId = game.currentTurn?.suspectId || "unknown";
+  const readByCurrentPlayer = game.readInspectorNotes[currentReaderId] || [];
+  const canReadNote1 = note1Available || readByCurrentPlayer.includes("N1");
+  const canReadNote2 = note2Available || readByCurrentPlayer.includes("N2");
+  const hasInspectorNoteAvailable = canReadNote1 || canReadNote2;
+  const note1Status = readByCurrentPlayer.includes("N1")
+    ? "Read"
+    : note1Available
+      ? "Available"
+      : "Unavailable";
+  const note2Status = readByCurrentPlayer.includes("N2")
+    ? "Read"
+    : note2Available
+      ? "Available"
+      : "Unavailable";
 
   return (
     <div className="space-y-6">
+      {turnAnnouncement && (
+        <div className={`turn-toast ${showTurnAnnouncement ? "turn-toast-show" : ""}`}>
+          {turnAnnouncement}
+        </div>
+      )}
       {/* Header */}
       <Card>
         <CardContent>
@@ -189,11 +465,32 @@ export default function GamePage({ gameId, onNavigate }: Props) {
               <p className="text-muted-foreground">
                 {game.theme?.description || "A theft has occurred at Tudor Mansion"}
               </p>
+              {game.currentTurn && (
+                <div className="mt-4 inline-flex items-center gap-3 rounded-full border border-primary/60 bg-secondary/70 px-4 py-2">
+                  <span className="text-xs uppercase tracking-widest text-muted-foreground">
+                    Current Turn
+                  </span>
+                  <span className="text-lg text-primary font-semibold">
+                    {game.currentTurn.suspectName}
+                  </span>
+                </div>
+              )}
             </div>
             <Badge variant={getStatusVariant(game.status) as "setup" | "in-progress" | "solved" | "abandoned"}>
               {game.status.replace("_", " ")}
             </Badge>
           </div>
+          {isInProgress && (
+            <div className="mt-4 text-sm text-muted-foreground flex items-center gap-2">
+              <Clock className="h-4 w-4" />
+              DEV Game Timer: <span className="text-foreground font-semibold">{elapsedLabel}</span>
+              {nextInterruptionLabel && (
+                <span className="text-muted-foreground">
+                  (DEV next interruption in {nextInterruptionLabel})
+                </span>
+              )}
+            </div>
+          )}
 
           {isInProgress && (
             <div className="mt-4 space-y-2">
@@ -228,6 +525,27 @@ export default function GamePage({ gameId, onNavigate }: Props) {
             {game.narrative?.opening && (
               <div className="bg-muted/50 rounded-lg p-4 text-left max-w-2xl mx-auto">
                 <p className="italic text-muted-foreground">{game.narrative.opening}</p>
+              </div>
+            )}
+
+            {game.lockedRooms.length > 0 && (
+              <div className="bg-secondary/60 border border-primary/40 rounded-lg p-4 text-left max-w-2xl mx-auto">
+                <h4 className="text-sm uppercase tracking-widest text-primary mb-2">
+                  Locked Rooms
+                </h4>
+                <p className="text-sm text-muted-foreground mb-3">
+                  Inspector Brown has ordered the following rooms sealed until further notice.
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {game.lockedRooms.map((roomId) => (
+                    <span
+                      key={roomId}
+                      className="px-3 py-1 rounded-full border border-primary/40 text-sm"
+                    >
+                      {getLocationName(roomId)}
+                    </span>
+                  ))}
+                </div>
               </div>
             )}
 
@@ -294,6 +612,21 @@ export default function GamePage({ gameId, onNavigate }: Props) {
                   >
                     <Gavel className="mr-2 h-4 w-4" />
                     Make Accusation
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={handleSecretPassage}
+                  >
+                    <DoorOpen className="mr-2 h-4 w-4" />
+                    Use Secret Passage
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={handleOpenInspectorNotes}
+                    disabled={!hasInspectorNoteAvailable}
+                  >
+                    <BookOpen className="mr-2 h-4 w-4" />
+                    Read Inspector Note
                   </Button>
                   <Button
                     variant="outline"
@@ -402,6 +735,152 @@ export default function GamePage({ gameId, onNavigate }: Props) {
           onClose={() => setShowAccusation(false)}
           onAccuse={handleAccusation}
         />
+      )}
+
+      {secretPassageResult && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-6">
+          <Card className="max-w-lg w-full">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-lg">
+                <DoorOpen className="h-5 w-5 text-primary" />
+                Secret Passage
+              </CardTitle>
+              <CardDescription>
+                {secretPassageResult.outcome === "good" && "Fortune favors you."}
+                {secretPassageResult.outcome === "neutral" && "You pass unseen."}
+                {secretPassageResult.outcome === "bad" && "A complication arises."}
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <p className="text-sm italic">{secretPassageResult.description}</p>
+              <div className="text-sm text-muted-foreground">
+                Your turn continues.
+              </div>
+            </CardContent>
+            <CardContent className="pt-0">
+              <Button onClick={closeSecretPassage}>Continue</Button>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {showInterruptionIntro && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-6">
+          <Card className="max-w-lg w-full">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-lg">
+                <Bell className="h-5 w-5 text-primary" />
+                Inspector Interruption
+              </CardTitle>
+              <CardDescription>
+                Inspector Brown would like to see you.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="pt-0">
+              <Button onClick={acknowledgeInterruptionIntro}>OK</Button>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {showInterruption && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-6">
+          <Card className="max-w-lg w-full">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-lg">
+                <Bell className="h-5 w-5 text-primary" />
+                Inspector Interruption
+              </CardTitle>
+              <CardDescription>
+                Inspector Brown has an instruction for the table.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <p className="text-sm italic">
+                {interruptionMessage || "Inspector Brown calls for an immediate pause in the investigation."}
+              </p>
+            </CardContent>
+            <CardContent className="pt-0">
+              <Button onClick={closeInterruption}>Continue</Button>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {showInspectorNotes && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-6">
+          <Card className="max-w-xl w-full">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-lg">
+                <BookOpen className="h-5 w-5 text-primary" />
+                Inspector's Notes
+              </CardTitle>
+              <CardDescription>
+                Select a note to read. Only the current player should view the contents.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {!showLookAway && !revealedInspectorNote && (
+                <div className="grid gap-3 md:grid-cols-2">
+                  <button
+                    className="rounded-lg border border-primary/40 bg-secondary/40 px-4 py-3 text-left transition hover:border-primary disabled:opacity-50"
+                    disabled={!canReadNote1}
+                    onClick={() => handleSelectInspectorNote("N1")}
+                  >
+                    <div className="text-xs uppercase tracking-widest text-muted-foreground">
+                      Note 1
+                    </div>
+                    <div className="text-sm font-semibold text-foreground">
+                      {note1Status}
+                    </div>
+                  </button>
+                  <button
+                    className="rounded-lg border border-primary/40 bg-secondary/40 px-4 py-3 text-left transition hover:border-primary disabled:opacity-50"
+                    disabled={!canReadNote2}
+                    onClick={() => handleSelectInspectorNote("N2")}
+                  >
+                    <div className="text-xs uppercase tracking-widest text-muted-foreground">
+                      Note 2
+                    </div>
+                    <div className="text-sm font-semibold text-foreground">
+                      {note2Status}
+                    </div>
+                  </button>
+                </div>
+              )}
+
+              {showLookAway && !revealedInspectorNote && (
+                <div className="rounded-lg border border-primary/40 bg-secondary/40 p-4 text-center space-y-4">
+                  <p className="text-sm text-muted-foreground">
+                    Other players should look away now.
+                  </p>
+                  <Button onClick={handleRevealInspectorNote}>
+                    Reveal Note
+                  </Button>
+                </div>
+              )}
+
+              {revealedInspectorNote && (
+                <div className="rounded-lg border border-primary/40 bg-secondary/40 p-4 space-y-3">
+                  <div className="text-xs uppercase tracking-widest text-muted-foreground">
+                    Confidential {revealedNoteId ? `(${revealedNoteId})` : ""}
+                  </div>
+                  <p className="text-sm italic">{revealedInspectorNote}</p>
+                </div>
+              )}
+            </CardContent>
+            <CardContent className="pt-0 flex justify-between items-center">
+              <Button variant="outline" onClick={closeInspectorNotes}>
+                Close
+              </Button>
+              {revealedInspectorNote && (
+                <span className="text-sm text-muted-foreground">
+                  {noteWasFirstRead ? "This ends your turn." : "You may continue your turn."}
+                </span>
+              )}
+            </CardContent>
+          </Card>
+        </div>
       )}
     </div>
   );

@@ -14,6 +14,8 @@ import {
   Flag,
   StickyNote,
   Users,
+  DoorOpen,
+  Bell,
 } from "lucide-react";
 import { gameStore } from "../hooks/useGameStore";
 import type { GameAction } from "../../shared/api-types";
@@ -148,6 +150,30 @@ export default function GameHistory({ gameId }: Props) {
           borderColor: "border-purple-500/40",
           label: "Dramatic Event",
         };
+      case "secret_passage":
+        return {
+          icon: <DoorOpen className="h-4 w-4" />,
+          color: "text-amber-300",
+          bgColor: "bg-amber-500/10",
+          borderColor: "border-amber-500/40",
+          label: "Secret Passage",
+        };
+      case "inspector_interruption":
+        return {
+          icon: <Bell className="h-4 w-4" />,
+          color: "text-primary",
+          bgColor: "bg-primary/10",
+          borderColor: "border-primary/40",
+          label: "Inspector Interruption",
+        };
+      case "room_unlocked":
+        return {
+          icon: <Bell className="h-4 w-4" />,
+          color: "text-primary",
+          bgColor: "bg-primary/10",
+          borderColor: "border-primary/40",
+          label: "Rooms Unlocked",
+        };
       case "note_taken":
         return {
           icon: <StickyNote className="h-4 w-4" />,
@@ -214,6 +240,21 @@ export default function GameHistory({ gameId }: Props) {
     // For dramatic events
     if (action.actionType === "dramatic_event" && details.description) {
       return { text: String(details.description), meta: undefined };
+    }
+
+    // For secret passage
+    if (action.actionType === "secret_passage" && details.description) {
+      return { text: String(details.description), meta: undefined };
+    }
+
+    // For inspector interruptions
+    if (action.actionType === "inspector_interruption" && details.message) {
+      return { text: String(details.message), meta: undefined };
+    }
+
+    // For room unlocks
+    if (action.actionType === "room_unlocked" && details.message) {
+      return { text: String(details.message), meta: undefined };
     }
 
     // For notes

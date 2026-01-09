@@ -53,9 +53,39 @@ export interface LocalGame {
   phase: GamePhase;
   wrongAccusations: number;
   currentPlayer: string | null;
+  startedAt: string | null;
 
   // Revealed clues tracking
   revealedClueIds: string[];
+
+  // Player setup
+  players: {
+    name: string;
+    suspectId: string;
+  }[];
+
+  // Turn order state
+  turnOrder: {
+    name: string;
+    suspectId: string;
+  }[];
+  currentTurnIndex: number;
+  turnCount: number;
+
+  // Secret passage tracking
+  secretPassageUses: number;
+
+  // Inspector interruptions
+  interruptionCount: number;
+  nextInterruptionAtMinutes: number | null;
+  roomsUnlocked: boolean;
+
+  // Inspector notes (private)
+  readInspectorNotes: Record<string, string[]>;
+  inspectorNoteAnnouncements: {
+    note1: boolean;
+    note2: boolean;
+  };
 
   // Action history (local)
   actions: GameAction[];
@@ -106,6 +136,49 @@ function generateId(): string {
   return `game_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 }
 
+function shuffleArray<T>(array: T[]): T[] {
+  const result = [...array];
+  for (let i = result.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [result[i], result[j]] = [result[j], result[i]];
+  }
+  return result;
+}
+
+function getNextInterruptionMinute(interruptionCount: number): number {
+  if (interruptionCount <= 0) return 60;
+  if (interruptionCount === 1) return 70;
+  if (interruptionCount === 2) return 80;
+  return 80 + 7 * (interruptionCount - 2);
+}
+
+function buildInterruptionMessage(game: LocalGame): string {
+  const themeName = game.theme?.name || "the evening";
+  const intros = [
+    `Inspector Brown interrupts ${themeName}.`,
+    `A firm knock interrupts ${themeName}.`,
+    `Inspector Brown calls a halt to ${themeName}.`,
+  ];
+  const intro = intros[Math.floor(Math.random() * intros.length)];
+
+  if (game.interruptionCount === 0) {
+    return `${intro} The player with the most cards must turn in one card face up in the Evidence Room. If two or more players are tied for the most cards, each tied player must turn in one card. If you have no cards left, you are eliminated.`;
+  }
+
+  return `${intro} Each player must turn in one card face up in the Evidence Room. If you have no cards left, you are eliminated.`;
+}
+
+function buildRoomUnlockMessage(game: LocalGame): string {
+  const lockedRooms = game.scenario.lockedRooms || [];
+  const roomNames = lockedRooms.map((id) => getLocationName(id));
+
+  if (roomNames.length === 0) {
+    return "Inspector Brown announces that any locked doors may now be opened.";
+  }
+
+  return `Inspector Brown announces that the following locked rooms may now be opened: ${roomNames.join(", ")}.`;
+}
+
 // ============================================
 // GAME STORE CLASS
 // ============================================
@@ -143,9 +216,16 @@ class GameStore {
     themeId?: string;
     difficulty?: Difficulty;
     playerCount?: number;
+    players?: { name: string; suspectId: string }[];
     useAI?: boolean;
   }): Promise<LocalGame> {
-    const { themeId, difficulty = "intermediate", playerCount = 3, useAI = false } = options;
+    const {
+      themeId,
+      difficulty = "intermediate",
+      playerCount = 3,
+      players = [],
+      useAI = false,
+    } = options;
 
     // Call the scenario generation API
     const endpoint = useAI ? "/api/scenarios/generate-enhanced" : "/api/scenarios/generate";
@@ -181,7 +261,18 @@ class GameStore {
       phase: "setup",
       wrongAccusations: 0,
       currentPlayer: null,
+      startedAt: null,
       revealedClueIds: [],
+      players,
+      turnOrder: [],
+      currentTurnIndex: 0,
+      turnCount: 0,
+      secretPassageUses: 0,
+      interruptionCount: 0,
+      nextInterruptionAtMinutes: null,
+      roomsUnlocked: false,
+      readInspectorNotes: {},
+      inspectorNoteAnnouncements: { note1: false, note2: false },
       actions: [],
     };
 
@@ -199,11 +290,33 @@ class GameStore {
 
     game.status = "in_progress";
     game.phase = "investigation";
+    game.startedAt = new Date().toISOString();
     game.updatedAt = new Date().toISOString();
+    game.interruptionCount = 0;
+    game.nextInterruptionAtMinutes = getNextInterruptionMinute(0);
+    game.roomsUnlocked = false;
+    game.turnCount = 0;
+    game.readInspectorNotes = {};
+    game.inspectorNoteAnnouncements = { note1: false, note2: false };
+
+    const resolvedPlayers = game.players.length > 0
+      ? game.players
+      : [{ name: "Detective", suspectId: "" }];
+    game.turnOrder = shuffleArray(resolvedPlayers);
+    game.currentTurnIndex = 0;
 
     // Add game started action
+    const resolvedPlayerNames =
+      playerNames ||
+      game.players
+        .map((player) => player.name.trim())
+        .filter((name) => name.length > 0);
     this.addAction(game, "game_started", "system", {
-      playerNames: playerNames || ["Detective"],
+      playerNames: resolvedPlayerNames.length > 0 ? resolvedPlayerNames : ["Detective"],
+      playerSuspects: game.players.map((player) => ({
+        suspectId: player.suspectId,
+        suspectName: getSuspectName(player.suspectId),
+      })),
       difficulty: game.difficulty,
       totalClues: game.scenario.clues.length,
     });
@@ -248,8 +361,139 @@ class GameStore {
       });
     }
 
+    if (game.status === "in_progress") {
+      this.advanceTurn(game);
+    }
+
     saveGamesToStorage(this.games);
     return { game, clue, dramaticEvent };
+  }
+
+  useSecretPassage(id: string): {
+    outcome: "good" | "neutral" | "bad";
+    description: string;
+  } {
+    const game = this.games[id];
+    if (!game) throw new Error("Game not found");
+    if (game.status !== "in_progress") throw new Error("Game not in progress");
+
+    const outcome = this.rollSecretPassageOutcome();
+    const description = this.buildSecretPassageDescription(game, outcome);
+    game.secretPassageUses += 1;
+
+    this.addAction(game, "secret_passage", "system", {
+      outcome,
+      description,
+    });
+    saveGamesToStorage(this.games);
+
+    return { outcome, description };
+  }
+
+  triggerInspectorInterruption(id: string): {
+    message: string;
+    nextAtMinutes: number;
+  } {
+    const game = this.games[id];
+    if (!game) throw new Error("Game not found");
+    if (game.status !== "in_progress") throw new Error("Game not in progress");
+
+    const message = buildInterruptionMessage(game);
+    const currentCount = game.interruptionCount;
+    const nextAtMinutes = getNextInterruptionMinute(currentCount + 1);
+
+    game.interruptionCount += 1;
+    game.nextInterruptionAtMinutes = nextAtMinutes;
+
+    this.addAction(game, "inspector_interruption", "Inspector Brown", {
+      type: "turn_in_card",
+      message,
+      nextAtMinutes,
+      interruptionCount: game.interruptionCount,
+    });
+
+    saveGamesToStorage(this.games);
+    return { message, nextAtMinutes };
+  }
+
+  triggerRoomUnlock(id: string): {
+    message: string;
+  } {
+    const game = this.games[id];
+    if (!game) throw new Error("Game not found");
+    if (game.status !== "in_progress") throw new Error("Game not in progress");
+    if (game.roomsUnlocked) {
+      return { message: "All locked rooms are already unlocked." };
+    }
+
+    const message = buildRoomUnlockMessage(game);
+    game.roomsUnlocked = true;
+
+    this.addAction(game, "room_unlocked", "Inspector Brown", {
+      message,
+      rooms: game.scenario.lockedRooms || [],
+    });
+
+    saveGamesToStorage(this.games);
+    return { message };
+  }
+
+  readInspectorNote(
+    id: string,
+    noteId: string,
+    readerId: string
+  ): { noteId: string; text: string } {
+    const game = this.games[id];
+    if (!game) throw new Error("Game not found");
+    if (game.status !== "in_progress") throw new Error("Game not in progress");
+
+    const note = game.scenario.inspectorNotes?.find((item) => item.id === noteId);
+    if (!note) throw new Error("Inspector note not found");
+    const alreadyRead = game.readInspectorNotes[readerId] || [];
+    if (alreadyRead.includes(noteId)) {
+      throw new Error("Inspector note already read");
+    }
+
+    game.readInspectorNotes = {
+      ...game.readInspectorNotes,
+      [readerId]: [...alreadyRead, noteId],
+    };
+    this.addAction(game, "inspector_interruption", "Inspector Brown", {
+      type: "inspector_note",
+      message: `Inspector's Note ${noteId} was reviewed.`,
+      noteId,
+      readerId,
+    });
+
+    saveGamesToStorage(this.games);
+
+    return { noteId, text: note.text };
+  }
+
+  announceInspectorNote(id: string, noteId: "N1" | "N2"): { message: string } {
+    const game = this.games[id];
+    if (!game) throw new Error("Game not found");
+    if (game.status !== "in_progress") throw new Error("Game not in progress");
+
+    const key = noteId === "N1" ? "note1" : "note2";
+    if (game.inspectorNoteAnnouncements[key]) {
+      return { message: "Inspector Brown has already announced this note." };
+    }
+
+    game.inspectorNoteAnnouncements = {
+      ...game.inspectorNoteAnnouncements,
+      [key]: true,
+    };
+
+    const message = `Inspector Brown has discovered an important note that may help your investigation. Note ${noteId === "N1" ? "1" : "2"} is now available.`;
+    this.addAction(game, "inspector_interruption", "Inspector Brown", {
+      type: "inspector_note_available",
+      message,
+      noteId,
+    });
+
+    saveGamesToStorage(this.games);
+    return { message };
   }
 
   // Make an accusation
@@ -311,6 +555,10 @@ class GameStore {
         message: "Wrong accusation!",
         wrongAccusations: game.wrongAccusations,
       });
+    }
+
+    if (game.status === "in_progress") {
+      this.advanceTurn(game);
     }
 
     game.updatedAt = new Date().toISOString();
@@ -387,6 +635,52 @@ class GameStore {
     game.actions.push(action);
   }
 
+  // Turn advance helper
+  private advanceTurn(game: LocalGame): void {
+    const order = game.turnOrder.length > 0 ? game.turnOrder : game.players;
+    if (order.length === 0) return;
+    game.turnOrder = order;
+    game.currentTurnIndex = (game.currentTurnIndex + 1) % order.length;
+    game.turnCount += 1;
+    game.updatedAt = new Date().toISOString();
+  }
+
+  endTurn(id: string): void {
+    const game = this.games[id];
+    if (!game) throw new Error("Game not found");
+    if (game.status !== "in_progress") throw new Error("Game not in progress");
+    this.advanceTurn(game);
+    saveGamesToStorage(this.games);
+  }
+
+  private rollSecretPassageOutcome(): "good" | "neutral" | "bad" {
+    const roll = Math.random();
+    if (roll < 0.2) return "good";
+    if (roll < 0.8) return "neutral";
+    return "bad";
+  }
+
+  private buildSecretPassageDescription(
+    game: LocalGame,
+    outcome: "good" | "neutral" | "bad"
+  ): string {
+    const themeName = game.theme?.name || "the evening";
+    const openers = [
+      `A hidden panel slides aside during ${themeName}.`,
+      `You discover a concealed passage during ${themeName}.`,
+      `The wall shifts in silence as ${themeName} unfolds.`,
+    ];
+    const intro = openers[Math.floor(Math.random() * openers.length)];
+
+    if (outcome === "good") {
+      return `${intro} You may privately examine one card from any player of your choosing.`;
+    }
+    if (outcome === "bad") {
+      return `${intro} A misstep costs you. Reveal one of your own cards face up in the Evidence Room.`;
+    }
+    return `${intro} You slip through safely with no further consequence.`;
+  }
+
   // Get full game data formatted for frontend
   getGameData(id: string): GameDataFormatted | null {
     const game = this.games[id];
@@ -440,6 +734,17 @@ class GameStore {
       };
     });
 
+    const totalButlerClues = scenario.clues.filter((clue) => clue.type === "butler").length;
+    const revealedButlerClues = revealedClues.filter((clue) => clue.type === "butler").length;
+
+    const turnOrder = game.turnOrder.length > 0 ? game.turnOrder : game.players;
+    const currentTurn = turnOrder.length > 0
+      ? turnOrder[game.currentTurnIndex % turnOrder.length]
+      : null;
+    const currentTurnLabel = currentTurn?.suspectId
+      ? getSuspectName(currentTurn.suspectId)
+      : currentTurn?.name || null;
+
     return {
       id: game.id,
       status: game.status,
@@ -448,6 +753,23 @@ class GameStore {
       playerCount: game.playerCount,
       createdAt: game.createdAt,
       updatedAt: game.updatedAt,
+      startedAt: game.startedAt,
+      turnOrder,
+      currentTurnIndex: turnOrder.length > 0 ? game.currentTurnIndex : 0,
+      currentTurn: currentTurn && currentTurnLabel ? {
+        suspectId: currentTurn.suspectId,
+        suspectName: currentTurnLabel,
+        playerName: currentTurn.name,
+      } : null,
+      turnCount: game.turnCount,
+      secretPassageUses: game.secretPassageUses,
+      interruptionCount: game.interruptionCount,
+      nextInterruptionAtMinutes: game.nextInterruptionAtMinutes,
+      roomsUnlocked: game.roomsUnlocked,
+      lockedRooms: scenario.lockedRooms || [],
+      inspectorNotes: scenario.inspectorNotes || [],
+      readInspectorNotes: game.readInspectorNotes,
+      inspectorNoteAnnouncements: game.inspectorNoteAnnouncements,
       currentClueIndex: game.currentClueIndex,
       totalClues: scenario.clues.length,
       cluesRemaining: scenario.clues.length - game.currentClueIndex,
@@ -468,6 +790,8 @@ class GameStore {
         timeName: getTimeName(solution.timeId),
       } : null,
       narrative: scenario.narrative,
+      totalButlerClues,
+      revealedButlerClues,
     };
   }
 }
@@ -481,6 +805,19 @@ export interface GameDataFormatted {
   playerCount: number;
   createdAt: string;
   updatedAt: string;
+  startedAt: string | null;
+  turnOrder: { name: string; suspectId: string }[];
+  currentTurnIndex: number;
+  currentTurn: { suspectId: string; suspectName: string; playerName: string } | null;
+  turnCount: number;
+  secretPassageUses: number;
+  interruptionCount: number;
+  nextInterruptionAtMinutes: number | null;
+  roomsUnlocked: boolean;
+  lockedRooms: string[];
+  inspectorNotes: { id: string; text: string; relatedClues?: number[] }[];
+  readInspectorNotes: Record<string, string[]>;
+  inspectorNoteAnnouncements: { note1: boolean; note2: boolean };
   currentClueIndex: number;
   totalClues: number;
   cluesRemaining: number;
@@ -496,6 +833,8 @@ export interface GameDataFormatted {
     text: string;
     eliminates?: EliminationState;
   }[];
+  totalButlerClues: number;
+  revealedButlerClues: number;
   solution: {
     suspectId: string;
     suspectName: string;

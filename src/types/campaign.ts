@@ -429,6 +429,18 @@ export interface GeneratedDramaticEvent {
 }
 
 /**
+ * Private inspector note (separate from the main clue sequence)
+ */
+export interface InspectorNote {
+  /** Note ID */
+  id: string;
+  /** Note text */
+  text: string;
+  /** Clue positions referenced by this note */
+  relatedClues?: number[];
+}
+
+/**
  * Complete generated scenario
  */
 export interface GeneratedScenario {
@@ -453,6 +465,10 @@ export interface GeneratedScenario {
   clues: GeneratedClue[];
   /** Dramatic events */
   dramaticEvents: GeneratedDramaticEvent[];
+  /** Locked rooms for this mystery (location IDs) */
+  lockedRooms: string[];
+  /** Inspector notes (private, turn-based) */
+  inspectorNotes: InspectorNote[];
   /** Narrative elements */
   narrative: {
     opening: string;

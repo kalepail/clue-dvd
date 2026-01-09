@@ -163,6 +163,31 @@ h3 {
   to { transform: rotate(360deg); }
 }
 
+/* Turn announcement toast */
+.turn-toast {
+  position: fixed;
+  top: 1.25rem;
+  left: 50%;
+  transform: translateX(-50%) translateY(-8px);
+  padding: 0.75rem 1.5rem;
+  background: rgba(52, 44, 37, 0.95);
+  border: 1px solid var(--color-primary);
+  color: var(--color-foreground);
+  font-family: var(--font-display);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  border-radius: 999px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+  opacity: 0;
+  z-index: 50;
+  transition: opacity 0.25s ease, transform 0.25s ease;
+}
+
+.turn-toast-show {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
+
 /* ============================================
    SOLUTION CARDS - Magnifying Glass Effect
    ============================================
