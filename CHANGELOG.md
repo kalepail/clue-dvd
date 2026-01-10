@@ -15,3 +15,11 @@
 - Added a new Reveal animation on WIN screen
 - Added Developer test case that can be used to check accusation success and winning screen 
         - ANSWERS FOR DEV TEST THEME/// Peacock - Letter Opener - Billiard Room - Night
+01/10/26 00:52.10
+- Added image-based character picker overlay with double-tap confirm and per-suspect color theming
+- Added image-based accusation flow with step-by-step Who/What/Where/When selection and back/next navigation
+- Added card back art for unflipped solution/reveal cards and tuned reveal card layout, sizing, and typography
+- Added suspect, item, location, and time card scans to win reveal and accusation pickers
+- Replaced symbol icons with gold card icon assets and added magnifying glass asset handling
+- Added solved-screen winner header layout and refined reveal card presentation
+- Added UI_REVEAL_CARD_NOTES.md with adjustment guidance for reveal cards
