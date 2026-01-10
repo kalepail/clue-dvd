@@ -54,8 +54,9 @@
   --radius-xl: 0.75rem;
 
   /* Card dimensions */
-  --card-aspect-ratio: 0.68;
-  --reveal-card-aspect-ratio: 0.64;
+  --card-aspect-ratio: 0.76;
+  --reveal-card-aspect-ratio: 0.76;
+  --selection-card-max-width: 230px;
 }
 
 /* Base styles */
@@ -264,7 +265,7 @@ h3 {
 .suspect-select-card {
   @apply relative w-full rounded-xl border-2 border-border bg-secondary/60 p-2 text-left transition-all duration-200;
   aspect-ratio: var(--card-aspect-ratio);
-  max-width: 230px;
+  max-width: var(--selection-card-max-width);
   margin: 0 auto;
 }
 
@@ -363,20 +364,79 @@ h3 {
   @apply mt-6 flex flex-col gap-3 sm:flex-row sm:justify-between;
 }
 
+/* Accusation selection */
+.accusation-selection-summary {
+  @apply grid gap-2 text-xs uppercase tracking-[0.2em] text-muted-foreground text-center;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+@media (min-width: 768px) {
+  .accusation-selection-summary {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+.accusation-selection-summary span {
+  white-space: nowrap;
+}
+
+.accusation-grid {
+  @apply grid gap-3;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  justify-items: center;
+}
+
+.accusation-card {
+  @apply relative w-full rounded-xl border-2 border-border bg-secondary/60 p-2 text-left transition-all duration-200;
+  aspect-ratio: var(--card-aspect-ratio);
+  max-width: var(--selection-card-max-width);
+}
+
+.accusation-card:hover:not(:disabled) {
+  @apply border-primary shadow-lg;
+  transform: translateY(-2px);
+}
+
+.accusation-card.is-selected {
+  @apply border-primary ring-2 ring-primary/60;
+}
+
+.accusation-card:disabled {
+  @apply opacity-40 cursor-not-allowed;
+}
+
+.accusation-card-image {
+  @apply w-full h-full object-cover rounded-lg;
+  display: block;
+}
+
+.accusation-card-label {
+  @apply absolute left-2 right-2 bottom-2 text-xs font-semibold text-cream bg-black/50 px-2 py-1 rounded-md;
+}
+
+.accusation-card-text {
+  @apply flex items-center justify-center h-full text-xs font-semibold text-cream text-center px-2;
+  white-space: nowrap;
+}
+
+.accusation-card-disabled {
+  @apply absolute top-2 right-2 text-[10px] uppercase tracking-widest bg-black/70 text-cream px-2 py-1 rounded-full;
+}
+
 /* Symbol Grid - 2x3 layout */
 .symbol-grid {
   @apply grid gap-2 mx-auto;
   grid-template-columns: repeat(2, 1fr);
   grid-template-rows: repeat(3, 1fr);
-  width: 100px;
-  height: 108px;
+  width: 88px;
+  height: 96px;
   margin-top: auto;
   margin-bottom: -6px;
 }
 
 /* Individual Symbol Slot */
 .symbol-slot {
-  @apply relative w-10 h-8 rounded overflow-hidden;
+  @apply relative w-9 h-7 rounded overflow-hidden;
   background: rgba(0, 0, 0, 0.2);
 }
 
@@ -390,13 +450,44 @@ h3 {
 /* Blue Symbol Icon - hidden under red */
 .symbol-icon {
   @apply absolute inset-0 flex items-center justify-center text-base;
-  color: #4488ff;
-  text-shadow: 0 0 3px rgba(68, 136, 255, 0.8);
   opacity: 0;
   transform: scale(0.8);
   transition: opacity 0.4s ease-out, transform 0.3s ease-out;
-  filter: brightness(1.2);
+  filter: drop-shadow(0 0 4px rgba(196, 163, 90, 0.6));
 }
+
+.symbol-icon-image {
+  width: 22px;
+  height: 22px;
+}
+
+.turn-color-button {
+  background-color: transparent;
+  border-color: color-mix(in oklab, var(--turn-color) 70%, var(--color-border));
+  color: var(--turn-color);
+}
+
+.turn-color-button:hover {
+  background-color: color-mix(in oklab, var(--turn-color) 20%, transparent);
+  color: var(--turn-color);
+}
+
+.symbol-icon-masked {
+  width: 26px;
+  height: 26px;
+  display: inline-block;
+  background-color: #c4a35a;
+  mask-image: var(--symbol-icon);
+  mask-repeat: no-repeat;
+  mask-position: center;
+  mask-size: contain;
+  -webkit-mask-image: var(--symbol-icon);
+  -webkit-mask-repeat: no-repeat;
+  -webkit-mask-position: center;
+  -webkit-mask-size: contain;
+}
+
+
 
 /* Revealed State - magnifying glass effect */
 .solution-card.revealed .symbol-obfuscation {
@@ -477,13 +568,19 @@ h3 {
 
 .reveal-card-front {
   background-image: url("/images/Back of card design.png");
-  background-size: 100% 85%;
-  background-position: center bottom;
+  background-size: 100% 100%;
+  background-position: center;
   background-repeat: no-repeat;
   background-color: #2a231e;
   background-blend-mode: multiply;
   border-color: #4a2020;
   color: var(--color-cream);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 0.6rem;
+  padding-top: 20%;
 }
 
 .reveal-card-back {
@@ -499,11 +596,21 @@ h3 {
 .reveal-card-label {
   font-family: var(--font-display);
   letter-spacing: 0.2em;
-  @apply text-xs uppercase;
+  @apply text-lg uppercase text-cream;
+}
+
+.reveal-card-back .reveal-card-label {
+  @apply text-sm;
+}
+
+.reveal-card-divider {
+  width: 66%;
+  height: 1px;
+  background: color-mix(in oklab, var(--color-cream) 60%, transparent);
 }
 
 .reveal-card-hint {
-  @apply text-xs text-cream/70;
+  @apply text-base text-cream/80;
 }
 
 .reveal-card-value {
@@ -511,14 +618,20 @@ h3 {
 }
 
 .reveal-card-media {
-  @apply w-full;
+  @apply w-full flex items-center justify-center;
   aspect-ratio: var(--card-aspect-ratio);
   max-height: 100%;
   align-self: center;
   justify-self: center;
+  border-radius: 0.75rem;
+  overflow: hidden;
 }
 
 .reveal-card-image {
-  @apply w-full h-full object-cover rounded-lg shadow-sm;
+  @apply object-cover shadow-sm;
+  width: 77%;
+  height: auto;
+  border-radius: 0.75rem;
   display: block;
+  transform-origin: center;
 }

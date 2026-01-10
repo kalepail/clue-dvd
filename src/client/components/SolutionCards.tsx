@@ -20,11 +20,11 @@ interface Props {
 
 // Symbol icons matching the physical card symbols
 const SYMBOL_ICONS: Record<string, string> = {
-  spyglass: "🔎",
-  fingerprint: "🫆",
-  whistle: "🎺",
-  notepad: "📝",
-  clock: "🕰️",
+  spyglass: "/images/Card Icon Assets/Magnifying_glass.svg.png",
+  fingerprint: "/images/Card Icon Assets/Fingerprint.svg",
+  whistle: "/images/Card Icon Assets/whistle.svg",
+  notepad: "/images/Card Icon Assets/notepad.svg",
+  clock: "/images/Card Icon Assets/Clock.svg",
 };
 
 // Grid positions for the 6 symbol slots
@@ -72,6 +72,8 @@ function SolutionCard({
               (s) => s.position === position
             );
             const symbol = symbolData?.symbol || "";
+            const symbolIcon = symbol ? SYMBOL_ICONS[symbol] : null;
+            const needsMask = symbol === "spyglass";
             return (
               <div
                 key={position}
@@ -85,7 +87,21 @@ function SolutionCard({
                 {/* Red obfuscation layer */}
                 <div className="symbol-obfuscation" />
                 {/* Blue symbol underneath */}
-                <div className="symbol-icon">{SYMBOL_ICONS[symbol] || "?"}</div>
+                <div className="symbol-icon">
+                  {symbolIcon ? (
+                    needsMask ? (
+                      <span
+                        className="symbol-icon-masked"
+                        style={{ ["--symbol-icon" as never]: `url(\"${symbolIcon}\")` }}
+                        aria-hidden="true"
+                      />
+                    ) : (
+                      <img className="symbol-icon-image" src={symbolIcon} alt={symbol} />
+                    )
+                  ) : (
+                    "?"
+                  )}
+                </div>
               </div>
             );
           })}

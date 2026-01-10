@@ -19,11 +19,62 @@ interface Props {
   onNavigate: (path: string) => void;
 }
 
+const suspectColorById: Record<string, string> = {
+  S01: "#da3f55",
+  S02: "#dbad38",
+  S03: "#e5e0da",
+  S04: "#6c9376",
+  S05: "#54539b",
+  S06: "#6f4a9b",
+  S07: "#49aca7",
+  S08: "#78abd8",
+  S09: "#b25593",
+  S10: "#d9673b",
+};
+
 const solutionImageById: Record<string, string> = {
+  S01: "/images/suspects/Miss_Scarlet.png",
+  S02: "/images/suspects/Mustard.png",
+  S03: "/images/suspects/Mrs._White.png",
+  S04: "/images/suspects/Mr._Green.png",
   S05: "/images/suspects/Mrs_ Peacock.png",
+  S06: "/images/suspects/Prof._Plum.png",
+  S07: "/images/suspects/Mrs._Meadow-brook.png",
+  S08: "/images/suspects/Prince_Azure.png",
+  S09: "/images/suspects/Lady Lavendar.png",
+  S10: "/images/suspects/Rusty.png",
+  I01: "/images/items/Spyglass.png",
+  I02: "/images/items/Revolver.png",
+  I03: "/images/items/Rare_Book.png",
+  I04: "/images/items/Medal.png",
+  I05: "/images/items/Billfold.png",
+  I06: "/images/items/Gold_Pen.png",
   I07: "/images/items/Letter_Opener.png",
+  I08: "/images/items/Crystal_Paperweight.png",
+  I09: "/images/items/Pocket_watch.png",
+  I10: "/images/items/Jade_Hairpin.png",
+  I11: "/images/items/Scarab_Broach.png",
+  L01: "/images/locations/Hall.png",
+  L02: "/images/locations/Lounge.png",
+  L03: "/images/locations/Dining Room.png",
+  L04: "/images/locations/Kitchen.png",
+  L05: "/images/locations/Ballroom.png",
+  L06: "/images/locations/Conservatory.png",
   L07: "/images/locations/Billiard_Room.png",
+  L08: "/images/locations/Library.png",
+  L09: "/images/locations/Study.png",
+  L10: "/images/locations/Rose Garden.png",
+  L11: "/images/locations/Fountain.png",
+  T01: "/images/times/Dawn.png",
+  T02: "/images/times/Breakfast.png",
+  T03: "/images/times/Late Morning.png",
+  T04: "/images/times/Lunch.png",
+  T05: "/images/times/Early Afternoon.png",
+  T06: "/images/times/Tea_Time.png",
+  T07: "/images/times/Dusk.png",
+  T08: "/images/times/Dinner.png",
   T09: "/images/times/Night.png",
+  T10: "/images/times/Midnight.png",
 };
 
 // Empty elimination state for initial player marks
@@ -457,6 +508,9 @@ export default function GamePage({ gameId, onNavigate }: Props) {
   const note2Available = gameProgress >= 0.65;
   const currentReaderId = game.currentTurn?.suspectId || "unknown";
   const readByCurrentPlayer = game.readInspectorNotes[currentReaderId] || [];
+  const currentTurnColor = game.currentTurn?.suspectId
+    ? suspectColorById[game.currentTurn.suspectId] || "var(--color-primary)"
+    : "var(--color-primary)";
   const canReadNote1 = note1Available || readByCurrentPlayer.includes("N1");
   const canReadNote2 = note2Available || readByCurrentPlayer.includes("N2");
   const hasInspectorNoteAvailable = canReadNote1 || canReadNote2;
@@ -489,6 +543,28 @@ export default function GamePage({ gameId, onNavigate }: Props) {
                 {game.theme?.description || "A theft has occurred at Tudor Mansion"}
               </p>
             </div>
+            {isSolved && game.solvedBy?.playerName && (
+              <div className="mt-6 text-center">
+                <div
+                  className="flex items-center justify-center gap-3"
+                  style={{ color: "var(--color-success)" }}
+                >
+                  <CheckCircle className="h-7 w-7" />
+                  <h2
+                    className="text-3xl md:text-4xl uppercase tracking-[0.2em]"
+                    style={{ color: "var(--color-success)" }}
+                  >
+                    Case Solved!
+                  </h2>
+                </div>
+                <div className="mt-3 text-2xl md:text-3xl text-muted-foreground">
+                  <div className="text-sm uppercase tracking-[0.16em] text-primary">
+                    Winner
+                  </div>
+                  {game.solvedBy.playerName}
+                </div>
+              </div>
+            )}
             {/* Center: Current Turn - absolutely centered */}
             {isInProgress && game.currentTurn && (
               <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
@@ -496,7 +572,10 @@ export default function GamePage({ gameId, onNavigate }: Props) {
                   <div className="text-xs uppercase tracking-[0.25em] text-muted-foreground mb-2">
                     Current Turn
                   </div>
-                  <div className="text-3xl md:text-4xl font-bold text-primary whitespace-nowrap">
+                  <div
+                    className="text-3xl md:text-4xl font-bold whitespace-nowrap"
+                    style={{ color: currentTurnColor }}
+                  >
                     {game.currentTurn.suspectName}
                   </div>
                 </div>
@@ -616,10 +695,14 @@ export default function GamePage({ gameId, onNavigate }: Props) {
             {/* Controls */}
             <Card>
               <CardContent>
-                <div className="flex flex-wrap gap-3">
+                <div
+                  className="flex flex-wrap gap-3"
+                  style={{ ["--turn-color" as never]: currentTurnColor }}
+                >
                   <Button
                     onClick={handleRevealClue}
                     disabled={revealingClue || cluesRemaining === 0}
+                    className="turn-color-button"
                   >
                     {revealingClue ? (
                       <>
@@ -643,6 +726,7 @@ export default function GamePage({ gameId, onNavigate }: Props) {
                   <Button
                     variant="outline"
                     onClick={handleSecretPassage}
+                    className="turn-color-button"
                   >
                     <DoorOpen className="mr-2 h-4 w-4" />
                     Use Secret Passage
@@ -651,6 +735,7 @@ export default function GamePage({ gameId, onNavigate }: Props) {
                     variant="outline"
                     onClick={handleOpenInspectorNotes}
                     disabled={!hasInspectorNoteAvailable}
+                    className="turn-color-button"
                   >
                     <BookOpen className="mr-2 h-4 w-4" />
                     Read Inspector Note
@@ -658,6 +743,7 @@ export default function GamePage({ gameId, onNavigate }: Props) {
                   <Button
                     variant="outline"
                     onClick={() => setShowNarrative(!showNarrative)}
+                    className="turn-color-button"
                   >
                     <BookOpen className="mr-2 h-4 w-4" />
                     {showNarrative ? "Hide" : "Show"} Story
@@ -665,6 +751,7 @@ export default function GamePage({ gameId, onNavigate }: Props) {
                   <Button
                     variant="outline"
                     onClick={() => setShowEndTurnConfirm(true)}
+                    className="turn-color-button"
                   >
                     <MessageCircle className="mr-2 h-4 w-4" />
                     Make Suggestion
@@ -724,14 +811,11 @@ export default function GamePage({ gameId, onNavigate }: Props) {
       {isSolved && game.solution && (
         <Card className="border-success text-center">
           <CardHeader>
-            <CardTitle className="text-success flex items-center justify-center gap-2 text-3xl">
-              <CheckCircle className="h-7 w-7" />
-              Case Solved!
+            <CardTitle className="text-primary text-3xl">
+              Well Done, Detective!
             </CardTitle>
             <CardDescription className="text-base">
-              {game.solvedBy?.playerName
-                ? `${game.solvedBy.playerName} solved the case.`
-                : "The mystery has been unraveled."}
+              The mystery has been unraveled.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
@@ -976,6 +1060,7 @@ function RevealCard({
       <div className="reveal-card-inner">
         <div className="reveal-card-face reveal-card-front">
           <span className="reveal-card-label">{label}</span>
+          <span className="reveal-card-divider" aria-hidden="true" />
           <span className="reveal-card-hint">Tap to reveal</span>
         </div>
         <div className="reveal-card-face reveal-card-back">
