@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Gavel, CheckCircle, XCircle } from "lucide-react";
 import { SUSPECTS, ITEMS, LOCATIONS, TIMES } from "../../shared/game-elements";
 import type { EliminationState } from "../../shared/api-types";
@@ -22,6 +22,13 @@ interface Props {
     locationId: string;
     timeId: string;
   }) => Promise<{ correct: boolean; message: string; aiResponse?: string }>;
+  presetAccusation?: {
+    suspectId: string;
+    itemId: string;
+    locationId: string;
+    timeId: string;
+  } | null;
+  autoSubmit?: boolean;
 }
 
 function AccusationCard({
@@ -64,7 +71,13 @@ function AccusationCard({
   );
 }
 
-export default function AccusationPanel({ eliminated, onClose, onAccuse }: Props) {
+export default function AccusationPanel({
+  eliminated,
+  onClose,
+  onAccuse,
+  presetAccusation,
+  autoSubmit = false,
+}: Props) {
   const [suspectId, setSuspectId] = useState("");
   const [itemId, setItemId] = useState("");
   const [locationId, setLocationId] = useState("");
@@ -80,6 +93,21 @@ export default function AccusationPanel({ eliminated, onClose, onAccuse }: Props
   } | null>(null);
 
   const canSubmit = suspectId && itemId && locationId && timeId && !submitting;
+
+  useEffect(() => {
+    if (!presetAccusation) return;
+    setSuspectId(presetAccusation.suspectId);
+    setItemId(presetAccusation.itemId);
+    setLocationId(presetAccusation.locationId);
+    setTimeId(presetAccusation.timeId);
+    setStepIndex(3);
+  }, [presetAccusation]);
+
+  useEffect(() => {
+    if (!autoSubmit || !presetAccusation) return;
+    if (!canSubmit || result || submitting) return;
+    handleSubmit();
+  }, [autoSubmit, presetAccusation, canSubmit, result, submitting]);
 
   const handleSubmit = async () => {
     if (!canSubmit) return;

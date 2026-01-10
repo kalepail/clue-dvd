@@ -13,6 +13,8 @@ import { Progress } from "@/client/components/ui/progress";
 import { IconStat } from "@/client/components/ui/icon-stat";
 import type { EliminationState } from "../../shared/api-types";
 import { getLocationName } from "../../shared/game-elements";
+import { closeSession, getSessionEvents, updateSessionTurn } from "../phone/api";
+import { clearHostSessionCode, loadHostSessionCode, setHostAutoCreate } from "../phone/storage";
 
 interface Props {
   gameId: string;
@@ -96,6 +98,13 @@ export default function GamePage({ gameId, onNavigate }: Props) {
     eliminated?: { type: string; ids: string[] };
   } | null>(null);
   const [showAccusation, setShowAccusation] = useState(false);
+  const [phoneAccusation, setPhoneAccusation] = useState<{
+    suspectId: string;
+    itemId: string;
+    locationId: string;
+    timeId: string;
+  } | null>(null);
+  const [lastPhoneEventId, setLastPhoneEventId] = useState<number | null>(null);
   const [showNarrative, setShowNarrative] = useState(false);
   const [secretPassageResult, setSecretPassageResult] = useState<{
     outcome: "good" | "neutral" | "bad";
@@ -141,6 +150,56 @@ export default function GamePage({ gameId, onNavigate }: Props) {
   useEffect(() => {
     loadGame();
   }, [loadGame]);
+
+  useEffect(() => {
+    if (!game || game.status !== "in_progress") return;
+    const code = loadHostSessionCode();
+    if (!code) return;
+    const interval = window.setInterval(async () => {
+      try {
+        const data = await getSessionEvents(code, lastPhoneEventId ?? undefined);
+        if (!data.events.length) return;
+        for (const event of data.events) {
+          setLastPhoneEventId(event.id);
+          if (event.type === "turn_action") {
+            const action = event.payload.action;
+            if (typeof action !== "string") continue;
+            if (action === "reveal_clue" && !revealingClue) {
+              handleRevealClue();
+            } else if (action === "use_secret_passage") {
+              handleSecretPassage();
+            } else if (action === "read_inspector_note") {
+              handleOpenInspectorNotes();
+            } else if (action === "show_story") {
+              setShowNarrative((prev) => !prev);
+            } else if (action === "make_suggestion") {
+              setShowEndTurnConfirm(true);
+            }
+          } else if (event.type === "accusation") {
+            const suspectId = typeof event.payload.suspectId === "string" ? event.payload.suspectId : "";
+            const itemId = typeof event.payload.itemId === "string" ? event.payload.itemId : "";
+            const locationId = typeof event.payload.locationId === "string" ? event.payload.locationId : "";
+            const timeId = typeof event.payload.timeId === "string" ? event.payload.timeId : "";
+            if (suspectId && itemId && locationId && timeId) {
+              setPhoneAccusation({ suspectId, itemId, locationId, timeId });
+              setShowAccusation(true);
+            }
+          }
+        }
+      } catch {
+        // Ignore polling errors so the game UI stays responsive.
+      }
+    }, 1200);
+    return () => window.clearInterval(interval);
+  }, [game, lastPhoneEventId, revealingClue]);
+
+  useEffect(() => {
+    if (!game || game.status !== "in_progress") return;
+    const code = loadHostSessionCode();
+    if (!code) return;
+    const suspectId = game.currentTurn?.suspectId || null;
+    updateSessionTurn(code, suspectId).catch(() => undefined);
+  }, [game?.currentTurn?.suspectId, game?.status]);
 
   useEffect(() => {
     if (!game?.startedAt || game.status !== "in_progress") return;
@@ -347,6 +406,22 @@ export default function GamePage({ gameId, onNavigate }: Props) {
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to use secret passage");
     }
+  };
+
+  const handleResetPhoneLobby = async () => {
+    const code = loadHostSessionCode();
+    if (!code) {
+      onNavigate("/");
+      return;
+    }
+    try {
+      await closeSession(code);
+    } catch {
+      // Still navigate home even if the close fails.
+    }
+    clearHostSessionCode();
+    setHostAutoCreate(true);
+    onNavigate("/");
   };
 
   const handleOpenInspectorNotes = () => {
@@ -756,6 +831,13 @@ export default function GamePage({ gameId, onNavigate }: Props) {
                     <MessageCircle className="mr-2 h-4 w-4" />
                     Make Suggestion
                   </Button>
+                  <Button
+                    variant="outline"
+                    onClick={handleResetPhoneLobby}
+                    className="turn-color-button"
+                  >
+                    Reset Phone Lobby
+                  </Button>
                 </div>
 
                 {game.wrongAccusations > 0 && (
@@ -856,8 +938,13 @@ export default function GamePage({ gameId, onNavigate }: Props) {
       {showAccusation && (
         <AccusationPanel
           eliminated={playerMarks}
-          onClose={() => setShowAccusation(false)}
+          onClose={() => {
+            setShowAccusation(false);
+            setPhoneAccusation(null);
+          }}
           onAccuse={handleAccusation}
+          presetAccusation={phoneAccusation}
+          autoSubmit={Boolean(phoneAccusation)}
         />
       )}
 

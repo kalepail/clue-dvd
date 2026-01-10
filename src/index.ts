@@ -7,6 +7,7 @@ import gameElements from "./routes/game-elements";
 import symbols from "./routes/symbols";
 import setup from "./routes/setup";
 import scenarios from "./routes/scenarios";
+import phone from "./phone/routes";
 
 const app = new Hono<{ Bindings: CloudflareBindings }>();
 
@@ -19,5 +20,6 @@ app.route("/api", gameElements);
 app.route("/api/symbols", symbols);
 app.route("/api/setup", setup);
 app.route("/api/scenarios", scenarios);
+app.route("/api/phone", phone);
 
 export default app;

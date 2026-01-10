@@ -1,14 +1,29 @@
 import { useState, useEffect } from "react";
 import HomePage from "./pages/HomePage";
 import GamePage from "./pages/GamePage";
+import PhoneJoinPage from "./phone/PhoneJoinPage";
+import PhoneHostPage from "./phone/PhoneHostPage";
+import PhonePlayerPage from "./phone/PhonePlayerPage";
 import { cn } from "@/client/lib/utils";
 
-type Route = { page: "home" } | { page: "game"; gameId: string };
+type Route =
+  | { page: "home" }
+  | { page: "game"; gameId: string }
+  | { page: "phone"; view: "join" | "host" | "player"; code?: string };
 
 function parseRoute(): Route {
   const hash = window.location.hash.slice(1);
   if (hash.startsWith("/game/")) {
     return { page: "game", gameId: hash.slice(6) };
+  }
+  if (hash.startsWith("/phone/host")) {
+    return { page: "phone", view: "host" };
+  }
+  if (hash.startsWith("/phone/session/")) {
+    return { page: "phone", view: "player", code: hash.slice(15) };
+  }
+  if (hash.startsWith("/phone")) {
+    return { page: "phone", view: "join" };
   }
   return { page: "home" };
 }
@@ -25,6 +40,16 @@ export default function App() {
   const navigate = (path: string) => {
     window.location.hash = path;
   };
+
+  if (route.page === "phone") {
+    if (route.view === "host") {
+      return <PhoneHostPage onNavigate={navigate} />;
+    }
+    if (route.view === "player" && route.code) {
+      return <PhonePlayerPage code={route.code} onNavigate={navigate} />;
+    }
+    return <PhoneJoinPage onNavigate={navigate} />;
+  }
 
   return (
     <>
