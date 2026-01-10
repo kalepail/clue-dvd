@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react";
-import { ArrowLeft, Search, Gavel, CheckCircle, Users, Sparkles, Clock, BookOpen, DoorOpen, Bell } from "lucide-react";
+import { ArrowLeft, Search, Gavel, CheckCircle, Users, Sparkles, Clock, BookOpen, DoorOpen, Bell, MessageCircle } from "lucide-react";
 import { gameStore, type GameDataFormatted } from "../hooks/useGameStore";
 import ClueDisplay from "../components/ClueDisplay";
 import AccusationPanel from "../components/AccusationPanel";
@@ -18,6 +18,13 @@ interface Props {
   gameId: string;
   onNavigate: (path: string) => void;
 }
+
+const solutionImageById: Record<string, string> = {
+  S05: "/images/suspects/Mrs_ Peacock.png",
+  I07: "/images/items/Letter_Opener.png",
+  L07: "/images/locations/Billiard_Room.png",
+  T09: "/images/times/Night.png",
+};
 
 // Empty elimination state for initial player marks
 const emptyEliminated: EliminationState = {
@@ -60,6 +67,7 @@ export default function GamePage({ gameId, onNavigate }: Props) {
   const [playerMarks, setPlayerMarks] = useState<EliminationState>(emptyEliminated);
   const [turnAnnouncement, setTurnAnnouncement] = useState<string | null>(null);
   const [showTurnAnnouncement, setShowTurnAnnouncement] = useState(false);
+  const [showEndTurnConfirm, setShowEndTurnConfirm] = useState(false);
   const previousTurnKey = useRef<string | null>(null);
   const gameProgress = game?.totalClues ? game.currentClueIndex / game.totalClues : 0;
 
@@ -87,7 +95,9 @@ export default function GamePage({ gameId, onNavigate }: Props) {
     if (!game?.startedAt || game.status !== "in_progress") return;
     const startMs = new Date(game.startedAt).getTime();
     const tick = () => {
-      const diffMs = Date.now() - startMs - pauseAccumulatedRef.current;
+      const now = Date.now();
+      const activePauseMs = pauseStartRef.current ? now - pauseStartRef.current : 0;
+      const diffMs = now - startMs - pauseAccumulatedRef.current - activePauseMs;
       setElapsedSeconds(Math.max(0, Math.floor(diffMs / 1000)));
     };
     tick();
@@ -359,6 +369,16 @@ export default function GamePage({ gameId, onNavigate }: Props) {
     setShowInterruption(false);
   };
 
+  const handleEndTurn = () => {
+    try {
+      gameStore.endTurn(gameId);
+      loadGame();
+      setShowEndTurnConfirm(false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to end turn");
+    }
+  };
+
   const handleToggleMark = (
     category: "suspect" | "item" | "location" | "time",
     elementId: string
@@ -461,24 +481,29 @@ export default function GamePage({ gameId, onNavigate }: Props) {
       {/* Header */}
       <Card>
         <CardContent>
-          <div className="flex justify-between items-start">
-            <div>
-              <h2 className="mb-1">{game.theme?.name || "Mystery"}</h2>
-              <p className="text-muted-foreground">
+          <div className="relative min-h-[100px]">
+            {/* Left: Theme info */}
+            <div className="max-w-[280px]">
+              <h2 className="mb-1 text-lg">{game.theme?.name || "Mystery"}</h2>
+              <p className="text-muted-foreground text-sm leading-snug">
                 {game.theme?.description || "A theft has occurred at Tudor Mansion"}
               </p>
-              {isInProgress && game.currentTurn && (
-                <div className="mt-4 inline-flex items-center gap-3 rounded-full border border-primary/60 bg-secondary/70 px-4 py-2">
-                  <span className="text-xs uppercase tracking-widest text-muted-foreground">
-                    Current Turn
-                  </span>
-                  <span className="text-lg text-primary font-semibold">
-                    {game.currentTurn.suspectName}
-                  </span>
-                </div>
-              )}
             </div>
-            <Badge variant={getStatusVariant(game.status) as "setup" | "in-progress" | "solved" | "abandoned"}>
+            {/* Center: Current Turn - absolutely centered */}
+            {isInProgress && game.currentTurn && (
+              <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
+                <div className="text-center py-4 px-10 rounded-xl border-2 border-primary bg-secondary/80">
+                  <div className="text-xs uppercase tracking-[0.25em] text-muted-foreground mb-2">
+                    Current Turn
+                  </div>
+                  <div className="text-3xl md:text-4xl font-bold text-primary whitespace-nowrap">
+                    {game.currentTurn.suspectName}
+                  </div>
+                </div>
+              </div>
+            )}
+            {/* Right: Status badge */}
+            <Badge variant={getStatusVariant(game.status) as "setup" | "in-progress" | "solved" | "abandoned"} className="absolute top-0 right-0">
               {game.status.replace("_", " ")}
             </Badge>
           </div>
@@ -637,6 +662,13 @@ export default function GamePage({ gameId, onNavigate }: Props) {
                     <BookOpen className="mr-2 h-4 w-4" />
                     {showNarrative ? "Hide" : "Show"} Story
                   </Button>
+                  <Button
+                    variant="outline"
+                    onClick={() => setShowEndTurnConfirm(true)}
+                  >
+                    <MessageCircle className="mr-2 h-4 w-4" />
+                    Make Suggestion
+                  </Button>
                 </div>
 
                 {game.wrongAccusations > 0 && (
@@ -705,12 +737,19 @@ export default function GamePage({ gameId, onNavigate }: Props) {
           <CardContent className="space-y-6">
             <div className="solution-reveal-grid">
               {[
-                { label: "WHO", value: game.solution.suspectName },
-                { label: "WHAT", value: game.solution.itemName },
-                { label: "WHERE", value: game.solution.locationName },
-                { label: "WHEN", value: game.solution.timeName },
+                { label: "WHO", value: game.solution.suspectName, id: game.solution.suspectId },
+                { label: "WHAT", value: game.solution.itemName, id: game.solution.itemId },
+                { label: "WHERE", value: game.solution.locationName, id: game.solution.locationId },
+                { label: "WHEN", value: game.solution.timeName, id: game.solution.timeId },
               ].map((card, index) => (
-                <RevealCard key={card.label} label={card.label} value={card.value} index={index} />
+                <RevealCard
+                  key={card.label}
+                  label={card.label}
+                  value={card.value}
+                  imageSrc={solutionImageById[card.id]}
+                  imageAlt={card.value}
+                  index={index}
+                />
               ))}
             </div>
 
@@ -883,6 +922,30 @@ export default function GamePage({ gameId, onNavigate }: Props) {
           </Card>
         </div>
       )}
+
+      {showEndTurnConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-6">
+          <Card className="max-w-sm w-full">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-lg">
+                <MessageCircle className="h-5 w-5 text-primary" />
+                Make Suggestion
+              </CardTitle>
+              <CardDescription>
+                Announce your suggestion to the table. Once resolved, click Confirm Suggestion to end your turn.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="flex gap-3">
+              <Button variant="outline" onClick={() => setShowEndTurnConfirm(false)}>
+                Cancel
+              </Button>
+              <Button onClick={handleEndTurn}>
+                Confirm Suggestion
+              </Button>
+            </CardContent>
+          </Card>
+        </div>
+      )}
     </div>
   );
 }
@@ -891,10 +954,14 @@ function RevealCard({
   label,
   value,
   index,
+  imageSrc,
+  imageAlt,
 }: {
   label: string;
   value: string;
   index: number;
+  imageSrc?: string;
+  imageAlt?: string;
 }) {
   const [flipped, setFlipped] = useState(false);
 
@@ -913,7 +980,11 @@ function RevealCard({
         </div>
         <div className="reveal-card-face reveal-card-back">
           <span className="reveal-card-label">{label}</span>
-          <span className="reveal-card-value">{value}</span>
+          {imageSrc && (
+            <div className="reveal-card-media">
+              <img className="reveal-card-image" src={imageSrc} alt={imageAlt || value} />
+            </div>
+          )}
         </div>
       </div>
     </button>

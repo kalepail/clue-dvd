@@ -31,6 +31,45 @@ interface PlayerSetup {
   suspectId: string;
 }
 
+const suspectImageById: Record<string, string> = {
+  S01: "/images/suspects/Miss_Scarlet.png",
+  S02: "/images/suspects/Mustard.png",
+  S03: "/images/suspects/Mrs._White.png",
+  S04: "/images/suspects/Mr._Green.png",
+  S05: "/images/suspects/Mrs_ Peacock.png",
+  S06: "/images/suspects/Prof._Plum.png",
+  S07: "/images/suspects/Mrs._Meadow-brook.png",
+  S08: "/images/suspects/Prince_Azure.png",
+  S09: "/images/suspects/Lady Lavendar.png",
+  S10: "/images/suspects/Rusty.png",
+};
+
+const suspectColorById: Record<string, string> = {
+  S01: "#da3f55",
+  S02: "#dbad38",
+  S03: "#e5e0da",
+  S04: "#6c9376",
+  S05: "#54539b",
+  S06: "#6f4a9b",
+  S07: "#49aca7",
+  S08: "#78abd8",
+  S09: "#b25593",
+  S10: "#d9673b",
+};
+
+const suspectOrderByRow = [
+  "S01", // Miss Scarlet
+  "S03", // Mrs. White
+  "S05", // Mrs. Peacock
+  "S07", // Mrs. Meadow-Brook
+  "S09", // Lady Lavender
+  "S02", // Colonel Mustard
+  "S04", // Mr. Green
+  "S06", // Professor Plum
+  "S08", // Prince Azure
+  "S10", // Rusty
+];
+
 function buildDefaultPlayers(count: number): PlayerSetup[] {
   return Array.from({ length: count }, () => ({
     name: "",
@@ -38,11 +77,52 @@ function buildDefaultPlayers(count: number): PlayerSetup[] {
   }));
 }
 
+function SuspectPickerCard({
+  suspect,
+  imageSrc,
+  isSelected,
+  isDisabled,
+  color,
+  onPick,
+}: {
+  suspect: { id: string; name: string };
+  imageSrc: string;
+  isSelected: boolean;
+  isDisabled: boolean;
+  color: string;
+  onPick: () => void;
+}) {
+  const [imageOk, setImageOk] = useState(true);
+
+  return (
+    <button
+      type="button"
+      className={`suspect-select-card ${isSelected ? "is-selected" : ""}`}
+      style={{ ["--suspect-color" as never]: color }}
+      onClick={onPick}
+      disabled={isDisabled}
+      aria-pressed={isSelected}
+      aria-label={`Select ${suspect.name}`}
+    >
+      <img
+        className="suspect-select-image"
+        src={imageSrc}
+        alt={suspect.name}
+        onError={() => setImageOk(false)}
+      />
+      {!imageOk && <span className="suspect-select-name">{suspect.name}</span>}
+      {isDisabled && <span className="suspect-select-disabled">Taken</span>}
+    </button>
+  );
+}
+
 export default function NewGameModal({ onClose, onCreated }: Props) {
   const [themeId, setThemeId] = useState(THEMES[0].id);
   const [difficulty, setDifficulty] = useState<Difficulty>("intermediate");
   const [playerCount, setPlayerCount] = useState("3");
   const [players, setPlayers] = useState<PlayerSetup[]>(() => buildDefaultPlayers(3));
+  const [pickerPlayerIndex, setPickerPlayerIndex] = useState<number | null>(null);
+  const [pickerSelection, setPickerSelection] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -60,6 +140,22 @@ export default function NewGameModal({ onClose, onCreated }: Props) {
     setPlayers((current) =>
       current.map((player, idx) => (idx === index ? { ...player, ...updates } : player))
     );
+  };
+
+  const openPicker = (index: number) => {
+    setPickerPlayerIndex(index);
+    setPickerSelection(players[index].suspectId || null);
+  };
+
+  const closePicker = () => {
+    setPickerPlayerIndex(null);
+    setPickerSelection(null);
+  };
+
+  const confirmPickerSelection = (suspectId: string) => {
+    if (pickerPlayerIndex === null) return;
+    updatePlayer(pickerPlayerIndex, { suspectId });
+    closePicker();
   };
 
   const hasDuplicateSuspects = (list: PlayerSetup[]) => {
@@ -159,9 +255,6 @@ export default function NewGameModal({ onClose, onCreated }: Props) {
             <Label>Players & Characters</Label>
             {players.map((player, index) => {
               const playerNumber = index + 1;
-              const selectedSuspects = players
-                .map((p, idx) => (idx === index ? "" : p.suspectId))
-                .filter(Boolean);
               return (
                 <div key={playerNumber} className="grid gap-3 md:grid-cols-2">
                   <div className="space-y-2">
@@ -182,25 +275,32 @@ export default function NewGameModal({ onClose, onCreated }: Props) {
                     <Label htmlFor={`player-character-${playerNumber}`}>
                       Character
                     </Label>
-                    <Select
-                      value={player.suspectId}
-                      onValueChange={(value) => updatePlayer(index, { suspectId: value })}
+                    <button
+                      id={`player-character-${playerNumber}`}
+                      type="button"
+                      className="suspect-picker-trigger"
+                      style={{
+                        ["--suspect-color" as never]: player.suspectId
+                          ? suspectColorById[player.suspectId]
+                          : "transparent",
+                      }}
+                      onClick={() => openPicker(index)}
                     >
-                      <SelectTrigger id={`player-character-${playerNumber}`}>
-                        <SelectValue placeholder="Select a character" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {SUSPECTS.map((suspect) => (
-                          <SelectItem
-                            key={suspect.id}
-                            value={suspect.id}
-                            disabled={selectedSuspects.includes(suspect.id)}
-                          >
-                            {suspect.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                      {player.suspectId ? (
+                        <>
+                          <img
+                            className="suspect-picker-thumb"
+                            src={suspectImageById[player.suspectId]}
+                            alt={SUSPECTS.find((s) => s.id === player.suspectId)?.name || "Suspect"}
+                          />
+                          <span className="suspect-picker-name">
+                            {SUSPECTS.find((s) => s.id === player.suspectId)?.name}
+                          </span>
+                        </>
+                      ) : (
+                        <span className="suspect-picker-placeholder">Select character</span>
+                      )}
+                    </button>
                   </div>
                 </div>
               );
@@ -230,6 +330,76 @@ export default function NewGameModal({ onClose, onCreated }: Props) {
             )}
           </Button>
         </DialogFooter>
+
+        {pickerPlayerIndex !== null && (
+          <div className="suspect-picker-overlay" role="dialog" aria-modal="true">
+            <div
+              className="suspect-picker-panel"
+              style={{
+                ["--suspect-color" as never]: pickerSelection
+                  ? suspectColorById[pickerSelection]
+                  : "#c4a35a",
+              }}
+            >
+              <div className="suspect-picker-header">
+                <div className="suspect-picker-title">Choose Your Character</div>
+                <div className="suspect-picker-subtitle">
+                  Tap once to preview, tap again to confirm.
+                </div>
+                <div
+                  className="suspect-picker-selected"
+                  style={{
+                    ["--suspect-color" as never]: pickerSelection
+                      ? suspectColorById[pickerSelection]
+                      : "transparent",
+                  }}
+                >
+                  {pickerSelection
+                    ? SUSPECTS.find((s) => s.id === pickerSelection)?.name
+                    : "No character selected"}
+                </div>
+              </div>
+
+              <div className="suspect-select-grid" role="list">
+                {suspectOrderByRow.map((suspectId) => {
+                  const suspect = SUSPECTS.find((item) => item.id === suspectId);
+                  if (!suspect) return null;
+                  const isSelected = pickerSelection === suspect.id;
+                  const isTaken = players
+                    .map((p, idx) => (idx === pickerPlayerIndex ? "" : p.suspectId))
+                    .filter(Boolean)
+                    .includes(suspect.id);
+                  const isDisabled = isTaken && !isSelected;
+                  return (
+                    <SuspectPickerCard
+                      key={suspect.id}
+                      suspect={suspect}
+                      imageSrc={suspectImageById[suspect.id]}
+                      isSelected={isSelected}
+                      isDisabled={isDisabled}
+                      color={suspectColorById[suspect.id]}
+                      onPick={() =>
+                        isSelected ? confirmPickerSelection(suspect.id) : setPickerSelection(suspect.id)
+                      }
+                    />
+                  );
+                })}
+              </div>
+
+              <div className="suspect-picker-actions">
+                <Button variant="outline" onClick={closePicker}>
+                  Cancel
+                </Button>
+                <Button
+                  onClick={() => pickerSelection && confirmPickerSelection(pickerSelection)}
+                  disabled={!pickerSelection}
+                >
+                  Confirm Selection
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
       </DialogContent>
     </Dialog>
   );

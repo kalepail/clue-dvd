@@ -52,6 +52,10 @@
   --radius-md: 0.375rem;
   --radius-lg: 0.5rem;
   --radius-xl: 0.75rem;
+
+  /* Card dimensions */
+  --card-aspect-ratio: 0.68;
+  --reveal-card-aspect-ratio: 0.64;
 }
 
 /* Base styles */
@@ -218,8 +222,14 @@ h3 {
 /* Individual Solution Card */
 .solution-card {
   @apply relative p-3 rounded-lg transition-all duration-300;
-  background: linear-gradient(135deg, #8b3a3a 0%, #6b2a2a 100%);
+  background-image: url("/images/Back of card design.png");
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  background-color: #2a231e;
+  background-blend-mode: multiply;
   border: 2px solid #4a2020;
+  aspect-ratio: var(--card-aspect-ratio);
   cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='32' height='32' viewBox='0 0 24 24' fill='none' stroke='%23c4a35a' stroke-width='2'%3E%3Ccircle cx='11' cy='11' r='8'/%3E%3Cline x1='21' y1='21' x2='16.65' y2='16.65'/%3E%3C/svg%3E") 16 16, pointer;
 }
 
@@ -241,7 +251,116 @@ h3 {
 }
 
 .solution-card-inner {
-  @apply pt-4 pb-2;
+  @apply pt-6 pb-3 h-full flex flex-col;
+}
+
+/* Suspect selection cards */
+.suspect-select-grid {
+  @apply grid gap-3;
+  grid-template-columns: repeat(5, minmax(150px, 1fr));
+  justify-items: center;
+}
+
+.suspect-select-card {
+  @apply relative w-full rounded-xl border-2 border-border bg-secondary/60 p-2 text-left transition-all duration-200;
+  aspect-ratio: var(--card-aspect-ratio);
+  max-width: 230px;
+  margin: 0 auto;
+}
+
+.suspect-select-card:hover:not(:disabled) {
+  @apply border-primary shadow-lg;
+  transform: translateY(-2px);
+}
+
+.suspect-select-card.is-selected {
+  border-color: var(--suspect-color);
+  box-shadow: 0 0 0 2px color-mix(in oklab, var(--suspect-color) 60%, transparent);
+}
+
+.suspect-select-card:disabled {
+  @apply opacity-40 cursor-not-allowed;
+}
+
+.suspect-select-image {
+  @apply w-full h-full object-cover rounded-lg;
+  display: block;
+}
+
+.suspect-select-name {
+  @apply absolute left-2 right-2 bottom-2 text-xs font-semibold text-cream bg-black/50 px-2 py-1 rounded-md;
+}
+
+.suspect-select-disabled {
+  @apply absolute top-2 right-2 text-[10px] uppercase tracking-widest bg-black/70 text-cream px-2 py-1 rounded-full;
+}
+
+.suspect-picker-trigger {
+  @apply relative w-full rounded-lg border-2 border-border bg-secondary/60 px-3 py-2 text-left transition-all duration-200 flex items-center gap-3;
+  min-height: 52px;
+}
+
+.suspect-picker-trigger:hover {
+  @apply border-primary shadow-md;
+}
+
+.suspect-picker-trigger:focus-visible {
+  @apply outline-none ring-2 ring-primary/60;
+}
+
+.suspect-picker-trigger {
+  border-color: color-mix(in oklab, var(--suspect-color) 45%, var(--color-border));
+  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--suspect-color) 35%, transparent);
+}
+
+.suspect-picker-thumb {
+  @apply w-10 h-10 rounded-md object-cover;
+}
+
+.suspect-picker-name {
+  @apply text-sm font-semibold text-cream;
+}
+
+.suspect-picker-placeholder {
+  @apply text-sm text-muted-foreground;
+}
+
+.suspect-picker-overlay {
+  @apply fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4;
+}
+
+.suspect-picker-panel {
+  @apply rounded-2xl border border-primary/40 bg-secondary p-6;
+  width: min(95vw, 72rem);
+  border-color: color-mix(in oklab, var(--suspect-color) 45%, var(--color-border));
+  background-image:
+    radial-gradient(circle at top left, color-mix(in oklab, var(--suspect-color) 22%, transparent), transparent 62%),
+    linear-gradient(160deg, color-mix(in oklab, var(--suspect-color) 18%, #1a1512), #1a1512 55%);
+}
+
+.suspect-picker-header {
+  @apply text-center space-y-2 mb-6;
+}
+
+.suspect-picker-title {
+  @apply text-2xl;
+  color: color-mix(in oklab, var(--suspect-color) 70%, var(--color-cream));
+  font-family: var(--font-display);
+  letter-spacing: 0.12em;
+}
+
+.suspect-picker-subtitle {
+  @apply text-sm text-muted-foreground;
+}
+
+.suspect-picker-selected {
+  @apply inline-flex items-center justify-center px-4 py-2 rounded-full text-sm font-semibold uppercase tracking-widest;
+  background: color-mix(in oklab, var(--suspect-color) 55%, rgba(0, 0, 0, 0.6));
+  color: var(--color-cream);
+}
+
+.suspect-picker-actions {
+  @apply mt-6 flex flex-col gap-3 sm:flex-row sm:justify-between;
 }
 
 /* Symbol Grid - 2x3 layout */
@@ -249,8 +368,10 @@ h3 {
   @apply grid gap-2 mx-auto;
   grid-template-columns: repeat(2, 1fr);
   grid-template-rows: repeat(3, 1fr);
-  width: 90px;
+  width: 100px;
   height: 108px;
+  margin-top: auto;
+  margin-bottom: -6px;
 }
 
 /* Individual Symbol Slot */
@@ -331,16 +452,17 @@ h3 {
 */
 
 .solution-reveal-grid {
-  @apply grid grid-cols-2 md:grid-cols-4 gap-4 max-w-4xl mx-auto;
+  @apply grid grid-cols-2 md:grid-cols-4 gap-4 max-w-4xl mx-auto items-start;
 }
 
 .reveal-card {
-  @apply w-full h-40 relative;
+  @apply w-full relative;
   perspective: 1200px;
 }
 
 .reveal-card-inner {
-  @apply w-full h-full relative transition-transform duration-500;
+  @apply w-full relative transition-transform duration-500;
+  aspect-ratio: var(--reveal-card-aspect-ratio);
   transform-style: preserve-3d;
 }
 
@@ -349,27 +471,35 @@ h3 {
 }
 
 .reveal-card-face {
-  @apply absolute inset-0 rounded-xl border-2 flex flex-col items-center justify-center text-center px-3;
+  @apply absolute inset-0 rounded-xl border-2 text-center px-2 py-2 overflow-hidden;
   backface-visibility: hidden;
 }
 
 .reveal-card-front {
-  background: linear-gradient(135deg, #8b3a3a 0%, #6b2a2a 100%);
+  background-image: url("/images/Back of card design.png");
+  background-size: 100% 85%;
+  background-position: center bottom;
+  background-repeat: no-repeat;
+  background-color: #2a231e;
+  background-blend-mode: multiply;
   border-color: #4a2020;
   color: var(--color-cream);
 }
 
 .reveal-card-back {
   background: linear-gradient(135deg, #2a231e 0%, #1f1a16 100%);
-  border-color: var(--color-primary);
+  border-color: var(--color-success);
   color: var(--color-foreground);
   transform: rotateY(180deg);
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  gap: 0.35rem;
 }
 
 .reveal-card-label {
   font-family: var(--font-display);
   letter-spacing: 0.2em;
-  @apply text-xs uppercase mb-2;
+  @apply text-xs uppercase;
 }
 
 .reveal-card-hint {
@@ -378,4 +508,17 @@ h3 {
 
 .reveal-card-value {
   @apply text-lg font-semibold;
+}
+
+.reveal-card-media {
+  @apply w-full;
+  aspect-ratio: var(--card-aspect-ratio);
+  max-height: 100%;
+  align-self: center;
+  justify-self: center;
+}
+
+.reveal-card-image {
+  @apply w-full h-full object-cover rounded-lg shadow-sm;
+  display: block;
 }
