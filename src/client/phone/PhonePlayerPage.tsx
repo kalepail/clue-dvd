@@ -173,6 +173,7 @@ export default function PhonePlayerPage({ code, onNavigate }: Props) {
   const isActive = session?.session.status === "active";
   const currentTurnSuspectId = session?.session.currentTurnSuspectId || null;
   const isPlayersTurn = isActive && Boolean(player?.suspectId) && currentTurnSuspectId === player?.suspectId;
+  const isSetupPhase = isActive && currentTurnSuspectId === null;
 
   if (!player) {
     return (
@@ -249,15 +250,18 @@ export default function PhonePlayerPage({ code, onNavigate }: Props) {
           )}
 
           <div className="phone-card phone-stack">
-            <div className="phone-section-title">Roster</div>
+            <div className="phone-section-title">Detectives</div>
             <div className="phone-roster">
               {sortedRoster.map((entry) => (
                 <div key={entry.id} className="phone-roster-item">
                   <span>{entry.name}</span>
                   {entry.id === leadPlayerId ? (
-                    <span className="phone-roster-lead">Lead</span>
+                    <span className="phone-roster-lead">
+                      <span className="phone-roster-lead-name">{entry.suspectName}</span>
+                      {" · Lead"}
+                    </span>
                   ) : (
-                    <span>{entry.suspectId}</span>
+                    <span>{entry.suspectName}</span>
                   )}
                 </div>
               ))}
@@ -274,25 +278,44 @@ export default function PhonePlayerPage({ code, onNavigate }: Props) {
 
       {isActive && (
         <>
-          {!isPlayersTurn && (
+          {isSetupPhase && (
             <div className="phone-card">
-              <div className="phone-wait">Waiting for your turn.</div>
+              {isLead ? (
+                <div className="phone-stack">
+                  <div className="phone-section-title">Setup Complete?</div>
+                  <div className="phone-wait">
+                    When everyone is ready, begin the investigation.
+                  </div>
+                  <button
+                    type="button"
+                    className="phone-button"
+                    onClick={() => sendAction("begin_investigation")}
+                  >
+                    Begin Investigation
+                  </button>
+                </div>
+              ) : (
+                <div className="phone-wait">Waiting for the lead detective to begin.</div>
+              )}
             </div>
           )}
-          <div className="phone-tabs">
-            {tabs.map((item) => (
-              <button
-                key={item.key}
-                type="button"
-                className={`phone-tab ${tab === item.key ? "active" : ""}`}
-                onClick={() => setTab(item.key as PhoneTab)}
-              >
-                {item.label}
-              </button>
-            ))}
-          </div>
+          {!isSetupPhase && (
+            <div className="phone-tabs">
+              {tabs.map((item) => (
+                <button
+                  key={item.key}
+                  type="button"
+                  className={`phone-tab ${tab === item.key ? "active" : ""}`}
+                  onClick={() => setTab(item.key as PhoneTab)}
+                >
+                  {item.label}
+                </button>
+              ))}
+            </div>
+          )}
 
-          <div className="phone-stack">
+          {!isSetupPhase && (
+            <div className="phone-stack">
             {tab === "notes" && (
               <div className="phone-card phone-stack">
                 <div className="phone-section-title">Personal Notes</div>
@@ -516,7 +539,8 @@ export default function PhonePlayerPage({ code, onNavigate }: Props) {
                 <div className="phone-subtitle">{actionStatus}</div>
               </div>
             )}
-          </div>
+            </div>
+          )}
         </>
       )}
     </div>

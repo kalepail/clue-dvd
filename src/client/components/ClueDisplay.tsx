@@ -1,4 +1,4 @@
-import { MessageCircle, XCircle } from "lucide-react";
+import { MessageCircle } from "lucide-react";
 import { Badge } from "@/client/components/ui/badge";
 
 interface Props {
@@ -25,14 +25,7 @@ export default function ClueDisplay({ speaker, text, eliminated, index }: Props)
         "{text}"
       </blockquote>
 
-      {eliminated && (
-        <div className="mt-4 flex items-center gap-2 text-sm text-destructive">
-          <XCircle className="h-4 w-4" />
-          <span>
-            Eliminates <span className="font-medium">{eliminated.type}</span>: {eliminated.id}
-          </span>
-        </div>
-      )}
+      {null}
     </div>
   );
 }

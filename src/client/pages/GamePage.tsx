@@ -152,7 +152,7 @@ export default function GamePage({ gameId, onNavigate }: Props) {
   }, [loadGame]);
 
   useEffect(() => {
-    if (!game || game.status !== "in_progress") return;
+    if (!game || (game.status !== "in_progress" && game.status !== "setup")) return;
     const code = loadHostSessionCode();
     if (!code) return;
     const interval = window.setInterval(async () => {
@@ -164,18 +164,23 @@ export default function GamePage({ gameId, onNavigate }: Props) {
           if (event.type === "turn_action") {
             const action = event.payload.action;
             if (typeof action !== "string") continue;
-            if (action === "reveal_clue" && !revealingClue) {
+            if (action === "begin_investigation") {
+              if (game.status === "setup") {
+                handleStartGame();
+              }
+            } else if (action === "reveal_clue" && game.status === "in_progress" && !revealingClue) {
               handleRevealClue();
-            } else if (action === "use_secret_passage") {
+            } else if (action === "use_secret_passage" && game.status === "in_progress") {
               handleSecretPassage();
-            } else if (action === "read_inspector_note") {
+            } else if (action === "read_inspector_note" && game.status === "in_progress") {
               handleOpenInspectorNotes();
-            } else if (action === "show_story") {
+            } else if (action === "show_story" && game.status === "in_progress") {
               setShowNarrative((prev) => !prev);
-            } else if (action === "make_suggestion") {
+            } else if (action === "make_suggestion" && game.status === "in_progress") {
               setShowEndTurnConfirm(true);
             }
           } else if (event.type === "accusation") {
+            if (game.status !== "in_progress") continue;
             const suspectId = typeof event.payload.suspectId === "string" ? event.payload.suspectId : "";
             const itemId = typeof event.payload.itemId === "string" ? event.payload.itemId : "";
             const locationId = typeof event.payload.locationId === "string" ? event.payload.locationId : "";
@@ -194,10 +199,12 @@ export default function GamePage({ gameId, onNavigate }: Props) {
   }, [game, lastPhoneEventId, revealingClue]);
 
   useEffect(() => {
-    if (!game || game.status !== "in_progress") return;
+    if (!game || (game.status !== "in_progress" && game.status !== "setup")) return;
     const code = loadHostSessionCode();
     if (!code) return;
-    const suspectId = game.currentTurn?.suspectId || null;
+    const suspectId = game.status === "in_progress"
+      ? game.currentTurn?.suspectId || null
+      : null;
     updateSessionTurn(code, suspectId).catch(() => undefined);
   }, [game?.currentTurn?.suspectId, game?.status]);
 
@@ -411,7 +418,7 @@ export default function GamePage({ gameId, onNavigate }: Props) {
   const handleResetPhoneLobby = async () => {
     const code = loadHostSessionCode();
     if (!code) {
-      onNavigate("/");
+      onNavigate("/host-lobby");
       return;
     }
     try {
@@ -421,7 +428,7 @@ export default function GamePage({ gameId, onNavigate }: Props) {
     }
     clearHostSessionCode();
     setHostAutoCreate(true);
-    onNavigate("/");
+    onNavigate("/host-lobby");
   };
 
   const handleOpenInspectorNotes = () => {
@@ -735,10 +742,19 @@ export default function GamePage({ gameId, onNavigate }: Props) {
               <SolutionCards solution={game.solution} />
             )}
 
-            <Button size="lg" onClick={handleStartGame}>
+            <Button
+              size="lg"
+              onClick={handleStartGame}
+              disabled={Boolean(loadHostSessionCode())}
+            >
               <Search className="mr-2 h-5 w-5" />
               Begin Investigation
             </Button>
+            {loadHostSessionCode() && (
+              <p className="text-sm text-muted-foreground">
+                Waiting for the lead detective to begin the investigation.
+              </p>
+            )}
           </CardContent>
         </Card>
       )}

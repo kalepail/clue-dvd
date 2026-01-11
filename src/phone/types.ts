@@ -21,6 +21,7 @@ export interface PhonePlayer {
   sessionId: string;
   name: string;
   suspectId: string;
+  suspectName: string;
   notes: string;
   eliminations: PhoneEliminations;
   createdAt: string;

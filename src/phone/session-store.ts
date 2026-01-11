@@ -34,6 +34,7 @@ function rowToPlayer(row: Record<string, string>): PhonePlayer {
     sessionId: row.session_id,
     name: row.name,
     suspectId: row.suspect_id,
+    suspectName: row.suspect_name || row.suspect_id,
     notes: row.notes,
     eliminations,
     createdAt: row.created_at,
@@ -115,14 +116,35 @@ export async function createPlayer(
   name: string,
   suspectId: string
 ): Promise<{ player: PhonePlayer; reconnectToken: string }> {
+  const suspectNameMap: Record<string, string> = {
+    S01: "Miss Scarlet",
+    S02: "Colonel Mustard",
+    S03: "Mrs. White",
+    S04: "Mr. Green",
+    S05: "Mrs. Peacock",
+    S06: "Professor Plum",
+    S07: "Mrs. Meadow-Brook",
+    S08: "Prince Azure",
+    S09: "Lady Lavender",
+    S10: "Rusty",
+  };
   const playerId = crypto.randomUUID();
   const reconnectToken = generateReconnectToken();
   const eliminations = serializeEliminations(emptyEliminations());
   await db
     .prepare(
-      "INSERT INTO phone_players (id, session_id, name, suspect_id, reconnect_token, notes, eliminations) VALUES (?, ?, ?, ?, ?, ?, ?)"
+      "INSERT INTO phone_players (id, session_id, name, suspect_id, suspect_name, reconnect_token, notes, eliminations) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
     )
-    .bind(playerId, sessionId, name, suspectId, reconnectToken, "", eliminations)
+    .bind(
+      playerId,
+      sessionId,
+      name,
+      suspectId,
+      suspectNameMap[suspectId] ?? suspectId,
+      reconnectToken,
+      "",
+      eliminations
+    )
     .run();
   const row = await db.prepare("SELECT * FROM phone_players WHERE id = ?").bind(playerId).first();
   if (!row) {

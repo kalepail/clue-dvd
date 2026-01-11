@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { SUSPECTS } from "../../shared/game-elements";
 import { getSession, joinSession } from "./api";
 import { storePlayer } from "./storage";
@@ -20,6 +20,33 @@ export default function PhoneJoinPage({ onNavigate }: Props) {
 
   const normalizedCode = code.replace(/[^A-Za-z0-9]/g, "").toUpperCase();
   const takenSuspects = new Set(session?.players.map((player) => player.suspectId));
+  const orderedSuspects = [
+    "S01", // Miss Scarlet
+    "S03", // Mrs. White
+    "S05", // Mrs. Peacock
+    "S07", // Mrs. Meadow-Brook
+    "S09", // Lady Lavender
+    "S02", // Colonel Mustard
+    "S04", // Mr. Green
+    "S06", // Professor Plum
+    "S08", // Prince Azure
+    "S10", // Rusty
+  ]
+    .map((id) => SUSPECTS.find((suspect) => suspect.id === id))
+    .filter((suspect): suspect is (typeof SUSPECTS)[number] => Boolean(suspect));
+  const selectedSuspect = orderedSuspects.find((suspect) => suspect.id === suspectId);
+  const selectedColorMap: Record<string, string> = {
+    S01: "#da3f55",
+    S02: "#dbad38",
+    S03: "#e5e0da",
+    S04: "#6c9376",
+    S05: "#54539b",
+    S06: "#6f4a9b",
+    S07: "#49aca7",
+    S08: "#78abd8",
+    S09: "#b25593",
+    S10: "#d9673b",
+  };
 
   const handleCheckCode = async () => {
     if (normalizedCode.length !== 4) {
@@ -38,6 +65,19 @@ export default function PhoneJoinPage({ onNavigate }: Props) {
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    if (!session) return;
+    const interval = window.setInterval(async () => {
+      try {
+        const data = await getSession(session.session.code);
+        setSession(data);
+      } catch {
+        // Keep last known state if polling fails.
+      }
+    }, 2000);
+    return () => window.clearInterval(interval);
+  }, [session?.session.code]);
 
   const handleJoin = async () => {
     if (!session || !name.trim() || !suspectId) return;
@@ -58,6 +98,8 @@ export default function PhoneJoinPage({ onNavigate }: Props) {
       setLoading(false);
     }
   };
+
+  const [imageOkById, setImageOkById] = useState<Record<string, boolean>>({});
 
   return (
     <div className="phone-shell">
@@ -106,20 +148,38 @@ export default function PhoneJoinPage({ onNavigate }: Props) {
 
             <div>
               <div className="phone-section-title">Choose Your Suspect</div>
-              <div className="phone-grid">
-                {SUSPECTS.map((suspect) => {
+              {selectedSuspect && (
+                <div className="mb-2 phone-selection-center">
+                  <span
+                    className="phone-selection-badge"
+                    style={{ color: selectedColorMap[selectedSuspect.id] || "var(--color-gold)" }}
+                  >
+                    {selectedSuspect.name}
+                  </span>
+                </div>
+              )}
+              <div className="phone-grid phone-grid-suspects">
+                {orderedSuspects.map((suspect) => {
                   const disabled = takenSuspects.has(suspect.id);
                   return (
                     <button
                       key={suspect.id}
                       type="button"
-                      className={`phone-option ${suspectId === suspect.id ? "selected" : ""}`}
+                      className={`phone-option phone-option-suspect ${suspectId === suspect.id ? "selected" : ""}`}
                       onClick={() => !disabled && setSuspectId(suspect.id)}
                       disabled={disabled}
                     >
-                      <img src={suspectImageById[suspect.id]} alt={suspect.name} />
-                      <div>{suspect.name}</div>
-                      {disabled && <div className="phone-subtitle">Taken</div>}
+                      <img
+                        src={suspectImageById[suspect.id]}
+                        alt={suspect.name}
+                        onError={() =>
+                          setImageOkById((current) => ({ ...current, [suspect.id]: false }))
+                        }
+                      />
+                      {imageOkById[suspect.id] === false && (
+                        <div>{suspect.name}</div>
+                      )}
+                      {disabled && <span className="phone-taken-badge">Taken</span>}
                     </button>
                   );
                 })}

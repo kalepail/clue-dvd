@@ -81,7 +81,6 @@ export default function PhoneHostPage({ onNavigate }: Props) {
               players,
               useAI: false,
             });
-            gameStore.startGame(game.id, players.map((player) => player.name));
             onNavigate(`/game/${game.id}`);
             return;
           }
