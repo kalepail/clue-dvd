@@ -444,7 +444,6 @@ export default function PhonePlayerPage({ code, onNavigate }: Props) {
     if (lastTurnRef.current !== currentTurnSuspectId) {
       setSecretPassageUsedThisTurn(false);
       setPendingInspectorNote(null);
-      setSelectedInspectorNote(null);
       lastTurnRef.current = currentTurnSuspectId;
     }
   }, [currentTurnSuspectId]);
@@ -689,20 +688,28 @@ export default function PhonePlayerPage({ code, onNavigate }: Props) {
                       Confirm Read {pendingInspectorNote === "N1" ? "Note 1" : "Note 2"}
                     </button>
                   )}
-                  {selectedInspectorNote && inspectorNoteTexts[selectedInspectorNote] && (
+                  {selectedInspectorNote && (
                     <div className="phone-card">
                       <div className="phone-section-title">
                         Inspector Note {selectedInspectorNote === "N1" ? "1" : "2"}
                       </div>
-                      <div className="phone-subtitle">
-                        {inspectorNoteTexts[selectedInspectorNote]}
-                      </div>
+                      {inspectorNoteTexts[selectedInspectorNote] ? (
+                        <div className="phone-subtitle">
+                          {inspectorNoteTexts[selectedInspectorNote]}
+                        </div>
+                      ) : (
+                        <div className="phone-subtitle">Fetching note...</div>
+                      )}
                     </div>
                   )}
                   <button
                     type="button"
                     className="phone-button secondary"
-                    onClick={() => setShowInspectorNotes(false)}
+                    onClick={() => {
+                      setShowInspectorNotes(false);
+                      setSelectedInspectorNote(null);
+                      setPendingInspectorNote(null);
+                    }}
                   >
                     Close
                   </button>
