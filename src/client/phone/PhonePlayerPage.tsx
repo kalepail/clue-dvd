@@ -174,6 +174,10 @@ export default function PhonePlayerPage({ code, onNavigate }: Props) {
   const currentTurnSuspectId = session?.session.currentTurnSuspectId || null;
   const isPlayersTurn = isActive && Boolean(player?.suspectId) && currentTurnSuspectId === player?.suspectId;
   const isSetupPhase = isActive && currentTurnSuspectId === null;
+  const currentTurnName = currentTurnSuspectId
+    ? sortedRoster.find((entry) => entry.suspectId === currentTurnSuspectId)?.suspectName
+    : null;
+
 
   if (!player) {
     return (
@@ -198,8 +202,16 @@ export default function PhonePlayerPage({ code, onNavigate }: Props) {
       <div className="phone-header">
         <h1>Detective Notebook</h1>
         <div className="phone-subtitle">
-          {player.name} · {player.suspectId} · Code {session?.session.code}
+          {player.name} · {player.suspectName} · Code {session?.session.code}
         </div>
+        {isActive && !isSetupPhase && currentTurnSuspectId && (
+          <div className="phone-turn-indicator-wrap">
+            <div className="phone-turn-indicator">
+              Turn:
+              <strong>{isPlayersTurn ? "You" : currentTurnName || currentTurnSuspectId}</strong>
+            </div>
+          </div>
+        )}
         {saving && <div className="phone-subtitle">Saving notes...</div>}
       </div>
 
@@ -453,18 +465,18 @@ export default function PhonePlayerPage({ code, onNavigate }: Props) {
                 <div className="phone-stack">
                   <div>
                     <div className="phone-section-title">WHO</div>
-                    <div className="phone-grid">
+                    <div className="phone-grid phone-grid-suspects">
                       {SUSPECTS.map((suspect) => (
                         <button
                           key={suspect.id}
                           type="button"
-                          className={`phone-option ${accusation.suspectId === suspect.id ? "selected" : ""}`}
+                          className={`phone-option phone-option-suspect ${accusation.suspectId === suspect.id ? "selected" : ""}`}
                           onClick={() =>
                             setAccusation((prev) => ({ ...prev, suspectId: suspect.id }))
                           }
                         >
                           <img src={suspectImageById[suspect.id]} alt={suspect.name} />
-                          <div>{suspect.name}</div>
+                          {null}
                         </button>
                       ))}
                     </div>
@@ -472,18 +484,18 @@ export default function PhonePlayerPage({ code, onNavigate }: Props) {
 
                   <div>
                     <div className="phone-section-title">WHAT</div>
-                    <div className="phone-grid">
+                    <div className="phone-grid phone-grid-accuse">
                       {ITEMS.map((item) => (
                         <button
                           key={item.id}
                           type="button"
-                          className={`phone-option ${accusation.itemId === item.id ? "selected" : ""}`}
+                          className={`phone-option phone-option-portrait ${accusation.itemId === item.id ? "selected" : ""}`}
                           onClick={() =>
                             setAccusation((prev) => ({ ...prev, itemId: item.id }))
                           }
                         >
                           <img src={itemImageById[item.id]} alt={item.nameUS} />
-                          <div>{item.nameUS}</div>
+                          {null}
                         </button>
                       ))}
                     </div>
@@ -491,18 +503,18 @@ export default function PhonePlayerPage({ code, onNavigate }: Props) {
 
                   <div>
                     <div className="phone-section-title">WHERE</div>
-                    <div className="phone-grid">
+                    <div className="phone-grid phone-grid-accuse">
                       {LOCATIONS.map((location) => (
                         <button
                           key={location.id}
                           type="button"
-                          className={`phone-option ${accusation.locationId === location.id ? "selected" : ""}`}
+                          className={`phone-option phone-option-portrait ${accusation.locationId === location.id ? "selected" : ""}`}
                           onClick={() =>
                             setAccusation((prev) => ({ ...prev, locationId: location.id }))
                           }
                         >
                           <img src={locationImageById[location.id]} alt={location.name} />
-                          <div>{location.name}</div>
+                          {null}
                         </button>
                       ))}
                     </div>
@@ -510,18 +522,18 @@ export default function PhonePlayerPage({ code, onNavigate }: Props) {
 
                   <div>
                     <div className="phone-section-title">WHEN</div>
-                    <div className="phone-grid">
+                    <div className="phone-grid phone-grid-accuse">
                       {TIMES.map((time) => (
                         <button
                           key={time.id}
                           type="button"
-                          className={`phone-option ${accusation.timeId === time.id ? "selected" : ""}`}
+                          className={`phone-option phone-option-portrait ${accusation.timeId === time.id ? "selected" : ""}`}
                           onClick={() =>
                             setAccusation((prev) => ({ ...prev, timeId: time.id }))
                           }
                         >
                           <img src={timeImageById[time.id]} alt={time.name} />
-                          <div>{time.name}</div>
+                          {null}
                         </button>
                       ))}
                     </div>
@@ -535,9 +547,7 @@ export default function PhonePlayerPage({ code, onNavigate }: Props) {
             )}
 
             {actionStatus && (
-              <div className="phone-card">
-                <div className="phone-subtitle">{actionStatus}</div>
-              </div>
+              null
             )}
             </div>
           )}

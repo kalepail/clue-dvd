@@ -21,6 +21,7 @@
   gap: 6px;
   text-align: left;
   margin-bottom: 14px;
+  position: relative;
 }
 
 .phone-header h1 {
@@ -143,6 +144,11 @@
   gap: 10px;
 }
 
+.phone-grid-accuse {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
 .phone-option {
   background: rgba(14, 19, 31, 0.7);
   border: 1px solid rgba(255, 255, 255, 0.1);
@@ -180,6 +186,23 @@
 }
 
 .phone-option-suspect.selected img {
+  transform: scale(var(--suspect-scale-selected));
+}
+
+.phone-option-portrait {
+  padding: 9px;
+  font-size: 0.72rem;
+  overflow: hidden;
+}
+
+.phone-option-portrait img {
+  border-radius: 8px;
+  margin-bottom: 2px;
+  transform: scale(var(--suspect-scale));
+  transition: transform 0.15s ease;
+}
+
+.phone-option-portrait.selected img {
   transform: scale(var(--suspect-scale-selected));
 }
 
@@ -308,12 +331,55 @@
   color: rgba(255, 255, 255, 0.7);
 }
 
+.phone-turn-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: rgba(15, 20, 32, 0.85);
+  border: 1px solid rgba(199, 176, 124, 0.3);
+  font-size: 0.7rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.75);
+}
+
+.phone-turn-indicator strong {
+  color: var(--color-gold);
+  font-weight: 600;
+}
+
+.phone-turn-indicator-wrap {
+  display: flex;
+  justify-content: center;
+  margin-top: 10px;
+}
+
+@media (min-width: 768px) {
+  .phone-turn-indicator-wrap {
+    justify-content: flex-end;
+    margin-top: 0;
+  }
+
+  .phone-turn-indicator {
+    position: absolute;
+    top: 18px;
+    right: 16px;
+  }
+}
+
 @media (max-width: 430px) {
   .phone-tabs {
     grid-template-columns: repeat(2, 1fr);
   }
 
   .phone-grid-suspects {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  .phone-grid-accuse {
     grid-template-columns: repeat(4, minmax(0, 1fr));
     gap: 8px;
   }
@@ -332,6 +398,13 @@
     grid-template-columns: repeat(5, minmax(0, 1fr));
   }
 
+  .phone-grid-accuse {
+    max-width: 800px;
+    margin: 0 auto;
+    gap: 12px;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+  }
+
   .phone-grid-suspects > .phone-option-suspect {
     grid-column: auto;
   }
@@ -342,6 +415,10 @@
   }
 
   .phone-option-suspect {
+    padding: 11px;
+  }
+
+  .phone-option-portrait {
     padding: 11px;
   }
 }
