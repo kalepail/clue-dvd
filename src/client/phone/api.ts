@@ -32,7 +32,7 @@ export async function joinSession(
     body: JSON.stringify({ name, suspectId }),
   });
   if (!response.ok) {
-    const payload = await response.json().catch(() => ({}));
+    const payload = (await response.json().catch(() => ({}))) as { error?: string };
     throw new Error(payload.error || "Failed to join session");
   }
   return response.json();
@@ -48,7 +48,7 @@ export async function reconnectSession(
     body: JSON.stringify({ reconnectToken }),
   });
   if (!response.ok) {
-    const payload = await response.json().catch(() => ({}));
+    const payload = (await response.json().catch(() => ({}))) as { error?: string };
     throw new Error(payload.error || "Failed to reconnect");
   }
   return response.json();
@@ -65,7 +65,7 @@ export async function updatePlayer(
     body: JSON.stringify({ reconnectToken, ...updates }),
   });
   if (!response.ok) {
-    const payload = await response.json().catch(() => ({}));
+    const payload = (await response.json().catch(() => ({}))) as { error?: string };
     throw new Error(payload.error || "Failed to update player");
   }
 }
@@ -82,7 +82,7 @@ export async function sendPlayerAction(
     body: JSON.stringify({ reconnectToken, type, payload }),
   });
   if (!response.ok) {
-    const data = await response.json().catch(() => ({}));
+    const data = (await response.json().catch(() => ({}))) as { error?: string };
     throw new Error(data.error || "Failed to send action");
   }
 }
@@ -132,5 +132,35 @@ export async function sendAccusationResult(
   });
   if (!response.ok) {
     throw new Error("Failed to record accusation result");
+  }
+}
+
+export async function updateInspectorNoteAvailability(
+  code: string,
+  availability: { note1Available: boolean; note2Available: boolean }
+): Promise<void> {
+  const response = await fetch(`/api/phone/sessions/${code}/notes-availability`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(availability),
+  });
+  if (!response.ok) {
+    throw new Error("Failed to update inspector note availability");
+  }
+}
+
+export async function sendInspectorNoteResult(
+  code: string,
+  suspectId: string,
+  noteId: string,
+  noteText: string
+): Promise<void> {
+  const response = await fetch(`/api/phone/sessions/${code}/inspector-note`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ suspectId, noteId, noteText }),
+  });
+  if (!response.ok) {
+    throw new Error("Failed to record inspector note");
   }
 }

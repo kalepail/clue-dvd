@@ -3,7 +3,6 @@ import { ArrowLeft, Search, Gavel, CheckCircle, Users, Sparkles, Clock, BookOpen
 import { gameStore, type GameDataFormatted } from "../hooks/useGameStore";
 import ClueDisplay from "../components/ClueDisplay";
 import AccusationPanel from "../components/AccusationPanel";
-import EliminationTracker from "../components/EliminationTracker";
 import GameHistory from "../components/GameHistory";
 import SolutionCards from "../components/SolutionCards";
 import { Button } from "@/client/components/ui/button";
@@ -13,8 +12,8 @@ import { Progress } from "@/client/components/ui/progress";
 import { IconStat } from "@/client/components/ui/icon-stat";
 import type { EliminationState } from "../../shared/api-types";
 import { getLocationName } from "../../shared/game-elements";
-import { closeSession, getSessionEvents, sendAccusationResult, updateSessionTurn } from "../phone/api";
-import { clearHostSessionCode, loadHostSessionCode, setHostAutoCreate } from "../phone/storage";
+import { closeSession, getSessionEvents, sendAccusationResult, sendInspectorNoteResult, updateInspectorNoteAvailability, updateSessionTurn } from "../phone/api";
+import { clearHostSessionCode, setHostAutoCreate } from "../phone/storage";
 
 interface Props {
   gameId: string;
@@ -123,14 +122,15 @@ export default function GamePage({ gameId, onNavigate }: Props) {
   const [revealedInspectorNote, setRevealedInspectorNote] = useState<string | null>(null);
   const [revealedNoteId, setRevealedNoteId] = useState<string | null>(null);
   const [noteWasFirstRead, setNoteWasFirstRead] = useState(false);
-  // Local state for player's elimination tracking (not persisted to server)
-  const [playerMarks, setPlayerMarks] = useState<EliminationState>(emptyEliminated);
-  const [turnAnnouncement, setTurnAnnouncement] = useState<string | null>(null);
-  const [showTurnAnnouncement, setShowTurnAnnouncement] = useState(false);
+  const [forceRevealSymbols, setForceRevealSymbols] = useState(false);
+  const [hostNotice, setHostNotice] = useState<string | null>(null);
   const [showEndTurnConfirm, setShowEndTurnConfirm] = useState(false);
   const [pendingPhoneContinue, setPendingPhoneContinue] = useState<null | "use_secret_passage" | "make_suggestion">(null);
   const previousTurnKey = useRef<string | null>(null);
   const gameProgress = game?.totalClues ? game.currentClueIndex / game.totalClues : 0;
+  const phoneSessionCode = game?.phoneSessionCode ?? null;
+  const note1Available = gameProgress >= 0.5;
+  const note2Available = gameProgress >= 0.65;
 
   const loadGame = useCallback(() => {
     setLoading(true);
@@ -154,7 +154,7 @@ export default function GamePage({ gameId, onNavigate }: Props) {
 
   useEffect(() => {
     if (!game || (game.status !== "in_progress" && game.status !== "setup")) return;
-    const code = loadHostSessionCode();
+    const code = phoneSessionCode;
     if (!code) return;
     const interval = window.setInterval(async () => {
       try {
@@ -169,6 +169,8 @@ export default function GamePage({ gameId, onNavigate }: Props) {
               if (game.status === "setup") {
                 handleStartGame();
               }
+            } else if (action === "toggle_setup_symbols" && game.status === "setup") {
+              setForceRevealSymbols((prev) => !prev);
             } else if (action === "continue_investigation") {
               setShowAccusation(false);
               setPhoneAccusation(null);
@@ -184,7 +186,20 @@ export default function GamePage({ gameId, onNavigate }: Props) {
               handleSecretPassage();
               setPendingPhoneContinue("use_secret_passage");
             } else if (action === "read_inspector_note" && game.status === "in_progress") {
-              handleOpenInspectorNotes();
+              const noteId = typeof event.payload.noteId === "string" ? event.payload.noteId : "";
+              const readerId = game.currentTurn?.suspectId || "";
+              if (!noteId || !readerId) {
+                setHostNotice("Inspector note request was incomplete.");
+                continue;
+              }
+              try {
+                const result = gameStore.readInspectorNote(gameId, noteId, readerId);
+                await sendInspectorNoteResult(code, readerId, result.noteId, result.text);
+                gameStore.endTurn(gameId);
+                loadGame();
+              } catch (err) {
+                setHostNotice(err instanceof Error ? err.message : "Unable to read inspector note.");
+              }
             } else if (action === "show_story" && game.status === "in_progress") {
               setShowNarrative((prev) => !prev);
             } else if (action === "make_suggestion" && game.status === "in_progress") {
@@ -212,13 +227,20 @@ export default function GamePage({ gameId, onNavigate }: Props) {
 
   useEffect(() => {
     if (!game || (game.status !== "in_progress" && game.status !== "setup")) return;
-    const code = loadHostSessionCode();
+    const code = phoneSessionCode;
     if (!code) return;
     const suspectId = game.status === "in_progress"
       ? game.currentTurn?.suspectId || null
       : null;
     updateSessionTurn(code, suspectId).catch(() => undefined);
   }, [game?.currentTurn?.suspectId, game?.status]);
+
+  useEffect(() => {
+    if (!game || game.status !== "in_progress") return;
+    const code = phoneSessionCode;
+    if (!code) return;
+    updateInspectorNoteAvailability(code, { note1Available, note2Available }).catch(() => undefined);
+  }, [game?.status, note1Available, note2Available, phoneSessionCode]);
 
   useEffect(() => {
     if (!game?.startedAt || game.status !== "in_progress") return;
@@ -356,14 +378,11 @@ export default function GamePage({ gameId, onNavigate }: Props) {
     const turnKey = `${game.currentTurnIndex}-${game.currentTurn.suspectId}`;
     if (previousTurnKey.current === turnKey) return;
     previousTurnKey.current = turnKey;
-    setTurnAnnouncement(`${game.currentTurn.suspectName}'s turn`);
-    setShowTurnAnnouncement(true);
-    const timer = window.setTimeout(() => setShowTurnAnnouncement(false), 1600);
-    return () => window.clearTimeout(timer);
   }, [game?.currentTurn, game?.currentTurnIndex]);
 
   const handleStartGame = () => {
     try {
+      setForceRevealSymbols(false);
       gameStore.startGame(gameId);
       loadGame();
     } catch (err) {
@@ -399,13 +418,17 @@ export default function GamePage({ gameId, onNavigate }: Props) {
     locationId: string;
     timeId: string;
   }): Promise<{ correct: boolean; message: string; aiResponse?: string; correctCount: number; wrongCount: number }> => {
+    if (!game) {
+      setError("Game not found");
+      return { correct: false, message: "Game not found", correctCount: 0, wrongCount: 4 };
+    }
     try {
       const result = gameStore.makeAccusation(gameId, {
         player: game.currentTurn?.playerName || "Detective",
         playerSuspectId: game.currentTurn?.suspectId,
         ...accusation,
       });
-      const code = loadHostSessionCode();
+      const code = phoneSessionCode;
       if (code && game.currentTurn?.suspectId) {
         sendAccusationResult(code, game.currentTurn.suspectId, {
           correct: result.correct,
@@ -430,12 +453,12 @@ export default function GamePage({ gameId, onNavigate }: Props) {
       setSecretPassageResult(result);
       loadGame();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to use secret passage");
+      setHostNotice(err instanceof Error ? err.message : "Secret passage already used this turn.");
     }
   };
 
   const handleResetPhoneLobby = async () => {
-    const code = loadHostSessionCode();
+    const code = phoneSessionCode;
     if (!code) {
       onNavigate("/host-lobby");
       return;
@@ -448,6 +471,17 @@ export default function GamePage({ gameId, onNavigate }: Props) {
     clearHostSessionCode();
     setHostAutoCreate(true);
     onNavigate("/host-lobby");
+  };
+
+  const handleExitToHome = () => {
+    onNavigate("/");
+  };
+
+  const handleQuitGame = () => {
+    const confirmed = window.confirm("End this game and delete it from the case files?");
+    if (!confirmed) return;
+    gameStore.deleteGame(gameId);
+    onNavigate("/");
   };
 
   const handleOpenInspectorNotes = () => {
@@ -480,6 +514,10 @@ export default function GamePage({ gameId, onNavigate }: Props) {
   };
 
   const handleRevealInspectorNote = () => {
+    if (!game) {
+      setError("Game not found");
+      return;
+    }
     if (!selectedInspectorNote) return;
     const readerId = game.currentTurn?.suspectId || "unknown";
     const readByPlayer = game.readInspectorNotes[readerId] || [];
@@ -533,24 +571,6 @@ export default function GamePage({ gameId, onNavigate }: Props) {
     }
   };
 
-  const handleToggleMark = (
-    category: "suspect" | "item" | "location" | "time",
-    elementId: string
-  ) => {
-    // Pure local state - no server persistence needed
-    const categoryKey = `${category}s` as keyof EliminationState;
-    const currentList = playerMarks[categoryKey];
-    const isCurrentlyMarked = currentList.includes(elementId);
-    const newList = isCurrentlyMarked
-      ? currentList.filter((id) => id !== elementId)
-      : [...currentList, elementId];
-
-    setPlayerMarks({
-      ...playerMarks,
-      [categoryKey]: newList,
-    });
-  };
-
   const getStatusVariant = (status: string) => {
     switch (status) {
       case "setup": return "setup";
@@ -596,6 +616,7 @@ export default function GamePage({ gameId, onNavigate }: Props) {
   const progress = game.totalClues > 0
     ? (game.currentClueIndex / game.totalClues) * 100
     : 0;
+  const secretPassageUsedThisTurn = game.secretPassageTurnUsedAt === game.turnCount;
   const minutes = Math.floor(elapsedSeconds / 60);
   const seconds = elapsedSeconds % 60;
   const elapsedLabel = `${minutes}:${seconds.toString().padStart(2, "0")}`;
@@ -607,8 +628,6 @@ export default function GamePage({ gameId, onNavigate }: Props) {
         .toString()
         .padStart(2, "0")}`
     : null;
-  const note1Available = gameProgress >= 0.5;
-  const note2Available = gameProgress >= 0.65;
   const currentReaderId = game.currentTurn?.suspectId || "unknown";
   const readByCurrentPlayer = game.readInspectorNotes[currentReaderId] || [];
   const currentTurnColor = game.currentTurn?.suspectId
@@ -630,64 +649,63 @@ export default function GamePage({ gameId, onNavigate }: Props) {
 
   return (
     <div className="space-y-6">
-      {turnAnnouncement && (
-        <div className={`turn-toast ${showTurnAnnouncement ? "turn-toast-show" : ""}`}>
-          {turnAnnouncement}
-        </div>
-      )}
       {/* Header */}
       <Card>
         <CardContent>
-          <div className="relative min-h-[100px]">
+          <div className="grid gap-6 items-center md:grid-cols-[1fr_auto_1fr]">
             {/* Left: Theme info */}
-            <div className="max-w-[280px]">
+            <div className="min-w-0">
               <h2 className="mb-1 text-lg">{game.theme?.name || "Mystery"}</h2>
               <p className="text-muted-foreground text-sm leading-snug">
                 {game.theme?.description || "A theft has occurred at Tudor Mansion"}
               </p>
             </div>
-            {isSolved && game.solvedBy?.playerName && (
-              <div className="mt-6 text-center">
-                <div
-                  className="flex items-center justify-center gap-3"
-                  style={{ color: "var(--color-success)" }}
-                >
-                  <CheckCircle className="h-7 w-7" />
-                  <h2
-                    className="text-3xl md:text-4xl uppercase tracking-[0.2em]"
-                    style={{ color: "var(--color-success)" }}
-                  >
-                    Case Solved!
-                  </h2>
-                </div>
-                <div className="mt-3 text-2xl md:text-3xl text-muted-foreground">
-                  <div className="text-sm uppercase tracking-[0.16em] text-primary">
-                    Winner
-                  </div>
-                  {game.solvedBy.playerName}
-                </div>
-              </div>
-            )}
-            {/* Center: Current Turn - absolutely centered */}
-            {isInProgress && game.currentTurn && (
-              <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
-                <div className="text-center py-4 px-10 rounded-xl border-2 border-primary bg-secondary/80">
+
+            {/* Center: Current Turn */}
+            <div className="flex justify-center">
+              {isInProgress && game.currentTurn && (
+                <div className="text-center py-5 px-12 rounded-xl border-2 border-primary bg-secondary/80">
                   <div className="text-xs uppercase tracking-[0.25em] text-muted-foreground mb-2">
                     Current Turn
                   </div>
                   <div
-                    className="text-3xl md:text-4xl font-bold whitespace-nowrap"
+                    className="text-4xl md:text-5xl font-bold whitespace-nowrap"
                     style={{ color: currentTurnColor }}
                   >
                     {game.currentTurn.suspectName}
                   </div>
                 </div>
-              </div>
-            )}
+              )}
+              {!isInProgress && isSolved && game.solvedBy?.playerName && (
+                <div className="text-center">
+                  <div
+                    className="flex items-center justify-center gap-3"
+                    style={{ color: "var(--color-success)" }}
+                  >
+                    <CheckCircle className="h-7 w-7" />
+                    <h2
+                      className="text-3xl md:text-4xl uppercase tracking-[0.2em]"
+                      style={{ color: "var(--color-success)" }}
+                    >
+                      Case Solved!
+                    </h2>
+                  </div>
+                  <div className="mt-3 text-2xl md:text-3xl text-muted-foreground">
+                    <div className="text-sm uppercase tracking-[0.16em] text-primary">
+                      Winner
+                    </div>
+                    {game.solvedBy.playerName}
+                  </div>
+                </div>
+              )}
+            </div>
+
             {/* Right: Status badge */}
-            <Badge variant={getStatusVariant(game.status) as "setup" | "in-progress" | "solved" | "abandoned"} className="absolute top-0 right-0">
-              {game.status.replace("_", " ")}
-            </Badge>
+            <div className="flex justify-end">
+              <Badge variant={getStatusVariant(game.status) as "setup" | "in-progress" | "solved" | "abandoned"}>
+                {game.status.replace("_", " ")}
+              </Badge>
+            </div>
           </div>
           {isInProgress && (
             <div className="mt-4 text-sm text-muted-foreground flex items-center gap-2">
@@ -710,6 +728,15 @@ export default function GamePage({ gameId, onNavigate }: Props) {
               <Progress value={progress} />
             </div>
           )}
+
+          <div className="mt-4 flex flex-wrap justify-end gap-3">
+            <Button variant="outline" onClick={handleExitToHome}>
+              Save & Exit
+            </Button>
+            <Button variant="destructive" onClick={handleQuitGame}>
+              Exit Without Saving
+            </Button>
+          </div>
         </CardContent>
       </Card>
 
@@ -760,18 +787,18 @@ export default function GamePage({ gameId, onNavigate }: Props) {
 
             {/* Solution Cards for Envelope */}
             {game.solution && (
-              <SolutionCards solution={game.solution} />
+              <SolutionCards solution={game.solution} forceReveal={forceRevealSymbols} />
             )}
 
             <Button
               size="lg"
               onClick={handleStartGame}
-              disabled={Boolean(loadHostSessionCode())}
+              disabled={Boolean(phoneSessionCode)}
             >
               <Search className="mr-2 h-5 w-5" />
               Begin Investigation
             </Button>
-            {loadHostSessionCode() && (
+            {phoneSessionCode && (
               <p className="text-sm text-muted-foreground">
                 Waiting for the lead detective to begin the investigation.
               </p>
@@ -782,15 +809,15 @@ export default function GamePage({ gameId, onNavigate }: Props) {
 
       {/* Active Game */}
       {isInProgress && (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,0.8fr)] gap-6">
           <div className="space-y-6">
             {/* Latest Clue */}
             {latestClue && (
-              <Card className="border-primary">
-                <CardHeader>
+              <Card className="border-primary latest-clue-card">
+                <CardHeader className="px-4 py-3">
                   <CardTitle className="text-lg">Latest Clue</CardTitle>
                 </CardHeader>
-                <CardContent>
+                <CardContent className="p-3 overflow-hidden">
                   <ClueDisplay
                     speaker={latestClue.speaker}
                     text={latestClue.text}
@@ -806,81 +833,101 @@ export default function GamePage({ gameId, onNavigate }: Props) {
 
             {/* Controls */}
             <Card>
-              <CardContent>
-                <div
-                  className="flex flex-wrap gap-3"
-                  style={{ ["--turn-color" as never]: currentTurnColor }}
-                >
-                  <Button
-                    onClick={handleRevealClue}
-                    disabled={revealingClue || cluesRemaining === 0}
-                    className="turn-color-button"
-                  >
-                    {revealingClue ? (
-                      <>
-                        <div className="loading-spinner mr-2" />
-                        Revealing...
-                      </>
-                    ) : (
-                      <>
-                        <Search className="mr-2 h-4 w-4" />
-                        Reveal Next Clue
-                      </>
-                    )}
-                  </Button>
-                  <Button
-                    variant="success"
-                    onClick={() => setShowAccusation(true)}
-                  >
-                    <Gavel className="mr-2 h-4 w-4" />
-                    Make Accusation
-                  </Button>
-                  <Button
-                    variant="outline"
-                    onClick={handleSecretPassage}
-                    className="turn-color-button"
-                  >
-                    <DoorOpen className="mr-2 h-4 w-4" />
-                    Use Secret Passage
-                  </Button>
-                  <Button
-                    variant="outline"
-                    onClick={handleOpenInspectorNotes}
-                    disabled={!hasInspectorNoteAvailable}
-                    className="turn-color-button"
-                  >
-                    <BookOpen className="mr-2 h-4 w-4" />
-                    Read Inspector Note
-                  </Button>
-                  <Button
-                    variant="outline"
-                    onClick={() => setShowNarrative(!showNarrative)}
-                    className="turn-color-button"
-                  >
-                    <BookOpen className="mr-2 h-4 w-4" />
-                    {showNarrative ? "Hide" : "Show"} Story
-                  </Button>
-                  <Button
-                    variant="outline"
-                    onClick={() => setShowEndTurnConfirm(true)}
-                    className="turn-color-button"
-                  >
-                    <MessageCircle className="mr-2 h-4 w-4" />
-                    Make Suggestion
-                  </Button>
-                  <Button
-                    variant="outline"
-                    onClick={handleResetPhoneLobby}
-                    className="turn-color-button"
-                  >
-                    Reset Phone Lobby
-                  </Button>
+              <CardHeader className="px-4 py-3">
+                <CardTitle className="text-lg">Turn Options</CardTitle>
+              </CardHeader>
+              <CardContent className="p-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {[
+                    {
+                      key: "reveal",
+                      title: revealingClue ? "Revealing..." : "Reveal Next Clue",
+                      description: "Share the next clue with the group.",
+                      icon: Search,
+                      onClick: handleRevealClue,
+                      disabled: revealingClue || cluesRemaining === 0 || Boolean(phoneSessionCode),
+                    },
+                    {
+                      key: "accuse",
+                      title: "Make Accusation",
+                      description: "Open the accusation flow on the host.",
+                      icon: Gavel,
+                      onClick: () => setShowAccusation(true),
+                      disabled: Boolean(phoneSessionCode),
+                    },
+                    {
+                      key: "passage",
+                      title: "Use Secret Passage",
+                      description: "Trigger a passage result for the current turn.",
+                      icon: DoorOpen,
+                      onClick: handleSecretPassage,
+                      disabled: Boolean(phoneSessionCode) || secretPassageUsedThisTurn,
+                    },
+                    {
+                      key: "note",
+                      title: "Read Inspector Note",
+                      description: "Open the inspector note selection.",
+                      icon: BookOpen,
+                      onClick: handleOpenInspectorNotes,
+                      disabled: !hasInspectorNoteAvailable || Boolean(phoneSessionCode),
+                    },
+                    {
+                      key: "story",
+                      title: showNarrative ? "Hide Story" : "Show Story",
+                      description: "Toggle the narrative panel below.",
+                      icon: BookOpen,
+                      onClick: () => setShowNarrative(!showNarrative),
+                      disabled: Boolean(phoneSessionCode),
+                    },
+                    {
+                      key: "suggestion",
+                      title: "Make Suggestion",
+                      description: "Prompt players to handle a suggestion turn.",
+                      icon: MessageCircle,
+                      onClick: () => setShowEndTurnConfirm(true),
+                      disabled: Boolean(phoneSessionCode),
+                    },
+                  ].map((item) => {
+                    const Icon = item.icon;
+                    return (
+                      <button
+                        key={item.key}
+                        type="button"
+                        onClick={item.onClick}
+                        disabled={item.disabled}
+                        className={`rounded-lg border px-4 py-3 text-left transition ${
+                          item.disabled
+                            ? "border-border/50 bg-muted/40 text-muted-foreground cursor-not-allowed"
+                            : "border-primary/40 bg-card hover:border-primary/70 hover:bg-primary/5"
+                        }`}
+                      >
+                        <div className="flex items-center gap-2 mb-2 text-sm font-semibold">
+                          <Icon className="h-4 w-4 text-primary" />
+                          {item.title}
+                        </div>
+                        <div className="text-xs text-muted-foreground">
+                          {item.description}
+                        </div>
+                      </button>
+                    );
+                  })}
+                  {phoneSessionCode && (
+                    <button
+                      type="button"
+                      onClick={handleResetPhoneLobby}
+                      className="rounded-lg border border-border/60 bg-muted/30 px-4 py-3 text-left text-sm hover:border-primary/40 hover:bg-primary/5 transition"
+                    >
+                      <div className="font-semibold text-primary mb-1">Reset Phone Lobby</div>
+                      <div className="text-xs text-muted-foreground">
+                        Generate a new join code for the next session.
+                      </div>
+                    </button>
+                  )}
                 </div>
-
-                {game.wrongAccusations > 0 && (
-                  <p className="text-destructive text-sm mt-4">
-                    Wrong accusations: {game.wrongAccusations}
-                  </p>
+                {hostNotice && (
+                  <div className="mt-3 text-sm text-muted-foreground">
+                    {hostNotice}
+                  </div>
                 )}
               </CardContent>
             </Card>
@@ -888,40 +935,98 @@ export default function GamePage({ gameId, onNavigate }: Props) {
             {/* Narrative Panel */}
             {showNarrative && game.narrative && (
               <Card>
-                <CardHeader>
+                <CardHeader className="px-4 py-3">
                   <CardTitle className="text-lg">The Story So Far</CardTitle>
                 </CardHeader>
-                <CardContent className="space-y-4">
+                <CardContent className="space-y-3 p-4 text-sm">
                   {game.narrative.setting && (
                     <div>
-                      <h4 className="text-sm font-semibold text-muted-foreground mb-1">Setting</h4>
-                      <p className="text-sm italic">{game.narrative.setting}</p>
+                      <h4 className="text-xs font-semibold text-muted-foreground mb-1 uppercase tracking-wide">Setting</h4>
+                      <p className="italic">{game.narrative.setting}</p>
                     </div>
                   )}
                   {game.narrative.atmosphere && (
                     <div>
-                      <h4 className="text-sm font-semibold text-muted-foreground mb-1">Atmosphere</h4>
-                      <p className="text-sm italic">{game.narrative.atmosphere}</p>
+                      <h4 className="text-xs font-semibold text-muted-foreground mb-1 uppercase tracking-wide">Atmosphere</h4>
+                      <p className="italic">{game.narrative.atmosphere}</p>
                     </div>
                   )}
                 </CardContent>
               </Card>
             )}
 
-            {/* Investigation Timeline */}
             <Card>
-              <CardHeader>
-                <CardTitle className="text-lg">Investigation Timeline</CardTitle>
+              <CardHeader className="px-4 py-3">
+                <CardTitle className="text-lg">Turn Order</CardTitle>
+                <CardDescription>Host-only view of the rotation.</CardDescription>
               </CardHeader>
-              <CardContent>
-                <GameHistory gameId={gameId} />
+              <CardContent className="space-y-3 p-4">
+                <div className="flex items-center justify-between rounded-md border border-border/60 bg-muted/30 px-3 py-2 text-sm">
+                  <span className="text-xs uppercase tracking-wide text-muted-foreground">Turn</span>
+                  <span className="font-semibold">#{game.turnCount + 1}</span>
+                </div>
+                <div className="space-y-2">
+                  <div className="text-xs uppercase tracking-wide text-muted-foreground">Current Turn</div>
+                  {game.currentTurn ? (
+                    <div className="flex items-center gap-2 text-sm">
+                      <span
+                        className="h-2.5 w-2.5 rounded-full"
+                        style={{ backgroundColor: suspectColorById[game.currentTurn.suspectId] || "#b68b2d" }}
+                      />
+                      <span className="font-semibold">{game.currentTurn.playerName}</span>
+                      <span className="text-muted-foreground">
+                        ({game.currentTurn.suspectName})
+                      </span>
+                    </div>
+                  ) : (
+                    <div className="text-sm text-muted-foreground">Awaiting start.</div>
+                  )}
+                </div>
+                <div className="space-y-2">
+                  {game.turnOrder.length === 0 ? (
+                    <div className="text-sm text-muted-foreground">Turn order set at investigation start.</div>
+                  ) : (
+                    <div className="space-y-2">
+                      {game.turnOrder.map((player, index) => {
+                        const isActive = index === game.currentTurnIndex;
+                        return (
+                          <div
+                            key={`${player.name}-${player.suspectId}-${index}`}
+                            className={`flex items-center justify-between rounded-md border px-3 py-2 text-sm ${
+                              isActive ? "border-primary/60 bg-primary/10" : "border-border/60 bg-muted/30"
+                            }`}
+                          >
+                            <div className="flex items-center gap-2">
+                              <span
+                                className="h-2.5 w-2.5 rounded-full"
+                                style={{ backgroundColor: suspectColorById[player.suspectId] || "#b68b2d" }}
+                              />
+                              <span className={isActive ? "font-semibold" : undefined}>{player.name}</span>
+                            </div>
+                            <span className="text-xs uppercase tracking-wide text-muted-foreground">
+                              {isActive ? "Now" : `#${index + 1}`}
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
               </CardContent>
             </Card>
           </div>
 
-          {/* Elimination Tracker - player's local tracking */}
-          <div>
-            <EliminationTracker eliminated={playerMarks} onToggle={handleToggleMark} />
+          <div className="space-y-6">
+            {/* Investigation Timeline */}
+            <Card>
+              <CardHeader className="px-4 py-3">
+                <CardTitle className="text-lg">Investigation Timeline</CardTitle>
+                <CardDescription>Most recent events.</CardDescription>
+              </CardHeader>
+              <CardContent className="p-4">
+                <GameHistory gameId={gameId} maxItems={4} compact />
+              </CardContent>
+            </Card>
           </div>
         </div>
       )}
@@ -974,7 +1079,7 @@ export default function GamePage({ gameId, onNavigate }: Props) {
       {/* Accusation Modal */}
       {showAccusation && (
         <AccusationPanel
-          eliminated={playerMarks}
+          eliminated={emptyEliminated}
           onClose={() => {
             setShowAccusation(false);
             setPhoneAccusation(null);
@@ -986,32 +1091,32 @@ export default function GamePage({ gameId, onNavigate }: Props) {
       )}
 
       {secretPassageResult && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-6">
-          <Card className="max-w-lg w-full">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-6 host-modal-overlay">
+          <Card className="host-modal-card">
             <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-lg">
+              <CardTitle className="flex items-center gap-3 text-3xl md:text-4xl">
                 <DoorOpen className="h-5 w-5 text-primary" />
                 Secret Passage
               </CardTitle>
-              <CardDescription>
+              <CardDescription className="text-lg md:text-xl">
                 {secretPassageResult.outcome === "good" && "Fortune favors you."}
                 {secretPassageResult.outcome === "neutral" && "You pass unseen."}
                 {secretPassageResult.outcome === "bad" && "A complication arises."}
               </CardDescription>
             </CardHeader>
-            <CardContent className="space-y-4">
-              <p className="text-sm italic">{secretPassageResult.description}</p>
-              <div className="text-sm text-muted-foreground">
+            <CardContent className="space-y-6 host-modal-body">
+              <p className="italic">{secretPassageResult.description}</p>
+              <div className="text-muted-foreground">
                 Your turn continues.
               </div>
             </CardContent>
             <CardContent className="pt-0">
               {pendingPhoneContinue === "use_secret_passage" ? (
-                <p className="text-sm text-muted-foreground">
+                <p className="text-muted-foreground host-modal-body">
                   Waiting for the detective to continue from their phone.
                 </p>
               ) : (
-                <Button onClick={closeSecretPassage}>Continue</Button>
+                <Button size="lg" onClick={closeSecretPassage}>Continue</Button>
               )}
             </CardContent>
           </Card>
@@ -1019,61 +1124,61 @@ export default function GamePage({ gameId, onNavigate }: Props) {
       )}
 
       {showInterruptionIntro && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-6">
-          <Card className="max-w-lg w-full">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-6 host-modal-overlay">
+          <Card className="host-modal-card">
             <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-lg">
+              <CardTitle className="flex items-center gap-3 text-3xl md:text-4xl">
                 <Bell className="h-5 w-5 text-primary" />
                 Inspector Interruption
               </CardTitle>
-              <CardDescription>
+              <CardDescription className="text-lg md:text-xl">
                 Inspector Brown would like to see you.
               </CardDescription>
             </CardHeader>
             <CardContent className="pt-0">
-              <Button onClick={acknowledgeInterruptionIntro}>OK</Button>
+              <Button size="lg" onClick={acknowledgeInterruptionIntro}>OK</Button>
             </CardContent>
           </Card>
         </div>
       )}
 
       {showInterruption && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-6">
-          <Card className="max-w-lg w-full">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-6 host-modal-overlay">
+          <Card className="host-modal-card">
             <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-lg">
+              <CardTitle className="flex items-center gap-3 text-3xl md:text-4xl">
                 <Bell className="h-5 w-5 text-primary" />
                 Inspector Interruption
               </CardTitle>
-              <CardDescription>
+              <CardDescription className="text-lg md:text-xl">
                 Inspector Brown has an instruction for the table.
               </CardDescription>
             </CardHeader>
-            <CardContent className="space-y-4">
-              <p className="text-sm italic">
+            <CardContent className="space-y-6 host-modal-body">
+              <p className="italic">
                 {interruptionMessage || "Inspector Brown calls for an immediate pause in the investigation."}
               </p>
             </CardContent>
             <CardContent className="pt-0">
-              <Button onClick={closeInterruption}>Continue</Button>
+              <Button size="lg" onClick={closeInterruption}>Continue</Button>
             </CardContent>
           </Card>
         </div>
       )}
 
       {showInspectorNotes && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-6">
-          <Card className="max-w-xl w-full">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-6 host-modal-overlay">
+          <Card className="host-modal-card">
             <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-lg">
+              <CardTitle className="flex items-center gap-3 text-3xl md:text-4xl">
                 <BookOpen className="h-5 w-5 text-primary" />
                 Inspector's Notes
               </CardTitle>
-              <CardDescription>
+              <CardDescription className="text-lg md:text-xl">
                 Select a note to read. Only the current player should view the contents.
               </CardDescription>
             </CardHeader>
-            <CardContent className="space-y-4">
+            <CardContent className="space-y-6 host-modal-body">
               {!showLookAway && !revealedInspectorNote && (
                 <div className="grid gap-3 md:grid-cols-2">
                   <button
@@ -1105,10 +1210,10 @@ export default function GamePage({ gameId, onNavigate }: Props) {
 
               {showLookAway && !revealedInspectorNote && (
                 <div className="rounded-lg border border-primary/40 bg-secondary/40 p-4 text-center space-y-4">
-                  <p className="text-sm text-muted-foreground">
+                  <p className="text-muted-foreground">
                     Other players should look away now.
                   </p>
-                  <Button onClick={handleRevealInspectorNote}>
+                  <Button size="lg" onClick={handleRevealInspectorNote}>
                     Reveal Note
                   </Button>
                 </div>
@@ -1119,16 +1224,16 @@ export default function GamePage({ gameId, onNavigate }: Props) {
                   <div className="text-xs uppercase tracking-widest text-muted-foreground">
                     Confidential {revealedNoteId ? `(${revealedNoteId})` : ""}
                   </div>
-                  <p className="text-sm italic">{revealedInspectorNote}</p>
+                  <p className="italic">{revealedInspectorNote}</p>
                 </div>
               )}
             </CardContent>
             <CardContent className="pt-0 flex justify-between items-center">
-              <Button variant="outline" onClick={closeInspectorNotes}>
+              <Button size="lg" variant="outline" onClick={closeInspectorNotes}>
                 Close
               </Button>
               {revealedInspectorNote && (
-                <span className="text-sm text-muted-foreground">
+                <span className="text-muted-foreground host-modal-body">
                   {noteWasFirstRead ? "This ends your turn." : "You may continue your turn."}
                 </span>
               )}
@@ -1138,29 +1243,29 @@ export default function GamePage({ gameId, onNavigate }: Props) {
       )}
 
       {showEndTurnConfirm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-6">
-          <Card className="max-w-sm w-full">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-6 host-modal-overlay">
+          <Card className="host-modal-card">
             <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-lg">
+              <CardTitle className="flex items-center gap-3 text-3xl md:text-4xl">
                 <MessageCircle className="h-5 w-5 text-primary" />
                 Make Suggestion
               </CardTitle>
-              <CardDescription>
+              <CardDescription className="text-lg md:text-xl">
                 Announce your suggestion to the table. Once resolved, click Confirm Suggestion to end your turn.
               </CardDescription>
             </CardHeader>
             {pendingPhoneContinue === "make_suggestion" ? (
               <CardContent>
-                <p className="text-sm text-muted-foreground">
+                <p className="text-muted-foreground host-modal-body">
                   Waiting for the detective to continue from their phone.
                 </p>
               </CardContent>
             ) : (
               <CardContent className="flex gap-3">
-                <Button variant="outline" onClick={() => setShowEndTurnConfirm(false)}>
+                <Button size="lg" variant="outline" onClick={() => setShowEndTurnConfirm(false)}>
                   Cancel
                 </Button>
-                <Button onClick={handleEndTurn}>
+                <Button size="lg" onClick={handleEndTurn}>
                   Confirm Suggestion
                 </Button>
               </CardContent>

@@ -64,6 +64,9 @@ export interface LocalGame {
     suspectId: string;
   }[];
 
+  // Phone companion session link (optional)
+  phoneSessionCode?: string | null;
+
   // Turn order state
   turnOrder: {
     name: string;
@@ -74,6 +77,7 @@ export interface LocalGame {
 
   // Secret passage tracking
   secretPassageUses: number;
+  secretPassageTurnUsedAt: number | null;
 
   // Inspector interruptions
   interruptionCount: number;
@@ -86,6 +90,7 @@ export interface LocalGame {
     note1: boolean;
     note2: boolean;
   };
+  inspectorNoteTurnUsedAt: Record<string, number>;
 
   // Win state
   solvedBy: {
@@ -224,6 +229,7 @@ class GameStore {
     playerCount?: number;
     players?: { name: string; suspectId: string }[];
     useAI?: boolean;
+    phoneSessionCode?: string | null;
   }): Promise<LocalGame> {
     const {
       themeId,
@@ -231,6 +237,7 @@ class GameStore {
       playerCount = 3,
       players = [],
       useAI = false,
+      phoneSessionCode = null,
     } = options;
 
     // Call the scenario generation API
@@ -270,15 +277,18 @@ class GameStore {
       startedAt: null,
       revealedClueIds: [],
       players,
+      phoneSessionCode,
       turnOrder: [],
       currentTurnIndex: 0,
       turnCount: 0,
       secretPassageUses: 0,
+      secretPassageTurnUsedAt: null,
       interruptionCount: 0,
       nextInterruptionAtMinutes: null,
       roomsUnlocked: false,
       readInspectorNotes: {},
       inspectorNoteAnnouncements: { note1: false, note2: false },
+      inspectorNoteTurnUsedAt: {},
       solvedBy: null,
       actions: [],
     };
@@ -306,6 +316,8 @@ class GameStore {
     game.readInspectorNotes = {};
     game.inspectorNoteAnnouncements = { note1: false, note2: false };
     game.solvedBy = null;
+    game.secretPassageTurnUsedAt = null;
+    game.inspectorNoteTurnUsedAt = {};
 
     const resolvedPlayers = game.players.length > 0
       ? game.players
@@ -385,9 +397,13 @@ class GameStore {
     if (!game) throw new Error("Game not found");
     if (game.status !== "in_progress") throw new Error("Game not in progress");
 
+    if (game.secretPassageTurnUsedAt === game.turnCount) {
+      throw new Error("Secret passage already used this turn");
+    }
     const outcome = this.rollSecretPassageOutcome();
     const description = this.buildSecretPassageDescription(game, outcome);
     game.secretPassageUses += 1;
+    game.secretPassageTurnUsedAt = game.turnCount;
 
     this.addAction(game, "secret_passage", "system", {
       outcome,
@@ -459,12 +475,26 @@ class GameStore {
     if (!note) throw new Error("Inspector note not found");
     const alreadyRead = game.readInspectorNotes[readerId] || [];
     if (alreadyRead.includes(noteId)) {
-      throw new Error("Inspector note already read");
+      return { noteId, text: note.text };
+    }
+    const progress = game.scenario.clues.length > 0
+      ? game.currentClueIndex / game.scenario.clues.length
+      : 0;
+    const noteAvailable = noteId === "N1" ? progress >= 0.5 : progress >= 0.65;
+    if (!noteAvailable) {
+      throw new Error("Inspector note not available yet");
+    }
+    if (game.inspectorNoteTurnUsedAt[readerId] === game.turnCount) {
+      throw new Error("Inspector note already used this turn");
     }
 
     game.readInspectorNotes = {
       ...game.readInspectorNotes,
       [readerId]: [...alreadyRead, noteId],
+    };
+    game.inspectorNoteTurnUsedAt = {
+      ...game.inspectorNoteTurnUsedAt,
+      [readerId]: game.turnCount,
     };
     this.addAction(game, "inspector_interruption", "Inspector Brown", {
       type: "inspector_note",
@@ -787,6 +817,7 @@ class GameStore {
       } : null,
       turnCount: game.turnCount,
       secretPassageUses: game.secretPassageUses,
+      secretPassageTurnUsedAt: game.secretPassageTurnUsedAt ?? null,
       interruptionCount: game.interruptionCount,
       nextInterruptionAtMinutes: game.nextInterruptionAtMinutes,
       roomsUnlocked: game.roomsUnlocked,
@@ -794,7 +825,9 @@ class GameStore {
       inspectorNotes: scenario.inspectorNotes || [],
       readInspectorNotes: game.readInspectorNotes,
       inspectorNoteAnnouncements: game.inspectorNoteAnnouncements,
+      inspectorNoteTurnUsedAt: game.inspectorNoteTurnUsedAt,
       solvedBy: game.solvedBy,
+      phoneSessionCode: game.phoneSessionCode ?? null,
       currentClueIndex: game.currentClueIndex,
       totalClues: scenario.clues.length,
       cluesRemaining: scenario.clues.length - game.currentClueIndex,
@@ -828,6 +861,7 @@ export interface GameDataFormatted {
   theme: { id: string; name: string; description: string } | null;
   difficulty: Difficulty;
   playerCount: number;
+  phoneSessionCode?: string | null;
   createdAt: string;
   updatedAt: string;
   startedAt: string | null;
@@ -836,6 +870,7 @@ export interface GameDataFormatted {
   currentTurn: { suspectId: string; suspectName: string; playerName: string } | null;
   turnCount: number;
   secretPassageUses: number;
+  secretPassageTurnUsedAt: number | null;
   interruptionCount: number;
   nextInterruptionAtMinutes: number | null;
   roomsUnlocked: boolean;
@@ -843,6 +878,7 @@ export interface GameDataFormatted {
   inspectorNotes: { id: string; text: string; relatedClues?: number[] }[];
   readInspectorNotes: Record<string, string[]>;
   inspectorNoteAnnouncements: { note1: boolean; note2: boolean };
+  inspectorNoteTurnUsedAt: Record<string, number>;
   solvedBy: { playerName: string; suspectId: string } | null;
   currentClueIndex: number;
   totalClues: number;

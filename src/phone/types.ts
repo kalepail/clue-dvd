@@ -5,6 +5,8 @@ export interface PhoneSession {
   code: string;
   status: PhoneSessionStatus;
   currentTurnSuspectId?: string | null;
+  note1Available?: boolean;
+  note2Available?: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -24,6 +26,8 @@ export interface PhonePlayer {
   suspectName: string;
   notes: string;
   eliminations: PhoneEliminations;
+  inspectorNotes: string[];
+  inspectorNoteTexts: Record<string, string>;
   lastAccusationResult?: {
     correct: boolean;
     correctCount: number;

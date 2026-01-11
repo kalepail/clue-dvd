@@ -1,4 +1,3 @@
-import type { D1Database } from "@cloudflare/workers-types";
 import type {
   PhoneEliminations,
   PhoneEvent,
@@ -22,6 +21,8 @@ function rowToSession(row: Record<string, string>): PhoneSession {
     code: row.code,
     status: row.status as PhoneSessionStatus,
     currentTurnSuspectId: row.current_turn_suspect_id ?? null,
+    note1Available: row.note1_available ? Number(row.note1_available) === 1 : false,
+    note2Available: row.note2_available ? Number(row.note2_available) === 1 : false,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -29,6 +30,8 @@ function rowToSession(row: Record<string, string>): PhoneSession {
 
 function rowToPlayer(row: Record<string, string>): PhonePlayer {
   const eliminations = parseEliminations(row.eliminations);
+  const inspectorNotes = parseInspectorNotes(row.inspector_notes);
+  const inspectorNoteTexts = parseInspectorNoteTexts(row.inspector_note_texts);
   const lastAccusationUpdated = row.last_accusation_at;
   const lastAccusationCorrect =
     row.last_accusation_correct === undefined || row.last_accusation_correct === null
@@ -50,6 +53,8 @@ function rowToPlayer(row: Record<string, string>): PhonePlayer {
     suspectName: row.suspect_name || row.suspect_id,
     notes: row.notes,
     eliminations,
+    inspectorNotes,
+    inspectorNoteTexts,
     lastAccusationResult: lastAccusation,
     createdAt: row.created_at,
     lastSeenAt: row.last_seen_at,
@@ -78,6 +83,34 @@ function serializeEliminations(value: PhoneEliminations): string {
     locations: value.locations ?? [],
     times: value.times ?? [],
   });
+}
+
+function parseInspectorNotes(value: string | null): string[] {
+  if (!value) return [];
+  try {
+    const parsed = JSON.parse(value) as string[];
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function parseInspectorNoteTexts(value: string | null): Record<string, string> {
+  if (!value) return {};
+  try {
+    const parsed = JSON.parse(value) as Record<string, string>;
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function serializeInspectorNotes(value: string[]): string {
+  return JSON.stringify(value ?? []);
+}
+
+function serializeInspectorNoteTexts(value: Record<string, string>): string {
+  return JSON.stringify(value ?? {});
 }
 
 export async function createSession(db: D1Database): Promise<PhoneSession> {
@@ -147,7 +180,7 @@ export async function createPlayer(
   const eliminations = serializeEliminations(emptyEliminations());
   await db
     .prepare(
-      "INSERT INTO phone_players (id, session_id, name, suspect_id, suspect_name, reconnect_token, notes, eliminations) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
+      "INSERT INTO phone_players (id, session_id, name, suspect_id, suspect_name, reconnect_token, notes, eliminations, inspector_notes, inspector_note_texts) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
     )
     .bind(
       playerId,
@@ -157,7 +190,9 @@ export async function createPlayer(
       suspectNameMap[suspectId] ?? suspectId,
       reconnectToken,
       "",
-      eliminations
+      eliminations,
+      serializeInspectorNotes([]),
+      serializeInspectorNoteTexts({})
     )
     .run();
   const row = await db.prepare("SELECT * FROM phone_players WHERE id = ?").bind(playerId).first();
@@ -213,6 +248,35 @@ export async function updatePlayer(
   return rowToPlayer(row as Record<string, string>);
 }
 
+export async function updatePlayerInspectorNotes(
+  db: D1Database,
+  sessionId: string,
+  suspectId: string,
+  noteId: string,
+  noteText: string
+): Promise<void> {
+  const row = await db
+    .prepare("SELECT inspector_notes, inspector_note_texts FROM phone_players WHERE session_id = ? AND suspect_id = ?")
+    .bind(sessionId, suspectId)
+    .first();
+  const notes = parseInspectorNotes((row as Record<string, string> | null)?.inspector_notes ?? null);
+  const texts = parseInspectorNoteTexts((row as Record<string, string> | null)?.inspector_note_texts ?? null);
+  const nextNotes = notes.includes(noteId) ? notes : [...notes, noteId];
+  const nextTexts = { ...texts, [noteId]: noteText };
+
+  await db
+    .prepare(
+      "UPDATE phone_players SET inspector_notes = ?, inspector_note_texts = ?, last_seen_at = datetime('now') WHERE session_id = ? AND suspect_id = ?"
+    )
+    .bind(
+      serializeInspectorNotes(nextNotes),
+      serializeInspectorNoteTexts(nextTexts),
+      sessionId,
+      suspectId
+    )
+    .run();
+}
+
 export async function updatePlayerAccusationResult(
   db: D1Database,
   sessionId: string,
@@ -237,6 +301,22 @@ export async function touchPlayer(
     .run();
 }
 
+export async function updateSessionInspectorAvailability(
+  db: D1Database,
+  sessionId: string,
+  availability: { note1Available: boolean; note2Available: boolean }
+): Promise<void> {
+  await db
+    .prepare(
+      "UPDATE phone_sessions SET note1_available = ?, note2_available = ?, updated_at = datetime('now') WHERE id = ?"
+    )
+    .bind(
+      availability.note1Available ? 1 : 0,
+      availability.note2Available ? 1 : 0,
+      sessionId
+    )
+    .run();
+}
 export async function createEvent(
   db: D1Database,
   sessionId: string,

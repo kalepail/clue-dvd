@@ -10,6 +10,8 @@ import {
   touchPlayer,
   updatePlayerAccusationResult,
   updatePlayer,
+  updatePlayerInspectorNotes,
+  updateSessionInspectorAvailability,
 } from "./session-store";
 import { normalizeSessionCode } from "./utils";
 import type { PhoneEliminations, PhoneEventType } from "./types";
@@ -61,7 +63,9 @@ phone.post("/sessions/:code/turn", async (c) => {
   if (!session) {
     return c.json({ error: "Session not found" }, 404);
   }
-  const body = await c.req.json<{ suspectId?: string | null }>().catch(() => ({}));
+  const body = await c.req
+    .json<{ suspectId?: string | null }>()
+    .catch(() => ({} as { suspectId?: string | null }));
   const suspectId = typeof body.suspectId === "string" ? body.suspectId : null;
   await c.env.DB
     .prepare("UPDATE phone_sessions SET current_turn_suspect_id = ?, updated_at = datetime('now') WHERE id = ?")
@@ -77,11 +81,13 @@ phone.post("/sessions/:code/accusation-result", async (c) => {
   if (!session) {
     return c.json({ error: "Session not found" }, 404);
   }
-  const body = await c.req.json<{
-    suspectId?: string;
-    correct?: boolean;
-    correctCount?: number;
-  }>().catch(() => ({}));
+  const body = await c.req
+    .json<{
+      suspectId?: string;
+      correct?: boolean;
+      correctCount?: number;
+    }>()
+    .catch(() => ({} as { suspectId?: string; correct?: boolean; correctCount?: number }));
   if (!body.suspectId || typeof body.correct !== "boolean") {
     return c.json({ error: "Invalid accusation result payload" }, 400);
   }
@@ -93,13 +99,58 @@ phone.post("/sessions/:code/accusation-result", async (c) => {
   return c.json({ success: true });
 });
 
+// Update inspector note availability (host action)
+phone.post("/sessions/:code/notes-availability", async (c) => {
+  const code = normalizeSessionCode(c.req.param("code"));
+  const session = await getSessionByCode(c.env.DB, code);
+  if (!session) {
+    return c.json({ error: "Session not found" }, 404);
+  }
+  const body = await c.req
+    .json<{ note1Available?: boolean; note2Available?: boolean }>()
+    .catch(() => ({} as { note1Available?: boolean; note2Available?: boolean }));
+  if (typeof body.note1Available !== "boolean" || typeof body.note2Available !== "boolean") {
+    return c.json({ error: "Invalid availability payload" }, 400);
+  }
+  await updateSessionInspectorAvailability(c.env.DB, session.id, {
+    note1Available: body.note1Available,
+    note2Available: body.note2Available,
+  });
+  return c.json({ success: true });
+});
+
+// Record inspector note read (host action)
+phone.post("/sessions/:code/inspector-note", async (c) => {
+  const code = normalizeSessionCode(c.req.param("code"));
+  const session = await getSessionByCode(c.env.DB, code);
+  if (!session) {
+    return c.json({ error: "Session not found" }, 404);
+  }
+  const body = await c.req
+    .json<{
+      suspectId?: string;
+      noteId?: string;
+      noteText?: string;
+    }>()
+    .catch(() => ({} as { suspectId?: string; noteId?: string; noteText?: string }));
+
+  if (!body.suspectId || !body.noteId || !body.noteText) {
+    return c.json({ error: "Invalid inspector note payload" }, 400);
+  }
+
+  await updatePlayerInspectorNotes(c.env.DB, session.id, body.suspectId, body.noteId, body.noteText);
+  return c.json({ success: true });
+});
+
 // Join session as player
 phone.post("/sessions/:code/join", async (c) => {
   const code = normalizeSessionCode(c.req.param("code"));
-  const body = await c.req.json<{
-    name?: string;
-    suspectId?: string;
-  }>().catch(() => ({}));
+  const body = await c.req
+    .json<{
+      name?: string;
+      suspectId?: string;
+    }>()
+    .catch(() => ({} as { name?: string; suspectId?: string }));
 
   if (!body.name || !body.suspectId) {
     return c.json({ error: "Name and suspectId are required" }, 400);
@@ -137,7 +188,9 @@ phone.post("/sessions/:code/join", async (c) => {
 // Reconnect with token
 phone.post("/sessions/:code/reconnect", async (c) => {
   const code = normalizeSessionCode(c.req.param("code"));
-  const body = await c.req.json<{ reconnectToken?: string }>().catch(() => ({}));
+  const body = await c.req
+    .json<{ reconnectToken?: string }>()
+    .catch(() => ({} as { reconnectToken?: string }));
   if (!body.reconnectToken) {
     return c.json({ error: "Reconnect token required" }, 400);
   }
@@ -159,11 +212,13 @@ phone.post("/sessions/:code/reconnect", async (c) => {
 // Update player notes/eliminations
 phone.patch("/players/:playerId", async (c) => {
   const playerId = c.req.param("playerId");
-  const body = await c.req.json<{
-    reconnectToken?: string;
-    notes?: string;
-    eliminations?: PhoneEliminations;
-  }>().catch(() => ({}));
+  const body = await c.req
+    .json<{
+      reconnectToken?: string;
+      notes?: string;
+      eliminations?: PhoneEliminations;
+    }>()
+    .catch(() => ({} as { reconnectToken?: string; notes?: string; eliminations?: PhoneEliminations }));
 
   if (!body.reconnectToken) {
     return c.json({ error: "Reconnect token required" }, 400);
@@ -194,11 +249,13 @@ phone.patch("/players/:playerId", async (c) => {
 // Record a player action (turn action or accusation)
 phone.post("/players/:playerId/actions", async (c) => {
   const playerId = c.req.param("playerId");
-  const body = await c.req.json<{
-    reconnectToken?: string;
-    type?: PhoneEventType;
-    payload?: Record<string, unknown>;
-  }>().catch(() => ({}));
+  const body = await c.req
+    .json<{
+      reconnectToken?: string;
+      type?: PhoneEventType;
+      payload?: Record<string, unknown>;
+    }>()
+    .catch(() => ({} as { reconnectToken?: string; type?: PhoneEventType; payload?: Record<string, unknown> }));
 
   if (!body.reconnectToken || !body.type) {
     return c.json({ error: "Reconnect token and type required" }, 400);

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Sparkles } from "lucide-react";
 import { gameStore } from "../hooks/useGameStore";
 import { THEMES, DIFFICULTIES, PLAYER_COUNTS, SUSPECTS } from "../../shared/game-elements";
@@ -70,6 +70,13 @@ const suspectOrderByRow = [
   "S10", // Rusty
 ];
 
+const DEV_THEME_ID = "DEV01";
+const DEV_PLAYERS: PlayerSetup[] = [
+  { name: "Dev One", suspectId: "S01" },
+  { name: "Dev Two", suspectId: "S02" },
+  { name: "Dev Three", suspectId: "S03" },
+];
+
 function buildDefaultPlayers(count: number): PlayerSetup[] {
   return Array.from({ length: count }, () => ({
     name: "",
@@ -125,6 +132,18 @@ export default function NewGameModal({ onClose, onCreated }: Props) {
   const [pickerSelection, setPickerSelection] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const handleThemeChange = (value: string) => {
+    setThemeId(value);
+  };
+
+  useEffect(() => {
+    if (themeId !== DEV_THEME_ID) return;
+    setPlayerCount("3");
+    setPlayers(DEV_PLAYERS);
+    setPickerPlayerIndex(null);
+    setPickerSelection(null);
+  }, [themeId]);
 
   const handlePlayerCountChange = (value: string) => {
     setPlayerCount(value);
@@ -205,7 +224,7 @@ export default function NewGameModal({ onClose, onCreated }: Props) {
         <div className="space-y-5 py-4">
           <div className="space-y-2">
             <Label htmlFor="theme">Theme</Label>
-            <Select value={themeId} onValueChange={setThemeId}>
+            <Select value={themeId} onValueChange={handleThemeChange}>
               <SelectTrigger id="theme">
                 <SelectValue placeholder="Select a theme" />
               </SelectTrigger>

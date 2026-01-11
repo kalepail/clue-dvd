@@ -16,6 +16,7 @@ interface CardSymbolData {
 
 interface Props {
   solution: Solution;
+  forceReveal?: boolean;
 }
 
 // Symbol icons matching the physical card symbols
@@ -40,11 +41,14 @@ const POSITION_GRID: { position: number; row: number; col: number }[] = [
 function SolutionCard({
   cardData,
   label,
+  forceReveal = false,
 }: {
   cardData: CardSymbolData | null;
   label: string;
+  forceReveal?: boolean;
 }) {
   const [isRevealed, setIsRevealed] = useState(false);
+  const showReveal = forceReveal || isRevealed;
 
   if (!cardData) {
     return (
@@ -59,7 +63,7 @@ function SolutionCard({
 
   return (
     <div
-      className={`solution-card ${isRevealed ? "revealed" : ""}`}
+      className={`solution-card ${showReveal ? "revealed" : ""}`}
       onMouseEnter={() => setIsRevealed(true)}
       onMouseLeave={() => setIsRevealed(false)}
     >
@@ -110,14 +114,14 @@ function SolutionCard({
         {/* Magnifying glass hint */}
         <div className="magnifying-hint">
           <Search className="h-3 w-3" />
-          <span>Hover to reveal</span>
+          <span>{forceReveal ? "Reveal active" : "Hover to reveal"}</span>
         </div>
       </div>
     </div>
   );
 }
 
-export default function SolutionCards({ solution }: Props) {
+export default function SolutionCards({ solution, forceReveal = false }: Props) {
   const [symbolData, setSymbolData] = useState<{
     suspect: CardSymbolData | null;
     item: CardSymbolData | null;
@@ -173,18 +177,22 @@ export default function SolutionCards({ solution }: Props) {
         <SolutionCard
           cardData={symbolData.suspect}
           label="WHO"
+          forceReveal={forceReveal}
         />
         <SolutionCard
           cardData={symbolData.item}
           label="WHAT"
+          forceReveal={forceReveal}
         />
         <SolutionCard
           cardData={symbolData.location}
           label="WHERE"
+          forceReveal={forceReveal}
         />
         <SolutionCard
           cardData={symbolData.time}
           label="WHEN"
+          forceReveal={forceReveal}
         />
       </div>
 

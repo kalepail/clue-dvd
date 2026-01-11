@@ -5,6 +5,8 @@ CREATE TABLE IF NOT EXISTS phone_sessions (
   id TEXT PRIMARY KEY,
   code TEXT NOT NULL UNIQUE,
   status TEXT NOT NULL DEFAULT 'lobby' CHECK (status IN ('lobby', 'active', 'closed')),
+  note1_available INTEGER NOT NULL DEFAULT 0,
+  note2_available INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );

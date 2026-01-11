@@ -107,6 +107,36 @@ h3 {
   @apply font-bold text-sm;
 }
 
+.clue-display-text {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.latest-clue-card {
+  max-height: 220px;
+}
+
+.host-modal-card {
+  width: min(86vw, 900px);
+  max-height: 90vh;
+  overflow: auto;
+}
+
+.host-modal-body {
+  font-size: 1.35rem;
+  line-height: 1.5;
+}
+
+.host-modal-card .text-sm {
+  font-size: 1.2rem;
+}
+
+.host-modal-card .text-xs {
+  font-size: 1.1rem;
+}
+
 /* Progress bar */
 .progress-bar {
   @apply h-2 bg-secondary rounded-full overflow-hidden;

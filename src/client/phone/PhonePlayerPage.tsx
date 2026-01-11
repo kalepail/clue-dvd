@@ -106,6 +106,11 @@ export default function PhonePlayerPage({ code, onNavigate }: Props) {
   const accusationMessageHistoryRef = useRef<AccusationMessageHistory | null>(null);
   const [themeId, setThemeId] = useState("");
   const [difficulty, setDifficulty] = useState("intermediate");
+  const [secretPassageUsedThisTurn, setSecretPassageUsedThisTurn] = useState(false);
+  const lastTurnRef = useRef<string | null>(null);
+  const [selectedInspectorNote, setSelectedInspectorNote] = useState<string | null>(null);
+  const [pendingInspectorNote, setPendingInspectorNote] = useState<string | null>(null);
+  const [showInspectorNotes, setShowInspectorNotes] = useState(false);
   const suspectColorMap: Record<string, string> = {
     S01: "#da3f55",
     S02: "#dbad38",
@@ -198,6 +203,18 @@ export default function PhonePlayerPage({ code, onNavigate }: Props) {
         }
         setSession(data);
         const refreshedPlayer = data.players.find((entry) => entry.id === player.id);
+        if (refreshedPlayer) {
+          setPlayer((prev) =>
+            prev
+              ? {
+                  ...prev,
+                  inspectorNotes: refreshedPlayer.inspectorNotes ?? prev.inspectorNotes,
+                  inspectorNoteTexts: refreshedPlayer.inspectorNoteTexts ?? prev.inspectorNoteTexts,
+                  lastAccusationResult: refreshedPlayer.lastAccusationResult ?? prev.lastAccusationResult,
+                }
+              : refreshedPlayer
+          );
+        }
         if (refreshedPlayer?.lastAccusationResult?.updatedAt) {
           const lastSeen = lastAccusationSeenRef.current;
           const nextSeen = refreshedPlayer.lastAccusationResult.updatedAt;
@@ -308,6 +325,7 @@ export default function PhonePlayerPage({ code, onNavigate }: Props) {
       await sendPlayerAction(player.id, token, "turn_action", { action });
       setActionStatus(null);
       if (action === "use_secret_passage") {
+        setSecretPassageUsedThisTurn(true);
         setActionContinueMessage("Secret passage resolved on the host screen.");
         setShowActionContinue(true);
       } else if (action === "make_suggestion") {
@@ -417,6 +435,48 @@ export default function PhonePlayerPage({ code, onNavigate }: Props) {
   const currentTurnName = currentTurnSuspectId
     ? sortedRoster.find((entry) => entry.suspectId === currentTurnSuspectId)?.suspectName
     : null;
+  const inspectorNotes = player?.inspectorNotes ?? [];
+  const inspectorNoteTexts = player?.inspectorNoteTexts ?? {};
+  const note1Available = session?.session.note1Available ?? false;
+  const note2Available = session?.session.note2Available ?? false;
+
+  useEffect(() => {
+    if (lastTurnRef.current !== currentTurnSuspectId) {
+      setSecretPassageUsedThisTurn(false);
+      setPendingInspectorNote(null);
+      setSelectedInspectorNote(null);
+      lastTurnRef.current = currentTurnSuspectId;
+    }
+  }, [currentTurnSuspectId]);
+
+  const handleInspectorNoteSelect = (noteId: string) => {
+    if (inspectorNotes.includes(noteId)) {
+      setSelectedInspectorNote(noteId);
+      return;
+    }
+    if (!isPlayersTurn) {
+      setActionStatus("You can only read a new inspector note on your turn.");
+      return;
+    }
+    setPendingInspectorNote(noteId);
+  };
+
+  const confirmInspectorNote = async () => {
+    if (!pendingInspectorNote) return;
+    if (!player || !token) return;
+    setActionStatus("Requesting inspector note...");
+    try {
+      await sendPlayerAction(player.id, token, "turn_action", {
+        action: "read_inspector_note",
+        noteId: pendingInspectorNote,
+      });
+      setSelectedInspectorNote(pendingInspectorNote);
+      setPendingInspectorNote(null);
+      setActionStatus("Inspector note sent to your device.");
+    } catch (err) {
+      setActionStatus(err instanceof Error ? err.message : "Failed to request inspector note.");
+    }
+  };
 
 
   if (!player) {
@@ -464,7 +524,6 @@ export default function PhonePlayerPage({ code, onNavigate }: Props) {
             </div>
           </div>
         )}
-        {saving && <div className="phone-subtitle">Saving notes...</div>}
       </div>
 
       {!isActive && (
@@ -552,6 +611,13 @@ export default function PhonePlayerPage({ code, onNavigate }: Props) {
                   </div>
                   <button
                     type="button"
+                    className="phone-button secondary"
+                    onClick={() => sendAction("toggle_setup_symbols")}
+                  >
+                    Toggle Symbol Reveal
+                  </button>
+                  <button
+                    type="button"
                     className="phone-button"
                     onClick={() => sendAction("begin_investigation")}
                   >
@@ -592,6 +658,57 @@ export default function PhonePlayerPage({ code, onNavigate }: Props) {
                 />
               </div>
             )}
+            {showInspectorNotes && (
+              <div className="phone-modal-backdrop">
+                <div className="phone-modal phone-stack">
+                  <div className="phone-section-title">Inspector Notes</div>
+                  {(["N1", "N2"] as const).map((noteId) => {
+                    const isRead = inspectorNotes.includes(noteId);
+                    const available = noteId === "N1" ? note1Available : note2Available;
+                    const status = isRead
+                      ? "Read"
+                      : available
+                        ? isPlayersTurn
+                          ? "Use Turn"
+                          : "Available"
+                        : "Unavailable";
+                    return (
+                      <button
+                        key={noteId}
+                        type="button"
+                        className="phone-button secondary"
+                        onClick={() => handleInspectorNoteSelect(noteId)}
+                        disabled={!isRead && (!isPlayersTurn || !available)}
+                      >
+                        {noteId === "N1" ? "Note 1" : "Note 2"} · {status}
+                      </button>
+                    );
+                  })}
+                  {pendingInspectorNote && (
+                    <button type="button" className="phone-button" onClick={confirmInspectorNote}>
+                      Confirm Read {pendingInspectorNote === "N1" ? "Note 1" : "Note 2"}
+                    </button>
+                  )}
+                  {selectedInspectorNote && inspectorNoteTexts[selectedInspectorNote] && (
+                    <div className="phone-card">
+                      <div className="phone-section-title">
+                        Inspector Note {selectedInspectorNote === "N1" ? "1" : "2"}
+                      </div>
+                      <div className="phone-subtitle">
+                        {inspectorNoteTexts[selectedInspectorNote]}
+                      </div>
+                    </div>
+                  )}
+                  <button
+                    type="button"
+                    className="phone-button secondary"
+                    onClick={() => setShowInspectorNotes(false)}
+                  >
+                    Close
+                  </button>
+                </div>
+              </div>
+            )}
 
             {tab === "eliminations" && (
               <div className="phone-card phone-stack">
@@ -618,7 +735,7 @@ export default function PhonePlayerPage({ code, onNavigate }: Props) {
                         checked={eliminations.items.includes(item.id)}
                         onChange={() => toggleElimination("items", item.id)}
                       />
-                      {item.nameUS}
+                      {item.name}
                     </label>
                   ))}
                 </div>
@@ -680,8 +797,7 @@ export default function PhonePlayerPage({ code, onNavigate }: Props) {
                   <button
                     type="button"
                     className="phone-action-tile"
-                    onClick={() => sendAction("read_inspector_note")}
-                    disabled={!isPlayersTurn}
+                    onClick={() => setShowInspectorNotes(true)}
                     style={accentTileStyle}
                   >
                     <div className="phone-action-title">Read Inspector Note</div>
@@ -691,11 +807,13 @@ export default function PhonePlayerPage({ code, onNavigate }: Props) {
                     type="button"
                     className="phone-action-tile"
                     onClick={() => sendAction("use_secret_passage")}
-                    disabled={!isPlayersTurn}
+                    disabled={!isPlayersTurn || secretPassageUsedThisTurn}
                     style={accentTileStyle}
                   >
                     <div className="phone-action-title">Use Secret Passage</div>
-                    <div className="phone-action-subtitle">Risk it for a shortcut.</div>
+                    <div className="phone-action-subtitle">
+                      {secretPassageUsedThisTurn ? "Already used this turn." : "Risk it for a shortcut."}
+                    </div>
                   </button>
                   <button
                     type="button"
@@ -747,7 +865,7 @@ export default function PhonePlayerPage({ code, onNavigate }: Props) {
                             setAccusation((prev) => ({ ...prev, itemId: item.id }))
                           }
                         >
-                          <img src={itemImageById[item.id]} alt={item.nameUS} />
+                          <img src={itemImageById[item.id]} alt={item.name} />
                           {null}
                         </button>
                       ))}

@@ -6,7 +6,6 @@ import type { PhoneSessionSummary } from "../../phone/types";
 import {
   clearHostSessionCode,
   consumeHostAutoCreate,
-  loadHostSessionCode,
   storeHostSessionCode,
 } from "../phone/storage";
 import { Button } from "@/client/components/ui/button";
@@ -23,25 +22,13 @@ export default function HostLobbyPage({ onNavigate }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [lastEventId, setLastEventId] = useState<number | null>(null);
 
-  const loadExisting = async (code: string) => {
-    try {
-      const data = await getSession(code);
-      setSession(data);
-    } catch {
-      clearHostSessionCode();
-    }
-  };
-
   useEffect(() => {
     if (session) return;
-    const storedCode = loadHostSessionCode();
-    if (storedCode) {
-      loadExisting(storedCode);
-      return;
-    }
     if (consumeHostAutoCreate()) {
       handleCreateLobby();
+      return;
     }
+    clearHostSessionCode();
   }, [session]);
 
   useEffect(() => {
@@ -85,6 +72,7 @@ export default function HostLobbyPage({ onNavigate }: Props) {
               playerCount: players.length,
               players,
               useAI: false,
+              phoneSessionCode: session.session.code,
             });
             onNavigate(`/game/${game.id}`);
             return;

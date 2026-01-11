@@ -1,17 +1,14 @@
-- Seems like there are a lot of type errors, add type checking and check and fix all type errors. Be careful and ensure modern programming best practices
-
-- Remove wrong accusation counter
-- Remove specific accusation made
-- Adjust investigation board section for host computer
 - Continue to work on overall style and flow
 - Implement mobile compatibility
 - Adjust header for WHO/WHAT/WHERE/WHEN (accusation screen) so the question is not repeated underneath
 - Phone accusation feedback: show a "so close" message when the accusation is not fully correct, and show a win screen when correct; later propagate win to all devices.
 - Implement a win screen that affects all devices when a player solves the case (host + phones).
+- Remove the DEV01 auto-fill (default player names/suspects) before production.
 - Add phone-side "Read Inspector's Note" graphic/screens.
 - Make "reveal next clue" a pop-down/interruption window (not just a host update); add more drama.
 - Add a dramatic win screen when a player gets the correct answer.
 - Overhaul the phone notes screen and the phone elims tab.
+- Overhaul the phone notes UI (current save indicator removed for stability).
 
 - We may want to build out a bunch of supporting factual reference docs which the AI can use as context to ensure it doesn't hallucenate or make up stuff that doesn't exist. We need to ensure
   accuracty to the actual game elements as folks will be playing this on the actual gameboard.
@@ -35,3 +32,4 @@
   IDEAS:
  -  Make the butler's pantry a potential place of the crime
  -  Have the inspector be a suspect
+ -  Add client-side record of accusations previously made (phone-only, private)

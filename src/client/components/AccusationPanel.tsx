@@ -11,7 +11,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/client/components/ui/dialog";
-import { Label } from "@/client/components/ui/label";
 
 interface Props {
   eliminated: EliminationState;
@@ -21,7 +20,7 @@ interface Props {
     itemId: string;
     locationId: string;
     timeId: string;
-  }) => Promise<{ correct: boolean; message: string; aiResponse?: string }>;
+  }) => Promise<{ correct: boolean; message: string; aiResponse?: string; correctCount: number; wrongCount: number }>;
   presetAccusation?: {
     suspectId: string;
     itemId: string;
@@ -39,7 +38,7 @@ function AccusationCard({
   onPick,
 }: {
   option: { id: string; name: string };
-  imageSrc: string | null;
+  imageSrc?: string;
   isSelected: boolean;
   isEliminated: boolean;
   onPick: () => void;
@@ -278,10 +277,7 @@ export default function AccusationPanel({
         ) : (
           <>
             <div className="space-y-5 py-4">
-              <div className="text-center space-y-2">
-                <Label className="text-xs uppercase tracking-[0.3em] text-primary">
-                  {currentStep.label}
-                </Label>
+              <div className="text-center">
                 <div className="text-lg">{currentStep.title}</div>
               </div>
 
@@ -296,7 +292,7 @@ export default function AccusationPanel({
                 {currentStep.options.map((option) => {
                   const isSelected = currentStep.value === option.id;
                   const isEliminated = currentStep.eliminatedIds.includes(option.id);
-                  const imageSrc = currentStep.imageMap ? currentStep.imageMap[option.id] : null;
+                  const imageSrc = currentStep.imageMap ? currentStep.imageMap[option.id] : undefined;
                   return (
                     <AccusationCard
                       key={option.id}

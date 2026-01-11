@@ -62,25 +62,27 @@ export default function App() {
 
   return (
     <>
-      <header className="bg-gradient-to-b from-secondary to-background border-b-2 border-primary p-6 text-center">
-        <h1 className="mb-1">Clue DVD Game</h1>
-        <p className="text-muted-foreground italic text-lg">
-          Mystery at Tudor Mansion, 1926
-        </p>
-        <nav className="flex justify-center gap-4 mt-4">
-          <a
-            href="#/"
-            className={cn(
-              "text-muted-foreground no-underline px-4 py-2 border-b-2 border-transparent transition-all uppercase text-sm tracking-wide",
-              "hover:text-primary hover:border-primary",
-              route.page === "home" && "text-primary border-primary"
-            )}
-            style={{ fontFamily: "var(--font-display)" }}
-          >
-            Games
-          </a>
-        </nav>
-      </header>
+      {route.page === "home" && (
+        <header className="bg-gradient-to-b from-secondary to-background border-b-2 border-primary p-6 text-center">
+          <h1 className="mb-1">Clue DVD Game</h1>
+          <p className="text-muted-foreground italic text-lg">
+            Mystery at Tudor Mansion, 1926
+          </p>
+          <nav className="flex justify-center gap-4 mt-4">
+            <a
+              href="#/"
+              className={cn(
+                "text-muted-foreground no-underline px-4 py-2 border-b-2 border-transparent transition-all uppercase text-sm tracking-wide",
+                "hover:text-primary hover:border-primary",
+                route.page === "home" && "text-primary border-primary"
+              )}
+              style={{ fontFamily: "var(--font-display)" }}
+            >
+              Games
+            </a>
+          </nav>
+        </header>
+      )}
 
       <main className="max-w-6xl mx-auto p-8 flex-1">
         {route.page === "home" ? (

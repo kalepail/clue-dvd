@@ -80,6 +80,7 @@ export default function PhoneHostPage({ onNavigate }: Props) {
               playerCount: players.length,
               players,
               useAI: false,
+              phoneSessionCode: session.session.code,
             });
             onNavigate(`/game/${game.id}`);
             return;
