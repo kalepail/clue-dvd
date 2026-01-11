@@ -12,6 +12,7 @@ import {
   updatePlayer,
   updatePlayerInspectorNotes,
   updateSessionInspectorAvailability,
+  updateSessionInterruptionStatus,
 } from "./session-store";
 import { normalizeSessionCode } from "./utils";
 import type { PhoneEliminations, PhoneEventType } from "./types";
@@ -115,6 +116,26 @@ phone.post("/sessions/:code/notes-availability", async (c) => {
   await updateSessionInspectorAvailability(c.env.DB, session.id, {
     note1Available: body.note1Available,
     note2Available: body.note2Available,
+  });
+  return c.json({ success: true });
+});
+
+// Update interruption status (host action)
+phone.post("/sessions/:code/interruption", async (c) => {
+  const code = normalizeSessionCode(c.req.param("code"));
+  const session = await getSessionByCode(c.env.DB, code);
+  if (!session) {
+    return c.json({ error: "Session not found" }, 404);
+  }
+  const body = await c.req
+    .json<{ active?: boolean; message?: string }>()
+    .catch(() => ({} as { active?: boolean; message?: string }));
+  if (typeof body.active !== "boolean" || typeof body.message !== "string") {
+    return c.json({ error: "Invalid interruption payload" }, 400);
+  }
+  await updateSessionInterruptionStatus(c.env.DB, session.id, {
+    active: body.active,
+    message: body.message,
   });
   return c.json({ success: true });
 });

@@ -12,7 +12,7 @@ import { Progress } from "@/client/components/ui/progress";
 import { IconStat } from "@/client/components/ui/icon-stat";
 import type { EliminationState } from "../../shared/api-types";
 import { getLocationName } from "../../shared/game-elements";
-import { closeSession, getSessionEvents, sendAccusationResult, sendInspectorNoteResult, updateInspectorNoteAvailability, updateSessionTurn } from "../phone/api";
+import { closeSession, getSessionEvents, sendAccusationResult, sendInspectorNoteResult, updateInspectorNoteAvailability, updateInterruptionStatus, updateSessionTurn } from "../phone/api";
 import { clearHostSessionCode, setHostAutoCreate } from "../phone/storage";
 
 interface Props {
@@ -174,6 +174,11 @@ export default function GamePage({ gameId, onNavigate }: Props) {
             } else if (action === "continue_investigation") {
               setShowAccusation(false);
               setPhoneAccusation(null);
+              if (showInterruptionIntro) {
+                acknowledgeInterruptionIntro();
+              } else if (showInterruption) {
+                closeInterruption();
+              }
               if (pendingPhoneContinue === "make_suggestion") {
                 handleEndTurn();
               } else if (pendingPhoneContinue === "use_secret_passage") {
@@ -205,6 +210,12 @@ export default function GamePage({ gameId, onNavigate }: Props) {
             } else if (action === "make_suggestion" && game.status === "in_progress") {
               setShowEndTurnConfirm(true);
               setPendingPhoneContinue("make_suggestion");
+            } else if (action === "acknowledge_interruption") {
+              if (showInterruptionIntro) {
+                acknowledgeInterruptionIntro();
+              } else if (showInterruption) {
+                closeInterruption();
+              }
             }
           } else if (event.type === "accusation") {
             if (game.status !== "in_progress") continue;
@@ -223,7 +234,7 @@ export default function GamePage({ gameId, onNavigate }: Props) {
       }
     }, 1200);
     return () => window.clearInterval(interval);
-  }, [game, lastPhoneEventId, pendingPhoneContinue, revealingClue]);
+  }, [game, lastPhoneEventId, pendingPhoneContinue, revealingClue, showInterruption, showInterruptionIntro]);
 
   useEffect(() => {
     if (!game || (game.status !== "in_progress" && game.status !== "setup")) return;
@@ -241,6 +252,16 @@ export default function GamePage({ gameId, onNavigate }: Props) {
     if (!code) return;
     updateInspectorNoteAvailability(code, { note1Available, note2Available }).catch(() => undefined);
   }, [game?.status, note1Available, note2Available, phoneSessionCode]);
+
+  useEffect(() => {
+    if (!game || game.status !== "in_progress") return;
+    const code = phoneSessionCode;
+    if (!code) return;
+    updateInterruptionStatus(code, {
+      active: showInterruption || showInterruptionIntro,
+      message: showInterruption || showInterruptionIntro ? interruptionMessage : "",
+    }).catch(() => undefined);
+  }, [game?.status, interruptionMessage, phoneSessionCode, showInterruption, showInterruptionIntro]);
 
   useEffect(() => {
     if (!game?.startedAt || game.status !== "in_progress") return;

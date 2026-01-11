@@ -7,6 +7,8 @@ export interface PhoneSession {
   currentTurnSuspectId?: string | null;
   note1Available?: boolean;
   note2Available?: boolean;
+  interruptionActive?: boolean;
+  interruptionMessage?: string;
   createdAt: string;
   updatedAt: string;
 }

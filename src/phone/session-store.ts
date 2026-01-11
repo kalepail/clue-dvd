@@ -23,6 +23,8 @@ function rowToSession(row: Record<string, string>): PhoneSession {
     currentTurnSuspectId: row.current_turn_suspect_id ?? null,
     note1Available: row.note1_available ? Number(row.note1_available) === 1 : false,
     note2Available: row.note2_available ? Number(row.note2_available) === 1 : false,
+    interruptionActive: row.interruption_active ? Number(row.interruption_active) === 1 : false,
+    interruptionMessage: row.interruption_message ?? "",
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -315,6 +317,19 @@ export async function updateSessionInspectorAvailability(
       availability.note2Available ? 1 : 0,
       sessionId
     )
+    .run();
+}
+
+export async function updateSessionInterruptionStatus(
+  db: D1Database,
+  sessionId: string,
+  status: { active: boolean; message: string }
+): Promise<void> {
+  await db
+    .prepare(
+      "UPDATE phone_sessions SET interruption_active = ?, interruption_message = ?, updated_at = datetime('now') WHERE id = ?"
+    )
+    .bind(status.active ? 1 : 0, status.message, sessionId)
     .run();
 }
 export async function createEvent(

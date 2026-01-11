@@ -95,6 +95,7 @@ export default function PhonePlayerPage({ code, onNavigate }: Props) {
   const [actionContinueMessage, setActionContinueMessage] = useState<string | null>(null);
   const [pendingRevealConfirm, setPendingRevealConfirm] = useState(false);
   const [pendingSuggestionConfirm, setPendingSuggestionConfirm] = useState(false);
+  const [interruptionConfirming, setInterruptionConfirming] = useState(false);
   const [accusationFeedback, setAccusationFeedback] = useState<{
     correct: boolean;
     correctCount: number;
@@ -397,6 +398,16 @@ export default function PhonePlayerPage({ code, onNavigate }: Props) {
     await sendAction("make_suggestion");
   };
 
+  const confirmInterruption = async () => {
+    if (!player || !token) return;
+    setInterruptionConfirming(true);
+    try {
+      await sendPlayerAction(player.id, token, "turn_action", { action: "acknowledge_interruption" });
+    } finally {
+      setInterruptionConfirming(false);
+    }
+  };
+
   const startGame = async () => {
     if (!player || !token) return;
     setActionStatus("Starting game...");
@@ -440,6 +451,8 @@ export default function PhonePlayerPage({ code, onNavigate }: Props) {
   const inspectorNoteTexts = player?.inspectorNoteTexts ?? {};
   const note1Available = session?.session.note1Available ?? false;
   const note2Available = session?.session.note2Available ?? false;
+  const interruptionActive = session?.session.interruptionActive ?? false;
+  const interruptionMessage = session?.session.interruptionMessage ?? "";
 
   useEffect(() => {
     if (lastTurnRef.current !== currentTurnSuspectId) {
@@ -1006,6 +1019,25 @@ export default function PhonePlayerPage({ code, onNavigate }: Props) {
                 Confirm
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {isLead && interruptionActive && (
+        <div className="phone-scrim">
+          <div className="phone-scrim-card phone-scrim-card-stack">
+            <div className="phone-section-title">Inspector Interruption</div>
+            <div className="phone-subtitle">
+              Inspector Brown would like a word...
+            </div>
+            <button
+              type="button"
+              className="phone-button"
+              onClick={confirmInterruption}
+              disabled={interruptionConfirming}
+            >
+              {interruptionConfirming ? "Sending..." : "Continue"}
+            </button>
           </div>
         </div>
       )}

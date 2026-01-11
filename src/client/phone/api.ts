@@ -149,6 +149,20 @@ export async function updateInspectorNoteAvailability(
   }
 }
 
+export async function updateInterruptionStatus(
+  code: string,
+  status: { active: boolean; message: string }
+): Promise<void> {
+  const response = await fetch(`/api/phone/sessions/${code}/interruption`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(status),
+  });
+  if (!response.ok) {
+    throw new Error("Failed to update interruption status");
+  }
+}
+
 export async function sendInspectorNoteResult(
   code: string,
   suspectId: string,
