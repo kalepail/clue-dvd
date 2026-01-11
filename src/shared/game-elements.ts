@@ -103,6 +103,7 @@ export const TIMES: GameElement[] = [
 // ============================================
 
 export const THEMES: ThemeElement[] = [
+  { id: "DEV01", name: "Developer Test Case", description: "Fixed-solution test theme", period: "Testing Window" },
   { id: "M01", name: "The Monte Carlo Affair", description: "A gambling-themed weekend with high stakes and higher tensions", period: "September 1925" },
   { id: "M02", name: "The Garden Party", description: "An outdoor celebration turns sinister when something goes missing", period: "Fall 1925" },
   { id: "M03", name: "A Bad Sport", description: "Competitive games bring out the worst in the guests", period: "Fall 1925" },

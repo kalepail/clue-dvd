@@ -469,6 +469,14 @@ export interface MysteryTheme {
 
 export const MYSTERY_THEMES: MysteryTheme[] = [
   {
+    id: "DEV01",
+    name: "Developer Test Case",
+    period: "Testing Window",
+    description: "A fixed-solution test theme for development verification",
+    typicalLockedRooms: [],
+    atmosphericElements: ["debug lanterns", "quiet corridors", "controlled conditions"],
+  },
+  {
     id: "M01",
     name: "The Monte Carlo Affair",
     period: "September 1925",

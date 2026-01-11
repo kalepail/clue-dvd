@@ -57,6 +57,14 @@ import type {
   ClueSpeaker,
 } from "../types/campaign";
 
+const DEV_THEME_ID = "DEV01";
+const DEV_SOLUTION = {
+  suspectId: "S05", // Mrs. Peacock
+  itemId: "I07", // Letter Opener
+  locationId: "L07", // Billiard Room
+  timeId: "T09", // Night
+};
+
 // ============================================
 // MAIN ENTRY POINT
 // ============================================
@@ -74,12 +82,18 @@ export function planCampaign(request: GenerateCampaignRequest = {}): CampaignPla
   const theme = selectTheme(rng, request.themeId);
 
   // 2. Select solution
-  const solution = selectSolution(rng, {
+  let solution = selectSolution(rng, {
     excludeSuspects: request.excludeSuspects,
     excludeItems: request.excludeItems,
     excludeLocations: request.excludeLocations,
     excludeTimes: request.excludeTimes,
   });
+  if (theme.id === DEV_THEME_ID) {
+    const forced = selectForcedSolution();
+    if (forced) {
+      solution = forced;
+    }
+  }
 
   // 3. Plan eliminations for each category
   const eliminationPlans = planAllEliminations(rng, solution, settings);
@@ -124,6 +138,15 @@ export function planCampaign(request: GenerateCampaignRequest = {}): CampaignPla
     dramaticEvents,
     validation,
   };
+}
+
+function selectForcedSolution(): SolutionSelection | null {
+  const suspect = SUSPECTS.find((s) => s.id === DEV_SOLUTION.suspectId);
+  const item = ITEMS.find((i) => i.id === DEV_SOLUTION.itemId);
+  const location = LOCATIONS.find((l) => l.id === DEV_SOLUTION.locationId);
+  const time = TIME_PERIODS.find((t) => t.id === DEV_SOLUTION.timeId);
+  if (!suspect || !item || !location || !time) return null;
+  return { suspect, item, location, time };
 }
 
 // ============================================
