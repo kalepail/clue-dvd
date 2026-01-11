@@ -9,6 +9,8 @@ npm install
 npm run dev      # Development server
 ```
 
+Open the app at `http://localhost:5173` (Vite default).
+
 ```bash
 npm run deploy   # Deploy to Cloudflare Workers
 ```
@@ -25,6 +27,17 @@ Pass the `CloudflareBindings` as generics when instantiation `Hono`:
 // src/index.ts
 const app = new Hono<{ Bindings: CloudflareBindings }>()
 ```
+
+### Phone Companion (Optional)
+
+Phone sessions (lobby, players, notes, events) are stored in Cloudflare D1.
+
+```bash
+# Apply phone-session migrations to local D1
+wrangler d1 migrations apply clue-dvd-games --local
+```
+
+Host a lobby from `#/host-lobby` or `#/phone/host`, then have players join at `#/phone` with the code.
 
 ---
 
@@ -64,14 +77,15 @@ This web app acts as the **game master** for the 2006 Clue DVD Game, generating:
 | Elimination Tracking | Complete | Track deductions in UI |
 | Clue Reveal System | Complete | Progressive clue revelation |
 | Accusation System | Complete | Make accusations, win/lose |
-| Game Persistence | Client-only | Games saved to localStorage |
+| Phone Companion | Complete | D1-backed sessions for notes, eliminations, turns, accusations |
+| Game Persistence | Client-only | Games saved to localStorage (phone state in D1) |
 
 ### What's Not Built Yet
 
 | Feature | Status | Notes |
 |---------|--------|-------|
 | Server-side Game Persistence | Not started | Games only in localStorage |
-| Multiplayer/Sessions | Not started | No shared game state |
+| Real-time Sync | Not started | Phone uses polling, no WebSocket sync |
 | Physical Card Verification | Not started | Manual honor system |
 | Sound/Voice | Not started | Original DVD had Inspector Brown voice |
 
@@ -109,6 +123,7 @@ This web app acts as the **game master** for the 2006 Clue DVD Game, generating:
 |  +------------------------------------------------------+   |
 |  |                    Routes                             |   |
 |  |  /api/scenarios  /api/symbols  /api/setup  /api/*    |   |
+|  |  /api/phone (D1-backed phone sessions)               |   |
 |  +------------------------------------------------------+   |
 |                           |                                  |
 |  +------------------------+----------------------------+    |
@@ -142,6 +157,11 @@ This web app acts as the **game master** for the 2006 Clue DVD Game, generating:
 | Create new game | `/api/scenarios/generate` | POST | Generate scenario |
 | Create with AI | `/api/scenarios/generate-enhanced` | POST | AI-enhanced scenario |
 | Get card symbols | `/api/symbols/cards/:cardId` | GET | Symbol positions for card |
+| Phone session | `/api/phone/sessions` | POST | Create phone lobby |
+| Phone join | `/api/phone/sessions/:code/join` | POST | Join with name + suspect |
+| Phone reconnect | `/api/phone/sessions/:code/reconnect` | POST | Reconnect with token |
+| Phone events | `/api/phone/sessions/:code/events` | GET | Poll turn/accusation events |
+| Update phone player | `/api/phone/players/:playerId` | PATCH | Save notes/eliminations |
 
 ### Scenario Generation Request
 
@@ -262,6 +282,20 @@ This web app acts as the **game master** for the 2006 Clue DVD Game, generating:
 | `POST /validate` | POST | Validate existing scenario |
 | `POST /generate-enhanced` | POST | AI-enhanced scenario |
 
+#### Phone Routes (`/api/phone`)
+| Endpoint | Method | Purpose |
+|----------|--------|---------|
+| `POST /sessions` | POST | Create phone lobby |
+| `GET /sessions/:code` | GET | Get lobby + players |
+| `POST /sessions/:code/close` | POST | Close lobby |
+| `POST /sessions/:code/turn` | POST | Set current turn |
+| `POST /sessions/:code/accusation-result` | POST | Record accusation outcome |
+| `POST /sessions/:code/join` | POST | Join lobby as player |
+| `POST /sessions/:code/reconnect` | POST | Reconnect with token |
+| `PATCH /players/:playerId` | PATCH | Save notes + eliminations |
+| `POST /players/:playerId/actions` | POST | Send turn/accusation action |
+| `GET /sessions/:code/events` | GET | Poll events |
+
 ---
 
 ## Data Flow
@@ -330,6 +364,21 @@ GamePage loads game from GameStore
 +-----------------+
 ```
 
+### Phone Companion Flow
+
+```
+Host creates lobby (#/host-lobby or #/phone/host)
+        |
+        v
+Players join (#/phone) with code + suspect
+        |
+        v
+Phone events + notes saved in D1 (polling)
+        |
+        v
+Host game reacts to turn actions + accusations
+```
+
 ---
 
 ## File Structure
@@ -369,6 +418,12 @@ src/
 │   ├── api-types.ts                  # Request/response types
 │   ├── game-elements.ts              # Simple display data
 │   └── index.ts                      # Re-exports
+│
+├── phone/                            # D1-backed phone session APIs
+│   ├── routes.ts                     # Phone endpoints
+│   ├── session-store.ts              # D1 access layer
+│   ├── types.ts                      # Phone session types
+│   └── utils.ts                      # Session helpers
 │
 └── client/                           # React frontend
     ├── App.tsx                       # Router + header
@@ -535,9 +590,10 @@ Phase 3: VALIDATION (campaign-validator.ts)
 
 ## State Management
 
-### Client-Side Only Architecture
+### Client-Side Game State
 
-**All game state lives in localStorage.** The backend is stateless - it only generates scenarios on demand.
+**Game state lives in localStorage.** The backend is stateless for games, and only generates scenarios on demand.
+Phone session state (players, notes, events) is stored in D1.
 
 ```typescript
 // LocalGame structure (stored in localStorage)
@@ -577,6 +633,8 @@ Located in `src/shared/`:
 - **api-types.ts** - All request/response interfaces
 - **game-elements.ts** - Display data for suspects, items, locations, times, themes
 
+Phone session types live in `src/phone/types.ts`.
+
 Key shared types:
 
 ```typescript
@@ -609,6 +667,7 @@ npm run dev          # Local dev server
 npm run build        # Build for production
 npm run deploy       # Deploy to Cloudflare
 npm run cf-typegen   # Generate Cloudflare types
+npm run typecheck    # TypeScript checks
 ```
 
 ### Testing
@@ -624,7 +683,7 @@ npm test             # Run tests (campaign-system.test.ts)
 ### Potential Enhancements
 
 1. **Server-side persistence** - Save games to D1/KV
-2. **Multiplayer sessions** - Real-time shared game state
+2. **Real-time sessions** - Replace polling with WebSockets
 3. **Voice synthesis** - Inspector Brown TTS
 4. **Mobile app** - PWA or native
 5. **More themes** - Custom scenario creation
