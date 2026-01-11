@@ -120,6 +120,17 @@
   flex: 1;
 }
 
+.phone-accusation-steps {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.phone-accusation-step.active {
+  border-color: var(--phone-accent);
+  box-shadow: 0 0 0 1px rgba(var(--phone-accent-rgb), 0.35);
+}
+
 .phone-tabs {
   display: grid;
   grid-template-columns: repeat(4, 1fr);

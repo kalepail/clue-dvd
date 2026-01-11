@@ -89,6 +89,7 @@ export default function PhonePlayerPage({ code, onNavigate }: Props) {
     locationId: "",
     timeId: "",
   });
+  const [accusationStep, setAccusationStep] = useState<"suspect" | "item" | "location" | "time">("suspect");
   const [showAccusationNotice, setShowAccusationNotice] = useState(false);
   const [showActionContinue, setShowActionContinue] = useState(false);
   const [actionContinueMessage, setActionContinueMessage] = useState<string | null>(null);
@@ -447,6 +448,12 @@ export default function PhonePlayerPage({ code, onNavigate }: Props) {
       lastTurnRef.current = currentTurnSuspectId;
     }
   }, [currentTurnSuspectId]);
+
+  useEffect(() => {
+    if (tab === "accusation") {
+      setAccusationStep("suspect");
+    }
+  }, [tab]);
 
   const handleInspectorNoteSelect = (noteId: string) => {
     if (inspectorNotes.includes(noteId)) {
@@ -841,81 +848,120 @@ export default function PhonePlayerPage({ code, onNavigate }: Props) {
               <div className="phone-card phone-stack">
                 <div className="phone-section-title">Make an Accusation</div>
                 <div className="phone-stack">
-                  <div>
-                    <div className="phone-section-title">WHO</div>
-                    <div className="phone-grid phone-grid-suspects">
-                      {SUSPECTS.map((suspect) => (
-                        <button
-                          key={suspect.id}
-                          type="button"
-                          className={`phone-option phone-option-suspect ${accusation.suspectId === suspect.id ? "selected" : ""}`}
-                          onClick={() =>
-                            setAccusation((prev) => ({ ...prev, suspectId: suspect.id }))
-                          }
-                        >
-                          <img src={suspectImageById[suspect.id]} alt={suspect.name} />
-                          {null}
-                        </button>
-                      ))}
-                    </div>
+                  <div className="phone-accusation-steps">
+                    <button
+                      type="button"
+                      className={`phone-button secondary phone-accusation-step ${accusationStep === "suspect" ? "active" : ""}`}
+                      onClick={() => setAccusationStep("suspect")}
+                    >
+                      Who {accusation.suspectId ? "(Set)" : ""}
+                    </button>
+                    <button
+                      type="button"
+                      className={`phone-button secondary phone-accusation-step ${accusationStep === "item" ? "active" : ""}`}
+                      onClick={() => setAccusationStep("item")}
+                    >
+                      What {accusation.itemId ? "(Set)" : ""}
+                    </button>
+                    <button
+                      type="button"
+                      className={`phone-button secondary phone-accusation-step ${accusationStep === "location" ? "active" : ""}`}
+                      onClick={() => setAccusationStep("location")}
+                    >
+                      Where {accusation.locationId ? "(Set)" : ""}
+                    </button>
+                    <button
+                      type="button"
+                      className={`phone-button secondary phone-accusation-step ${accusationStep === "time" ? "active" : ""}`}
+                      onClick={() => setAccusationStep("time")}
+                    >
+                      When {accusation.timeId ? "(Set)" : ""}
+                    </button>
                   </div>
 
-                  <div>
-                    <div className="phone-section-title">WHAT</div>
-                    <div className="phone-grid phone-grid-accuse">
-                      {ITEMS.map((item) => (
-                        <button
-                          key={item.id}
-                          type="button"
-                          className={`phone-option phone-option-portrait ${accusation.itemId === item.id ? "selected" : ""}`}
-                          onClick={() =>
-                            setAccusation((prev) => ({ ...prev, itemId: item.id }))
-                          }
-                        >
-                          <img src={itemImageById[item.id]} alt={item.name} />
-                          {null}
-                        </button>
-                      ))}
+                  {accusationStep === "suspect" && (
+                    <div>
+                      <div className="phone-section-title">WHO</div>
+                      <div className="phone-grid phone-grid-suspects">
+                        {SUSPECTS.map((suspect) => (
+                          <button
+                            key={suspect.id}
+                            type="button"
+                            className={`phone-option phone-option-suspect ${accusation.suspectId === suspect.id ? "selected" : ""}`}
+                            onClick={() =>
+                              setAccusation((prev) => ({ ...prev, suspectId: suspect.id }))
+                            }
+                          >
+                            <img src={suspectImageById[suspect.id]} alt={suspect.name} />
+                            {null}
+                          </button>
+                        ))}
+                      </div>
                     </div>
-                  </div>
+                  )}
 
-                  <div>
-                    <div className="phone-section-title">WHERE</div>
-                    <div className="phone-grid phone-grid-accuse">
-                      {LOCATIONS.map((location) => (
-                        <button
-                          key={location.id}
-                          type="button"
-                          className={`phone-option phone-option-portrait ${accusation.locationId === location.id ? "selected" : ""}`}
-                          onClick={() =>
-                            setAccusation((prev) => ({ ...prev, locationId: location.id }))
-                          }
-                        >
-                          <img src={locationImageById[location.id]} alt={location.name} />
-                          {null}
-                        </button>
-                      ))}
+                  {accusationStep === "item" && (
+                    <div>
+                      <div className="phone-section-title">WHAT</div>
+                      <div className="phone-grid phone-grid-accuse">
+                        {ITEMS.map((item) => (
+                          <button
+                            key={item.id}
+                            type="button"
+                            className={`phone-option phone-option-portrait ${accusation.itemId === item.id ? "selected" : ""}`}
+                            onClick={() =>
+                              setAccusation((prev) => ({ ...prev, itemId: item.id }))
+                            }
+                          >
+                            <img src={itemImageById[item.id]} alt={item.name} />
+                            {null}
+                          </button>
+                        ))}
+                      </div>
                     </div>
-                  </div>
+                  )}
 
-                  <div>
-                    <div className="phone-section-title">WHEN</div>
-                    <div className="phone-grid phone-grid-accuse">
-                      {TIMES.map((time) => (
-                        <button
-                          key={time.id}
-                          type="button"
-                          className={`phone-option phone-option-portrait ${accusation.timeId === time.id ? "selected" : ""}`}
-                          onClick={() =>
-                            setAccusation((prev) => ({ ...prev, timeId: time.id }))
-                          }
-                        >
-                          <img src={timeImageById[time.id]} alt={time.name} />
-                          {null}
-                        </button>
-                      ))}
+                  {accusationStep === "location" && (
+                    <div>
+                      <div className="phone-section-title">WHERE</div>
+                      <div className="phone-grid phone-grid-accuse">
+                        {LOCATIONS.map((location) => (
+                          <button
+                            key={location.id}
+                            type="button"
+                            className={`phone-option phone-option-portrait ${accusation.locationId === location.id ? "selected" : ""}`}
+                            onClick={() =>
+                              setAccusation((prev) => ({ ...prev, locationId: location.id }))
+                            }
+                          >
+                            <img src={locationImageById[location.id]} alt={location.name} />
+                            {null}
+                          </button>
+                        ))}
+                      </div>
                     </div>
-                  </div>
+                  )}
+
+                  {accusationStep === "time" && (
+                    <div>
+                      <div className="phone-section-title">WHEN</div>
+                      <div className="phone-grid phone-grid-accuse">
+                        {TIMES.map((time) => (
+                          <button
+                            key={time.id}
+                            type="button"
+                            className={`phone-option phone-option-portrait ${accusation.timeId === time.id ? "selected" : ""}`}
+                            onClick={() =>
+                              setAccusation((prev) => ({ ...prev, timeId: time.id }))
+                            }
+                          >
+                            <img src={timeImageById[time.id]} alt={time.name} />
+                            {null}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
 
                   <button type="button" className="phone-button" onClick={submitAccusation} disabled={!isPlayersTurn}>
                     Submit to Host
