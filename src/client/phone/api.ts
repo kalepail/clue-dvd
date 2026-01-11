@@ -119,3 +119,18 @@ export async function updateSessionTurn(
     throw new Error("Failed to update session turn");
   }
 }
+
+export async function sendAccusationResult(
+  code: string,
+  suspectId: string,
+  result: { correct: boolean; correctCount: number }
+): Promise<void> {
+  const response = await fetch(`/api/phone/sessions/${code}/accusation-result`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ suspectId, correct: result.correct, correctCount: result.correctCount }),
+  });
+  if (!response.ok) {
+    throw new Error("Failed to record accusation result");
+  }
+}

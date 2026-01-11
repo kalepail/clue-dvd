@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { DIFFICULTIES, ITEMS, LOCATIONS, SUSPECTS, THEMES, TIMES } from "../../shared/game-elements";
 import type { EliminationState } from "../../shared/api-types";
 import type { PhonePlayer, PhoneSessionSummary } from "../../phone/types";
@@ -26,6 +26,54 @@ const emptyEliminations: EliminationState = {
   times: [],
 };
 
+type AccusationMessageHistory = {
+  zero: string[];
+  one: string[];
+  two: string[];
+  three: string[];
+};
+
+const defaultMessageHistory: AccusationMessageHistory = {
+  zero: [],
+  one: [],
+  two: [],
+  three: [],
+};
+
+function buildAccusationMessageKey(code: string, playerId: string): string {
+  return `clue-phone-accusation-msgs:${code}:${playerId}`;
+}
+
+function loadAccusationMessageHistory(code: string, playerId: string): AccusationMessageHistory {
+  try {
+    const raw = localStorage.getItem(buildAccusationMessageKey(code, playerId));
+    if (!raw) {
+      return { ...defaultMessageHistory };
+    }
+    const parsed = JSON.parse(raw) as AccusationMessageHistory;
+    return {
+      zero: Array.isArray(parsed.zero) ? parsed.zero : [],
+      one: Array.isArray(parsed.one) ? parsed.one : [],
+      two: Array.isArray(parsed.two) ? parsed.two : [],
+      three: Array.isArray(parsed.three) ? parsed.three : [],
+    };
+  } catch {
+    return { ...defaultMessageHistory };
+  }
+}
+
+function storeAccusationMessageHistory(code: string, playerId: string, history: AccusationMessageHistory): void {
+  try {
+    localStorage.setItem(buildAccusationMessageKey(code, playerId), JSON.stringify(history));
+  } catch (error) {
+    console.error("Failed to store accusation messages:", error);
+  }
+}
+
+function clearAccusationMessageHistory(code: string, playerId: string): void {
+  localStorage.removeItem(buildAccusationMessageKey(code, playerId));
+}
+
 export default function PhonePlayerPage({ code, onNavigate }: Props) {
   const [session, setSession] = useState<PhoneSessionSummary | null>(null);
   const [player, setPlayer] = useState<PhonePlayer | null>(null);
@@ -41,8 +89,73 @@ export default function PhonePlayerPage({ code, onNavigate }: Props) {
     locationId: "",
     timeId: "",
   });
+  const [showAccusationNotice, setShowAccusationNotice] = useState(false);
+  const [showActionContinue, setShowActionContinue] = useState(false);
+  const [actionContinueMessage, setActionContinueMessage] = useState<string | null>(null);
+  const [pendingRevealConfirm, setPendingRevealConfirm] = useState(false);
+  const [pendingSuggestionConfirm, setPendingSuggestionConfirm] = useState(false);
+  const [accusationFeedback, setAccusationFeedback] = useState<{
+    correct: boolean;
+    correctCount: number;
+  } | null>(null);
+  const lastAccusationSeenRef = useRef<string | null>(null);
+  const [zeroAccusationMessage, setZeroAccusationMessage] = useState<string | null>(null);
+  const [oneAccusationMessage, setOneAccusationMessage] = useState<string | null>(null);
+  const [twoAccusationMessage, setTwoAccusationMessage] = useState<string | null>(null);
+  const [threeAccusationMessage, setThreeAccusationMessage] = useState<string | null>(null);
+  const accusationMessageHistoryRef = useRef<AccusationMessageHistory | null>(null);
   const [themeId, setThemeId] = useState("");
   const [difficulty, setDifficulty] = useState("intermediate");
+  const suspectColorMap: Record<string, string> = {
+    S01: "#da3f55",
+    S02: "#dbad38",
+    S03: "#e5e0da",
+    S04: "#6c9376",
+    S05: "#54539b",
+    S06: "#6f4a9b",
+    S07: "#49aca7",
+    S08: "#78abd8",
+    S09: "#b25593",
+    S10: "#d9673b",
+  };
+  const accentColor = player?.suspectId ? suspectColorMap[player.suspectId] : "#b68b2d";
+  const accentRgb = useMemo(() => {
+    const hex = accentColor.replace("#", "");
+    const normalized = hex.length === 3
+      ? hex.split("").map((char) => char + char).join("")
+      : hex;
+    const value = parseInt(normalized, 16);
+    if (Number.isNaN(value)) {
+      return "182, 139, 45";
+    }
+    const r = (value >> 16) & 0xff;
+    const g = (value >> 8) & 0xff;
+    const b = value & 0xff;
+    return `${r}, ${g}, ${b}`;
+  }, [accentColor]);
+  const accentTileStyle = useMemo(
+    () => ({
+      borderColor: `rgba(${accentRgb}, 0.55)`,
+      background: `linear-gradient(140deg, rgba(${accentRgb}, 0.38), rgba(12, 16, 24, 0.92))`,
+    }),
+    [accentRgb]
+  );
+
+  const pickAccusationMessage = (bucket: keyof AccusationMessageHistory, options: string[]) => {
+    if (!player) {
+      return options[Math.floor(Math.random() * options.length)];
+    }
+    const history =
+      accusationMessageHistoryRef.current ?? loadAccusationMessageHistory(code, player.id);
+    accusationMessageHistoryRef.current = history;
+    const used = new Set(history[bucket]);
+    const available = options.filter((option) => !used.has(option));
+    const pool = available.length ? available : options;
+    const choice = pool[Math.floor(Math.random() * pool.length)];
+    history[bucket] = [...history[bucket], choice];
+    storeAccusationMessageHistory(code, player.id, history);
+    return choice;
+  };
 
   useEffect(() => {
     const stored = loadStoredPlayer(code);
@@ -69,15 +182,92 @@ export default function PhonePlayerPage({ code, onNavigate }: Props) {
 
   useEffect(() => {
     if (!player) return;
+    accusationMessageHistoryRef.current = loadAccusationMessageHistory(code, player.id);
+  }, [code, player]);
+
+  useEffect(() => {
+    if (!player) return;
     const interval = window.setInterval(async () => {
       try {
         const data = await getSession(code);
         if (data.session.status === "closed") {
+          clearAccusationMessageHistory(code, player.id);
           clearStoredPlayer(code);
           onNavigate("/phone");
           return;
         }
         setSession(data);
+        const refreshedPlayer = data.players.find((entry) => entry.id === player.id);
+        if (refreshedPlayer?.lastAccusationResult?.updatedAt) {
+          const lastSeen = lastAccusationSeenRef.current;
+          const nextSeen = refreshedPlayer.lastAccusationResult.updatedAt;
+          if (lastSeen !== nextSeen) {
+            lastAccusationSeenRef.current = nextSeen;
+            const nextFeedback = {
+              correct: refreshedPlayer.lastAccusationResult.correct,
+              correctCount: refreshedPlayer.lastAccusationResult.correctCount,
+            };
+            setAccusationFeedback(nextFeedback);
+            if (!nextFeedback.correct && nextFeedback.correctCount === 0) {
+              const options = [
+                "Maybe pay closer attention...",
+                "Perhaps try a little harder...",
+                "You didn't just miss -- you dodged every correct answer...",
+                "Bold strategy. Wildly incorrect, but bold...",
+                "You were wrong with confidence, and honestly, I respect that...",
+                "On the bright side, there is nowhere to go but up...",
+              ];
+              setZeroAccusationMessage(pickAccusationMessage("zero", options));
+              setOneAccusationMessage(null);
+              setTwoAccusationMessage(null);
+              setThreeAccusationMessage(null);
+            } else if (!nextFeedback.correct && nextFeedback.correctCount === 1) {
+              const options = [
+                "You're on the right trail... just not the right forest...",
+                "You're asking the right kind of questions. The answers... not so much...",
+                "You're in the right headspace, but not at the right answer...",
+                "That's a start -- one piece of the puzzle is in place...",
+                "You're warming up. Still cold, but warmer...",
+                "One of those is actually right. Build on that...",
+              ];
+              setOneAccusationMessage(pickAccusationMessage("one", options));
+              setZeroAccusationMessage(null);
+              setTwoAccusationMessage(null);
+              setThreeAccusationMessage(null);
+            } else if (!nextFeedback.correct && nextFeedback.correctCount === 2) {
+              const options = [
+                "Now we're getting somewhere...",
+                "You've got a real read on this -- just not the whole picture yet...",
+                "You're missing only pieces, not the plot...",
+                "You're close enough to be dangerous...",
+                "You're not far off now...",
+              ];
+              setTwoAccusationMessage(pickAccusationMessage("two", options));
+              setZeroAccusationMessage(null);
+              setOneAccusationMessage(null);
+              setThreeAccusationMessage(null);
+            } else if (!nextFeedback.correct && nextFeedback.correctCount === 3) {
+              const options = [
+                "You almost had it...",
+                "That's agonizingly close...",
+                "You're staring right at the answer...",
+                "One detail is holding you back...",
+                "The culprit just broke a sweat...",
+                "You're one step away...",
+              ];
+              setThreeAccusationMessage(pickAccusationMessage("three", options));
+              setZeroAccusationMessage(null);
+              setOneAccusationMessage(null);
+              setTwoAccusationMessage(null);
+            } else {
+              setZeroAccusationMessage(null);
+              setOneAccusationMessage(null);
+              setTwoAccusationMessage(null);
+              setThreeAccusationMessage(null);
+            }
+            setShowAccusationNotice(true);
+          }
+        }
       } catch {
         // Keep the last known roster if polling fails.
       }
@@ -116,7 +306,14 @@ export default function PhonePlayerPage({ code, onNavigate }: Props) {
     setActionStatus("Sending to host...");
     try {
       await sendPlayerAction(player.id, token, "turn_action", { action });
-      setActionStatus(`Sent: ${action}`);
+      setActionStatus(null);
+      if (action === "use_secret_passage") {
+        setActionContinueMessage("Secret passage resolved on the host screen.");
+        setShowActionContinue(true);
+      } else if (action === "make_suggestion") {
+        setActionContinueMessage("Make your suggestion. Continue when the table resolves it.");
+        setShowActionContinue(true);
+      }
     } catch (err) {
       setActionStatus(err instanceof Error ? err.message : "Failed to send action.");
     }
@@ -132,10 +329,53 @@ export default function PhonePlayerPage({ code, onNavigate }: Props) {
     setActionStatus("Submitting accusation...");
     try {
       await sendPlayerAction(player.id, token, "accusation", accusation);
-      setActionStatus("Accusation sent to host.");
+      setActionStatus(null);
+      setAccusation({ suspectId: "", itemId: "", locationId: "", timeId: "" });
+      setTab("turn");
+      setShowAccusationNotice(true);
     } catch (err) {
       setActionStatus(err instanceof Error ? err.message : "Failed to submit accusation.");
     }
+  };
+
+  const handleContinueInvestigation = async () => {
+    if (!player || !token) return;
+    try {
+      await sendPlayerAction(player.id, token, "turn_action", { action: "continue_investigation" });
+    } catch {
+      // Ignore failures; host can still continue manually.
+    } finally {
+      setZeroAccusationMessage(null);
+      setOneAccusationMessage(null);
+      setTwoAccusationMessage(null);
+      setThreeAccusationMessage(null);
+      setAccusationFeedback(null);
+      setShowAccusationNotice(false);
+      setShowActionContinue(false);
+      setActionContinueMessage(null);
+    }
+  };
+
+  const requestRevealClue = () => {
+    if (!isPlayersTurn) return;
+    setPendingRevealConfirm(true);
+  };
+
+  const confirmRevealClue = async () => {
+    if (!player || !token) return;
+    setPendingRevealConfirm(false);
+    await sendAction("reveal_clue");
+  };
+
+  const requestSuggestionConfirm = () => {
+    if (!isPlayersTurn) return;
+    setPendingSuggestionConfirm(true);
+  };
+
+  const confirmSuggestion = async () => {
+    if (!player || !token) return;
+    setPendingSuggestionConfirm(false);
+    await sendAction("make_suggestion");
   };
 
   const startGame = async () => {
@@ -181,7 +421,13 @@ export default function PhonePlayerPage({ code, onNavigate }: Props) {
 
   if (!player) {
     return (
-      <div className="phone-shell">
+      <div
+        className="phone-shell"
+        style={{
+          ["--phone-accent" as never]: accentColor,
+          ["--phone-accent-rgb" as never]: accentRgb,
+        }}
+      >
         <div className="phone-card phone-stack">
           <div>Reconnecting to session {code}...</div>
           {actionStatus && <div className="phone-subtitle">{actionStatus}</div>}
@@ -198,7 +444,13 @@ export default function PhonePlayerPage({ code, onNavigate }: Props) {
   }
 
   return (
-    <div className="phone-shell">
+    <div
+      className="phone-shell"
+      style={{
+        ["--phone-accent" as never]: accentColor,
+        ["--phone-accent-rgb" as never]: accentRgb,
+      }}
+    >
       <div className="phone-header">
         <h1>Detective Notebook</h1>
         <div className="phone-subtitle">
@@ -404,56 +656,57 @@ export default function PhonePlayerPage({ code, onNavigate }: Props) {
             {tab === "turn" && (
               <div className="phone-card phone-stack">
                 <div className="phone-section-title">Choose Your Action</div>
-                <div className="phone-actions">
+                <div className="phone-action-grid">
                   <button
                     type="button"
-                    className="phone-button"
-                    onClick={() => sendAction("reveal_clue")}
+                    className="phone-action-tile"
+                    onClick={requestRevealClue}
                     disabled={!isPlayersTurn}
+                    style={accentTileStyle}
                   >
-                    Reveal Next Clue
+                    <div className="phone-action-title">Reveal Next Clue</div>
+                    <div className="phone-action-subtitle">Advance the investigation.</div>
                   </button>
                   <button
                     type="button"
-                    className="phone-button"
+                    className="phone-action-tile"
+                    onClick={requestSuggestionConfirm}
+                    disabled={!isPlayersTurn}
+                    style={accentTileStyle}
+                  >
+                    <div className="phone-action-title">Make Suggestion</div>
+                    <div className="phone-action-subtitle">Talk it out with the table.</div>
+                  </button>
+                  <button
+                    type="button"
+                    className="phone-action-tile"
+                    onClick={() => sendAction("read_inspector_note")}
+                    disabled={!isPlayersTurn}
+                    style={accentTileStyle}
+                  >
+                    <div className="phone-action-title">Read Inspector Note</div>
+                    <div className="phone-action-subtitle">Choose a confidential note.</div>
+                  </button>
+                  <button
+                    type="button"
+                    className="phone-action-tile"
+                    onClick={() => sendAction("use_secret_passage")}
+                    disabled={!isPlayersTurn}
+                    style={accentTileStyle}
+                  >
+                    <div className="phone-action-title">Use Secret Passage</div>
+                    <div className="phone-action-subtitle">Risk it for a shortcut.</div>
+                  </button>
+                  <button
+                    type="button"
+                    className="phone-action-tile phone-action-tile-wide phone-action-tile-accuse"
                     onClick={() => {
                       setTab("accusation");
                     }}
                     disabled={!isPlayersTurn}
                   >
-                    Make Accusation
-                  </button>
-                  <button
-                    type="button"
-                    className="phone-button"
-                    onClick={() => sendAction("use_secret_passage")}
-                    disabled={!isPlayersTurn}
-                  >
-                    Use Secret Passage
-                  </button>
-                  <button
-                    type="button"
-                    className="phone-button"
-                    onClick={() => sendAction("read_inspector_note")}
-                    disabled={!isPlayersTurn}
-                  >
-                    Read Inspector Note
-                  </button>
-                  <button
-                    type="button"
-                    className="phone-button"
-                    onClick={() => sendAction("show_story")}
-                    disabled={!isPlayersTurn}
-                  >
-                    Toggle Story Panel
-                  </button>
-                  <button
-                    type="button"
-                    className="phone-button"
-                    onClick={() => sendAction("make_suggestion")}
-                    disabled={!isPlayersTurn}
-                  >
-                    Make Suggestion
+                    <div className="phone-action-title">Make Accusation</div>
+                    <div className="phone-action-subtitle">Lock in your final guess.</div>
                   </button>
                 </div>
               </div>
@@ -552,6 +805,70 @@ export default function PhonePlayerPage({ code, onNavigate }: Props) {
             </div>
           )}
         </>
+      )}
+
+      {pendingRevealConfirm && (
+        <div className="phone-scrim">
+          <div className="phone-scrim-card phone-scrim-card-stack">
+            <div>Reveal the next clue?</div>
+            <div className="phone-button-row">
+              <button type="button" className="phone-button ghost" onClick={() => setPendingRevealConfirm(false)}>
+                Cancel
+              </button>
+              <button type="button" className="phone-button" onClick={confirmRevealClue}>
+                Confirm
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {pendingSuggestionConfirm && (
+        <div className="phone-scrim">
+          <div className="phone-scrim-card phone-scrim-card-stack">
+            <div>Make a suggestion?</div>
+            <div className="phone-button-row">
+              <button type="button" className="phone-button ghost" onClick={() => setPendingSuggestionConfirm(false)}>
+                Cancel
+              </button>
+              <button type="button" className="phone-button" onClick={confirmSuggestion}>
+                Confirm
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {(showAccusationNotice || showActionContinue) && (
+        <div className="phone-scrim">
+          <div className="phone-scrim-card phone-scrim-card-stack">
+            <div>
+              {showAccusationNotice
+                ? (accusationFeedback
+                    ? accusationFeedback.correct
+                      ? "Correct!"
+                      : accusationFeedback.correctCount === 0
+                        ? zeroAccusationMessage || "So close."
+                        : accusationFeedback.correctCount === 1
+                          ? oneAccusationMessage || "So close."
+                          : accusationFeedback.correctCount === 2
+                            ? twoAccusationMessage || "So close."
+                            : accusationFeedback.correctCount === 3
+                              ? threeAccusationMessage || "So close."
+                              : "So close."
+                    : "Accusation Submitted")
+                : actionContinueMessage || "Action sent to the host."}
+            </div>
+            {showAccusationNotice && accusationFeedback && !accusationFeedback.correct && (
+              <div className="phone-subtitle">
+                {accusationFeedback.correctCount}/4 correct
+              </div>
+            )}
+            <button type="button" className="phone-button" onClick={handleContinueInvestigation}>
+              Continue Investigation
+            </button>
+          </div>
+        </div>
       )}
     </div>
   );

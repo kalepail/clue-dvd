@@ -8,6 +8,7 @@ import {
   listEvents,
   listPlayers,
   touchPlayer,
+  updatePlayerAccusationResult,
   updatePlayer,
 } from "./session-store";
 import { normalizeSessionCode } from "./utils";
@@ -66,6 +67,29 @@ phone.post("/sessions/:code/turn", async (c) => {
     .prepare("UPDATE phone_sessions SET current_turn_suspect_id = ?, updated_at = datetime('now') WHERE id = ?")
     .bind(suspectId, session.id)
     .run();
+  return c.json({ success: true });
+});
+
+// Record accusation result for a player (host action)
+phone.post("/sessions/:code/accusation-result", async (c) => {
+  const code = normalizeSessionCode(c.req.param("code"));
+  const session = await getSessionByCode(c.env.DB, code);
+  if (!session) {
+    return c.json({ error: "Session not found" }, 404);
+  }
+  const body = await c.req.json<{
+    suspectId?: string;
+    correct?: boolean;
+    correctCount?: number;
+  }>().catch(() => ({}));
+  if (!body.suspectId || typeof body.correct !== "boolean") {
+    return c.json({ error: "Invalid accusation result payload" }, 400);
+  }
+  const correctCount = typeof body.correctCount === "number" ? body.correctCount : 0;
+  await updatePlayerAccusationResult(c.env.DB, session.id, body.suspectId, {
+    correct: body.correct,
+    correctCount,
+  });
   return c.json({ success: true });
 });
 

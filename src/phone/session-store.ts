@@ -29,6 +29,19 @@ function rowToSession(row: Record<string, string>): PhoneSession {
 
 function rowToPlayer(row: Record<string, string>): PhonePlayer {
   const eliminations = parseEliminations(row.eliminations);
+  const lastAccusationUpdated = row.last_accusation_at;
+  const lastAccusationCorrect =
+    row.last_accusation_correct === undefined || row.last_accusation_correct === null
+      ? null
+      : Number(row.last_accusation_correct) === 1;
+  const lastAccusation =
+    lastAccusationUpdated && lastAccusationCorrect !== null
+      ? {
+          correct: lastAccusationCorrect,
+          correctCount: Number(row.last_accusation_correct_count ?? 0),
+          updatedAt: lastAccusationUpdated,
+        }
+      : null;
   return {
     id: row.id,
     sessionId: row.session_id,
@@ -37,6 +50,7 @@ function rowToPlayer(row: Record<string, string>): PhonePlayer {
     suspectName: row.suspect_name || row.suspect_id,
     notes: row.notes,
     eliminations,
+    lastAccusationResult: lastAccusation,
     createdAt: row.created_at,
     lastSeenAt: row.last_seen_at,
   };
@@ -197,6 +211,20 @@ export async function updatePlayer(
   const row = await db.prepare("SELECT * FROM phone_players WHERE id = ?").bind(playerId).first();
   if (!row) return null;
   return rowToPlayer(row as Record<string, string>);
+}
+
+export async function updatePlayerAccusationResult(
+  db: D1Database,
+  sessionId: string,
+  suspectId: string,
+  result: { correct: boolean; correctCount: number }
+): Promise<void> {
+  await db
+    .prepare(
+      "UPDATE phone_players SET last_accusation_correct = ?, last_accusation_correct_count = ?, last_accusation_at = datetime('now') WHERE session_id = ? AND suspect_id = ?"
+    )
+    .bind(result.correct ? 1 : 0, result.correctCount, sessionId, suspectId)
+    .run();
 }
 
 export async function touchPlayer(

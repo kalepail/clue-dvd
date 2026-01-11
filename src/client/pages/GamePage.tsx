@@ -13,7 +13,7 @@ import { Progress } from "@/client/components/ui/progress";
 import { IconStat } from "@/client/components/ui/icon-stat";
 import type { EliminationState } from "../../shared/api-types";
 import { getLocationName } from "../../shared/game-elements";
-import { closeSession, getSessionEvents, updateSessionTurn } from "../phone/api";
+import { closeSession, getSessionEvents, sendAccusationResult, updateSessionTurn } from "../phone/api";
 import { clearHostSessionCode, loadHostSessionCode, setHostAutoCreate } from "../phone/storage";
 
 interface Props {
@@ -128,6 +128,7 @@ export default function GamePage({ gameId, onNavigate }: Props) {
   const [turnAnnouncement, setTurnAnnouncement] = useState<string | null>(null);
   const [showTurnAnnouncement, setShowTurnAnnouncement] = useState(false);
   const [showEndTurnConfirm, setShowEndTurnConfirm] = useState(false);
+  const [pendingPhoneContinue, setPendingPhoneContinue] = useState<null | "use_secret_passage" | "make_suggestion">(null);
   const previousTurnKey = useRef<string | null>(null);
   const gameProgress = game?.totalClues ? game.currentClueIndex / game.totalClues : 0;
 
@@ -168,16 +169,27 @@ export default function GamePage({ gameId, onNavigate }: Props) {
               if (game.status === "setup") {
                 handleStartGame();
               }
+            } else if (action === "continue_investigation") {
+              setShowAccusation(false);
+              setPhoneAccusation(null);
+              if (pendingPhoneContinue === "make_suggestion") {
+                handleEndTurn();
+              } else if (pendingPhoneContinue === "use_secret_passage") {
+                closeSecretPassage();
+              }
+              setPendingPhoneContinue(null);
             } else if (action === "reveal_clue" && game.status === "in_progress" && !revealingClue) {
               handleRevealClue();
             } else if (action === "use_secret_passage" && game.status === "in_progress") {
               handleSecretPassage();
+              setPendingPhoneContinue("use_secret_passage");
             } else if (action === "read_inspector_note" && game.status === "in_progress") {
               handleOpenInspectorNotes();
             } else if (action === "show_story" && game.status === "in_progress") {
               setShowNarrative((prev) => !prev);
             } else if (action === "make_suggestion" && game.status === "in_progress") {
               setShowEndTurnConfirm(true);
+              setPendingPhoneContinue("make_suggestion");
             }
           } else if (event.type === "accusation") {
             if (game.status !== "in_progress") continue;
@@ -196,7 +208,7 @@ export default function GamePage({ gameId, onNavigate }: Props) {
       }
     }, 1200);
     return () => window.clearInterval(interval);
-  }, [game, lastPhoneEventId, revealingClue]);
+  }, [game, lastPhoneEventId, pendingPhoneContinue, revealingClue]);
 
   useEffect(() => {
     if (!game || (game.status !== "in_progress" && game.status !== "setup")) return;
@@ -393,6 +405,13 @@ export default function GamePage({ gameId, onNavigate }: Props) {
         playerSuspectId: game.currentTurn?.suspectId,
         ...accusation,
       });
+      const code = loadHostSessionCode();
+      if (code && game.currentTurn?.suspectId) {
+        sendAccusationResult(code, game.currentTurn.suspectId, {
+          correct: result.correct,
+          correctCount: result.correctCount,
+        }).catch(() => undefined);
+      }
       loadGame();
       return {
         correct: result.correct,
@@ -491,6 +510,7 @@ export default function GamePage({ gameId, onNavigate }: Props) {
 
   const closeSecretPassage = () => {
     setSecretPassageResult(null);
+    setPendingPhoneContinue(null);
   };
 
   const acknowledgeInterruptionIntro = () => {
@@ -507,6 +527,7 @@ export default function GamePage({ gameId, onNavigate }: Props) {
       gameStore.endTurn(gameId);
       loadGame();
       setShowEndTurnConfirm(false);
+      setPendingPhoneContinue(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to end turn");
     }
@@ -985,7 +1006,13 @@ export default function GamePage({ gameId, onNavigate }: Props) {
               </div>
             </CardContent>
             <CardContent className="pt-0">
-              <Button onClick={closeSecretPassage}>Continue</Button>
+              {pendingPhoneContinue === "use_secret_passage" ? (
+                <p className="text-sm text-muted-foreground">
+                  Waiting for the detective to continue from their phone.
+                </p>
+              ) : (
+                <Button onClick={closeSecretPassage}>Continue</Button>
+              )}
             </CardContent>
           </Card>
         </div>
@@ -1122,14 +1149,22 @@ export default function GamePage({ gameId, onNavigate }: Props) {
                 Announce your suggestion to the table. Once resolved, click Confirm Suggestion to end your turn.
               </CardDescription>
             </CardHeader>
-            <CardContent className="flex gap-3">
-              <Button variant="outline" onClick={() => setShowEndTurnConfirm(false)}>
-                Cancel
-              </Button>
-              <Button onClick={handleEndTurn}>
-                Confirm Suggestion
-              </Button>
-            </CardContent>
+            {pendingPhoneContinue === "make_suggestion" ? (
+              <CardContent>
+                <p className="text-sm text-muted-foreground">
+                  Waiting for the detective to continue from their phone.
+                </p>
+              </CardContent>
+            ) : (
+              <CardContent className="flex gap-3">
+                <Button variant="outline" onClick={() => setShowEndTurnConfirm(false)}>
+                  Cancel
+                </Button>
+                <Button onClick={handleEndTurn}>
+                  Confirm Suggestion
+                </Button>
+              </CardContent>
+            )}
           </Card>
         </div>
       )}

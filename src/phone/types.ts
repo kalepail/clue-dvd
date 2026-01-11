@@ -24,6 +24,11 @@ export interface PhonePlayer {
   suspectName: string;
   notes: string;
   eliminations: PhoneEliminations;
+  lastAccusationResult?: {
+    correct: boolean;
+    correctCount: number;
+    updatedAt: string;
+  } | null;
   createdAt: string;
   lastSeenAt: string;
 }
