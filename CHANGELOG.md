@@ -23,3 +23,23 @@
 - Replaced symbol icons with gold card icon assets and added magnifying glass asset handling
 - Added solved-screen winner header layout and refined reveal card presentation
 - Added UI_REVEAL_CARD_NOTES.md with adjustment guidance for reveal cards
+01/12/26 01:59.18
+- Host gameplay layout refactor: top header grid, turn options panel refresh, removed large game header, and added exit/save controls
+- Host timeline and accusation cleanup: removed wrong-accusation counters and hidden specific accusation details in history
+- Latest clue display reworked into a full-screen reveal modal; added butler image art and rotation across multiple butler images
+- Inspector interruption visuals: intro and instruction screens now show themed images with rotation on each interruption
+- Added lead-detective phone confirmation for inspector interruptions and synced interruption state to phones
+- Added phone inspector note system: per-player availability, read tracking, turn costs, and persistent note access
+- Added phone session inspector-note availability sync from host as clues progress
+- Added phone lobby fixes: fresh session behavior, reset lobby button visibility, and host-controlled setup symbol reveal
+- Added phone rejoin flow using saved reconnect token with a Resume Detective card on the join screen
+- Added phone action confirmations and gating so phone "continue" closes the correct host modal
+- Added one-use-per-turn secret passage guard for phone and host with proper disable states
+- Added host clue/interruption modal sizing and typography improvements for distance readability
+- Added host lobby join URL builder using a dev IP override for local phone joins
+- Added new D1 migrations for inspector notes, note availability, and interruption status
+- Added phone-notepad elimination sheet redesign with dark paper theme, serif layout, grouping, and strike-through eliminations
+- Added per-player deduction grid with selectable marks, sticky toolbar, and per-device persistence
+- Eliminated items now filter out of phone accusation pickers for the current player
+- Added a Deductions tab label for the notepad sheet
+- Updated suspect accent colors (Lavender and Mr. Green adjustments) and supporting UI maps
