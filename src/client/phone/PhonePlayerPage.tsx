@@ -463,9 +463,9 @@ export default function PhonePlayerPage({ code, onNavigate }: Props) {
   const sortedRoster = [...roster].sort(
     (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
   );
-  const deductionPlayers = sortedRoster.slice(0, 6);
   const leadPlayerId = sortedRoster[0]?.id;
   const playerId = player?.id;
+  const deductionPlayers = sortedRoster.filter((entry) => entry.id !== playerId);
   const isLead = playerId ? leadPlayerId === playerId : false;
   const isPlum = player?.suspectId === "S06";
   const plumButtonStyle = isPlum ? { color: "#ffffff" } : undefined;
@@ -485,6 +485,7 @@ export default function PhonePlayerPage({ code, onNavigate }: Props) {
 
   const markOptions = [
     { key: "x", label: "X", symbol: "X" },
+    { key: "slash", label: "Slash", symbol: "/" },
     { key: "check", label: "Check", symbol: "✓" },
     { key: "maybe", label: "?", symbol: "?" },
   ];
@@ -1144,21 +1145,21 @@ export default function PhonePlayerPage({ code, onNavigate }: Props) {
                       </div>
                     </div>
                   </div>
-                  <div className="phone-deduction-toolbar">
-                    {markOptions.map((option) => (
-                      <button
-                        key={option.key}
-                        type="button"
-                        className={`phone-deduction-tool ${selectedMark === option.symbol ? "active" : ""}`}
-                        onClick={() => setSelectedMark(option.symbol)}
-                      >
-                        <span className="phone-deduction-tool-symbol">
-                          {option.symbol || "—"}
-                        </span>
-                        <span className="phone-deduction-tool-label">{option.label}</span>
-                      </button>
-                    ))}
-                  </div>
+                </div>
+                <div className="phone-deduction-toolbar">
+                  {markOptions.map((option) => (
+                    <button
+                      key={option.key}
+                      type="button"
+                      className={`phone-deduction-tool ${selectedMark === option.symbol ? "active" : ""}`}
+                      onClick={() => setSelectedMark(option.symbol)}
+                    >
+                      <span className="phone-deduction-tool-symbol">
+                        {option.symbol || "—"}
+                      </span>
+                      <span className="phone-deduction-tool-label">{option.label}</span>
+                    </button>
+                  ))}
                 </div>
               </div>
             )}

@@ -377,6 +377,9 @@
 .phone-deduction-sheet {
   display: flex;
   justify-content: center;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
 }
 
 .phone-deduction-paper {
@@ -387,7 +390,6 @@
   padding: 16px;
   box-shadow: 0 14px 24px rgba(0, 0, 0, 0.25);
   position: relative;
-  overflow: hidden;
 }
 
 .phone-deduction-paper::before {
@@ -425,7 +427,7 @@
 
 .phone-deduction-section h3 {
   font-family: "Georgia", "Times New Roman", serif;
-  font-size: 0.7rem;
+  font-size: 0.8rem;
   letter-spacing: 0.2em;
   text-transform: uppercase;
   color: #ded9d2;
@@ -456,7 +458,7 @@
 
 .phone-deduction-group-label {
   font-family: "Georgia", "Times New Roman", serif;
-  font-size: 0.6rem;
+  font-size: 0.65rem;
   letter-spacing: 0.18em;
   text-transform: uppercase;
   color: #c1bab1;
@@ -473,12 +475,12 @@
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 8px;
   align-items: center;
-  padding: 2px 0;
+  padding: 4px 0;
   background: transparent;
   border: none;
   text-align: left;
   font-family: "Georgia", "Times New Roman", serif;
-  font-size: 0.75rem;
+  font-size: 0.85rem;
   color: #e3ddd6;
   cursor: pointer;
   position: relative;
@@ -487,7 +489,7 @@
 .phone-deduction-row-label-btn {
   background: transparent;
   border: none;
-  padding: 0;
+  padding: 4px 2px;
   text-align: left;
   font: inherit;
   color: inherit;
@@ -514,19 +516,19 @@
 
 .phone-deduction-cells {
   display: grid;
-  grid-template-columns: repeat(var(--deduction-cols, 4), 16px);
-  gap: 4px;
+  grid-template-columns: repeat(var(--deduction-cols, 4), 20px);
+  gap: 6px;
 }
 
 .phone-deduction-cell {
-  width: 16px;
-  height: 16px;
+  width: 20px;
+  height: 20px;
   border: 1px solid #8e867d;
   background: #2a2622;
   padding: 0;
   display: grid;
   place-items: center;
-  font-size: 0.7rem;
+  font-size: 0.8rem;
   color: #f2ede6;
 }
 
@@ -545,15 +547,19 @@
 
 .phone-deduction-toolbar {
   position: sticky;
-  bottom: 0;
+  bottom: calc(10px + env(safe-area-inset-bottom));
   margin-top: 14px;
   background: #221f1b;
-  border-top: 1px solid #4a4540;
+  border: 1px solid #4a4540;
   padding: 10px;
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 8px;
   z-index: 2;
+  width: min(100%, 680px);
+  margin-left: auto;
+  margin-right: auto;
+  border-radius: 14px;
 }
 
 .phone-deduction-tool {
