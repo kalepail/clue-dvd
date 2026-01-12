@@ -47,7 +47,7 @@ export default function PhoneJoinPage({ onNavigate }: Props) {
     S01: "#da3f55",
     S02: "#dbad38",
     S03: "#e5e0da",
-    S04: "#6c9376",
+    S04: "#6c9b66",
     S05: "#54539b",
     S06: "#7A29A3",
     S07: "#49aca7",

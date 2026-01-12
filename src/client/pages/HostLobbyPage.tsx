@@ -8,6 +8,7 @@ import {
   consumeHostAutoCreate,
   storeHostSessionCode,
 } from "../phone/storage";
+import { DEV_PHONE_JOIN_HOST } from "../phone/phone-config";
 import { Button } from "@/client/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/client/components/ui/card";
 import { Badge } from "@/client/components/ui/badge";
@@ -21,6 +22,14 @@ export default function HostLobbyPage({ onNavigate }: Props) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [lastEventId, setLastEventId] = useState<number | null>(null);
+  const buildJoinUrl = () => {
+    const { protocol, hostname, port } = window.location;
+    const isLocal = hostname === "localhost" || hostname === "127.0.0.1";
+    const host = isLocal ? DEV_PHONE_JOIN_HOST : hostname;
+    const portPart = port ? `:${port}` : "";
+    return `${protocol}//${host}${portPart}/#/phone`;
+  };
+  const joinUrl = buildJoinUrl();
 
   useEffect(() => {
     if (session) return;
@@ -190,11 +199,14 @@ export default function HostLobbyPage({ onNavigate }: Props) {
             <CardHeader>
               <CardTitle className="text-center">Join Code</CardTitle>
               <CardDescription className="text-center">
-                Players visit <strong>#/phone</strong> to join.
+                Players visit the phone link below to enter the code.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-5">
               <div className="host-lobby-code">{session.session.code}</div>
+              <div className="text-center text-base font-semibold text-foreground">
+                Go to {joinUrl}
+              </div>
               <div className="flex flex-wrap items-center justify-center gap-3">
                 <Button variant="outline" onClick={handleRegenerateCode} disabled={loading}>
                   Regenerate Code
