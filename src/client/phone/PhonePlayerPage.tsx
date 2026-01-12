@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { DIFFICULTIES, ITEMS, LOCATIONS, SUSPECTS, THEMES, TIMES } from "../../shared/game-elements";
 import type { EliminationState } from "../../shared/api-types";
 import type { PhonePlayer, PhoneSessionSummary } from "../../phone/types";
@@ -11,6 +11,55 @@ import {
   timeImageById,
 } from "./assets";
 import "./phone.css";
+
+type DeductionCellProps = {
+  rowKey: string;
+  playerId: string;
+  value: string;
+  selectedMark: string;
+  onUpdate: (rowKey: string, playerId: string, quadrant?: "tl" | "tr" | "bl" | "br") => void;
+};
+
+const DeductionCell = memo(function DeductionCell({
+  rowKey,
+  playerId,
+  value,
+  selectedMark,
+  onUpdate,
+}: DeductionCellProps) {
+  const isDot = value.startsWith("dot:");
+  const dotList = isDot ? value.replace("dot:", "").split(",").filter(Boolean) : [];
+  return (
+    <button
+      type="button"
+      className={`phone-deduction-cell phone-deduction-cell-button ${value ? "marked" : ""}`}
+      onPointerDown={() => onUpdate(rowKey, playerId)}
+    >
+      {isDot ? (
+        dotList.map((dot) => (
+          <span key={dot} className={`phone-deduction-dot phone-deduction-dot-${dot}`} />
+        ))
+      ) : (
+        value
+      )}
+      {selectedMark === "dot" && (
+        <span className="phone-deduction-quad">
+          {(["tl", "tr", "bl", "br"] as const).map((quad) => (
+            <button
+              key={quad}
+              type="button"
+              className="phone-deduction-quad-btn"
+              onPointerDown={(event) => {
+                event.stopPropagation();
+                onUpdate(rowKey, playerId, quad);
+              }}
+            />
+          ))}
+        </span>
+      )}
+    </button>
+  );
+});
 
 interface Props {
   code: string;
@@ -74,6 +123,10 @@ function clearAccusationMessageHistory(code: string, playerId: string): void {
   localStorage.removeItem(buildAccusationMessageKey(code, playerId));
 }
 
+type DeductionHistoryEntry =
+  | { type: "mark"; rowKey: string; playerId: string; previous: string; next: string }
+  | { type: "row"; rowKey: string; prevEliminated: boolean; nextEliminated: boolean; prevFinal: boolean; nextFinal: boolean };
+
 export default function PhonePlayerPage({ code, onNavigate }: Props) {
   const [session, setSession] = useState<PhoneSessionSummary | null>(null);
   const [player, setPlayer] = useState<PhonePlayer | null>(null);
@@ -91,9 +144,14 @@ export default function PhonePlayerPage({ code, onNavigate }: Props) {
   });
   const [deductionMarks, setDeductionMarks] = useState<Record<string, Record<string, string>>>({});
   const [selectedMark, setSelectedMark] = useState("X");
-  const [deductionHistory, setDeductionHistory] = useState<
-    { rowKey: string; playerId: string; previous: string; next: string }[]
-  >([]);
+  const [deductionHistory, setDeductionHistory] = useState<DeductionHistoryEntry[]>([]);
+  const deductionMarksRef = useRef<Record<string, Record<string, string>>>({});
+  const deductionHistoryRef = useRef<DeductionHistoryEntry[]>([]);
+  const [finalSelections, setFinalSelections] = useState<Record<string, boolean>>({});
+  const [recentlyUncircled, setRecentlyUncircled] = useState<string | null>(null);
+  const longPressTimeoutRef = useRef<number | null>(null);
+  const uncircleTimeoutRef = useRef<number | null>(null);
+  const suppressEliminationRef = useRef(false);
   const [accusationStep, setAccusationStep] = useState<"suspect" | "item" | "location" | "time">("suspect");
   const [showAccusationNotice, setShowAccusationNotice] = useState(false);
   const [showActionContinue, setShowActionContinue] = useState(false);
@@ -200,7 +258,9 @@ export default function PhonePlayerPage({ code, onNavigate }: Props) {
   useEffect(() => {
     if (!player) return;
     const storageKey = `clue-phone-deduction:${code}:${player.id}`;
-    setDeductionMarks(loadDeductionMarks(storageKey));
+    const loaded = loadDeductionMarks(storageKey);
+    deductionMarksRef.current = loaded;
+    setDeductionMarks(loaded);
   }, [code, player]);
 
   useEffect(() => {
@@ -208,6 +268,41 @@ export default function PhonePlayerPage({ code, onNavigate }: Props) {
     const storageKey = `clue-phone-deduction:${code}:${player.id}`;
     saveDeductionMarks(storageKey, deductionMarks);
   }, [code, deductionMarks, player]);
+
+  useEffect(() => {
+    deductionMarksRef.current = deductionMarks;
+  }, [deductionMarks]);
+
+  const loadFinalSelections = (storageKey: string) => {
+    try {
+      const raw = localStorage.getItem(storageKey);
+      if (!raw) return {};
+      const parsed = JSON.parse(raw) as Record<string, boolean>;
+      return parsed && typeof parsed === "object" ? parsed : {};
+    } catch {
+      return {};
+    }
+  };
+
+  const saveFinalSelections = (storageKey: string, next: Record<string, boolean>) => {
+    try {
+      localStorage.setItem(storageKey, JSON.stringify(next));
+    } catch {
+      // Ignore storage errors.
+    }
+  };
+
+  useEffect(() => {
+    if (!player) return;
+    const storageKey = `clue-phone-final:${code}:${player.id}`;
+    setFinalSelections(loadFinalSelections(storageKey));
+  }, [code, player]);
+
+  useEffect(() => {
+    if (!player) return;
+    const storageKey = `clue-phone-final:${code}:${player.id}`;
+    saveFinalSelections(storageKey, finalSelections);
+  }, [code, finalSelections, player]);
 
   useEffect(() => {
     if (!player) return;
@@ -395,9 +490,10 @@ export default function PhonePlayerPage({ code, onNavigate }: Props) {
     }
   };
 
-  const updateDeductionMark = (rowKey: string, playerIdValue: string, quadrant?: "tl" | "tr" | "bl" | "br") => {
-    setDeductionMarks((prev) => {
-      const row = prev[rowKey] ?? {};
+  const updateDeductionMark = useCallback(
+    (rowKey: string, playerIdValue: string, quadrant?: "tl" | "tr" | "bl" | "br") => {
+      const currentMarks = deductionMarksRef.current;
+      const row = currentMarks[rowKey] ?? {};
       const current = row[playerIdValue] ?? "";
       let nextValue = selectedMark === "dot" ? current : (current === selectedMark ? "" : selectedMark);
       if (selectedMark === "dot") {
@@ -410,29 +506,153 @@ export default function PhonePlayerPage({ code, onNavigate }: Props) {
           : currentDots;
         nextValue = nextDots.length ? `dot:${nextDots.join(",")}` : "";
       }
-      if (nextValue !== current) {
-        setDeductionHistory((history) => [
-          { rowKey, playerId: playerIdValue, previous: current, next: nextValue },
-          ...history,
-        ].slice(0, 60));
-      }
+      if (nextValue === current) return;
+      const entry: DeductionHistoryEntry = {
+        type: "mark",
+        rowKey,
+        playerId: playerIdValue,
+        previous: current,
+        next: nextValue,
+      };
+      const nextHistory = [entry, ...deductionHistoryRef.current].slice(0, 80);
+      deductionHistoryRef.current = nextHistory;
+      setDeductionHistory(nextHistory);
       const nextRow = { ...row, [playerIdValue]: nextValue };
-      return { ...prev, [rowKey]: nextRow };
-    });
-  };
+      const nextMarks = { ...currentMarks, [rowKey]: nextRow };
+      deductionMarksRef.current = nextMarks;
+      setDeductionMarks(nextMarks);
+    },
+    [selectedMark],
+  );
 
   const handleUndoDeduction = () => {
-    setDeductionHistory((history) => {
-      const [latest, ...rest] = history;
-      if (!latest) return history;
-      setDeductionMarks((prev) => {
-        const row = prev[latest.rowKey] ?? {};
-        const nextRow = { ...row, [latest.playerId]: latest.previous };
-        return { ...prev, [latest.rowKey]: nextRow };
+    const currentHistory = deductionHistoryRef.current;
+    if (currentHistory.length === 0) return;
+    const [latest, ...rest] = currentHistory;
+    deductionHistoryRef.current = rest;
+    setDeductionHistory(rest);
+    if (latest.type === "mark") {
+      const currentMarks = deductionMarksRef.current;
+      const row = currentMarks[latest.rowKey] ?? {};
+      const nextRow = { ...row, [latest.playerId]: latest.previous };
+      const nextMarks = { ...currentMarks, [latest.rowKey]: nextRow };
+      deductionMarksRef.current = nextMarks;
+      setDeductionMarks(nextMarks);
+      return;
+    }
+    const [category, id] = latest.rowKey.split(":");
+    if (category && id) {
+      setEliminations((prev) => {
+        const list = prev[category as keyof EliminationState];
+        if (!Array.isArray(list)) return prev;
+        const hasId = list.includes(id);
+        if (latest.prevEliminated && !hasId) {
+          return { ...prev, [category]: [...list, id] };
+        }
+        if (!latest.prevEliminated && hasId) {
+          return { ...prev, [category]: list.filter((value) => value !== id) };
+        }
+        return prev;
       });
-      return rest;
-    });
+    }
+    setFinalSelections((prev) => ({ ...prev, [latest.rowKey]: latest.prevFinal }));
   };
+
+
+  const handleRowPressStart = (rowKey: string) => {
+    if (longPressTimeoutRef.current) {
+      window.clearTimeout(longPressTimeoutRef.current);
+      longPressTimeoutRef.current = null;
+    }
+    longPressTimeoutRef.current = window.setTimeout(() => {
+      const prevFinal = Boolean(finalSelections[rowKey]);
+      const nextFinal = !prevFinal;
+      const [category, id] = rowKey.split(":");
+      const prevEliminated =
+        category && id
+          ? eliminations[category as keyof EliminationState]?.includes(id)
+          : false;
+      const nextEliminated = nextFinal ? false : prevEliminated;
+      const entry: DeductionHistoryEntry = {
+        type: "row",
+        rowKey,
+        prevEliminated,
+        nextEliminated,
+        prevFinal,
+        nextFinal,
+      };
+      const nextHistory = [entry, ...deductionHistoryRef.current].slice(0, 80);
+      deductionHistoryRef.current = nextHistory;
+      setDeductionHistory(nextHistory);
+      setFinalSelections((prev) => ({ ...prev, [rowKey]: nextFinal }));
+      if (!nextFinal) {
+        setRecentlyUncircled(rowKey);
+        if (uncircleTimeoutRef.current) {
+          window.clearTimeout(uncircleTimeoutRef.current);
+        }
+        uncircleTimeoutRef.current = window.setTimeout(() => {
+          setRecentlyUncircled(null);
+        }, 500);
+      }
+      if (category && id && prevEliminated) {
+        setEliminations((prev) => {
+          const list = prev[category as keyof EliminationState];
+          if (!Array.isArray(list)) return prev;
+          const nextList = list.filter((value) => value !== id);
+          return { ...prev, [category]: nextList };
+        });
+      }
+      suppressEliminationRef.current = true;
+    }, 450);
+  };
+
+  const handleRowPressEnd = () => {
+    if (longPressTimeoutRef.current) {
+      window.clearTimeout(longPressTimeoutRef.current);
+      longPressTimeoutRef.current = null;
+    }
+  };
+
+  const handleRowClick = (category: keyof EliminationState, id: string) => {
+    if (suppressEliminationRef.current) {
+      suppressEliminationRef.current = false;
+      return;
+    }
+    const rowKey = `${category}:${id}`;
+    const prevFinal = Boolean(finalSelections[rowKey]);
+    const prevEliminated = eliminations[category].includes(id);
+    const nextEliminated = !prevEliminated;
+    const nextFinal = prevFinal ? false : prevFinal;
+    const entry: DeductionHistoryEntry = {
+      type: "row",
+      rowKey,
+      prevEliminated,
+      nextEliminated,
+      prevFinal,
+      nextFinal,
+    };
+    const nextHistory = [entry, ...deductionHistoryRef.current].slice(0, 80);
+    deductionHistoryRef.current = nextHistory;
+    setDeductionHistory(nextHistory);
+    if (prevFinal) {
+      setFinalSelections((prev) => {
+        const next = { ...prev };
+        delete next[rowKey];
+        return next;
+      });
+      setRecentlyUncircled(rowKey);
+      if (uncircleTimeoutRef.current) {
+        window.clearTimeout(uncircleTimeoutRef.current);
+      }
+      uncircleTimeoutRef.current = window.setTimeout(() => {
+        setRecentlyUncircled(null);
+      }, 500);
+    }
+    toggleElimination(category, id);
+  };
+
+  const hasFinalSelection = (prefix: string) =>
+    Object.keys(finalSelections).some((key) => key.startsWith(prefix) && finalSelections[key]);
 
   const requestRevealClue = () => {
     if (!isPlayersTurn) return;
@@ -844,7 +1064,10 @@ export default function PhonePlayerPage({ code, onNavigate }: Props) {
                   <div className="phone-deduction-columns">
                     <div className="phone-deduction-left">
                       <section className="phone-deduction-section">
-                        <h3>SUSPECTS</h3>
+                        <div className="phone-deduction-title-row">
+                          <h3>SUSPECTS</h3>
+                          <span className="phone-deduction-hint">Tap - strike through; hold - circle</span>
+                        </div>
                         <div className="phone-deduction-table">
                           <div className="phone-deduction-header">
                             <span className="phone-deduction-row-label" />
@@ -866,58 +1089,31 @@ export default function PhonePlayerPage({ code, onNavigate }: Props) {
                             return (
                               <div
                                 key={suspect.id}
-                                className={`phone-deduction-row ${eliminated ? "marked eliminated" : ""}`}
+                                className={`phone-deduction-row ${eliminated ? "marked eliminated" : ""} ${finalSelections[rowKey] ? "final" : ""} ${recentlyUncircled === rowKey ? "uncircled" : ""}`}
                               >
                                 <button
                                   type="button"
                                   className="phone-deduction-row-label-btn"
-                                  onClick={() => toggleElimination("suspects", suspect.id)}
+                                  onClick={() => handleRowClick("suspects", suspect.id)}
+                                  onPointerDown={() => handleRowPressStart(rowKey)}
+                                  onPointerUp={handleRowPressEnd}
+                                  onPointerLeave={handleRowPressEnd}
+                                  onPointerCancel={handleRowPressEnd}
                                   aria-pressed={eliminated}
                                 >
                                   {suspect.name}
                                 </button>
                                 <span className="phone-deduction-cells">
-                                  {deductionPlayers.map((entry) => {
-                                    const symbol = rowMarks[entry.id] ?? "";
-                                    const isDot = symbol.startsWith("dot:");
-                                    const dotList = isDot
-                                      ? symbol.replace("dot:", "").split(",").filter(Boolean)
-                                      : [];
-                                    return (
-                                      <button
-                                        key={entry.id}
-                                        type="button"
-                                        className={`phone-deduction-cell phone-deduction-cell-button ${symbol ? "marked" : ""}`}
-                                        onClick={() => updateDeductionMark(rowKey, entry.id)}
-                                      >
-                                        {isDot ? (
-                                          dotList.map((dot) => (
-                                            <span
-                                              key={dot}
-                                              className={`phone-deduction-dot phone-deduction-dot-${dot}`}
-                                            />
-                                          ))
-                                        ) : (
-                                          symbol
-                                        )}
-                                        {selectedMark === "dot" && (
-                                          <span className="phone-deduction-quad">
-                                            {(["tl", "tr", "bl", "br"] as const).map((quad) => (
-                                              <button
-                                                key={quad}
-                                                type="button"
-                                                className="phone-deduction-quad-btn"
-                                                onClick={(event) => {
-                                                  event.stopPropagation();
-                                                  updateDeductionMark(rowKey, entry.id, quad);
-                                                }}
-                                              />
-                                            ))}
-                                          </span>
-                                        )}
-                                      </button>
-                                    );
-                                  })}
+                                  {deductionPlayers.map((entry) => (
+                                    <DeductionCell
+                                      key={entry.id}
+                                      rowKey={rowKey}
+                                      playerId={entry.id}
+                                      value={rowMarks[entry.id] ?? ""}
+                                      selectedMark={selectedMark}
+                                      onUpdate={updateDeductionMark}
+                                    />
+                                  ))}
                                 </span>
                               </div>
                             );
@@ -933,58 +1129,31 @@ export default function PhonePlayerPage({ code, onNavigate }: Props) {
                             return (
                               <div
                                 key={suspect.id}
-                                className={`phone-deduction-row ${eliminated ? "marked eliminated" : ""}`}
+                                className={`phone-deduction-row ${eliminated ? "marked eliminated" : ""} ${finalSelections[rowKey] ? "final" : ""} ${recentlyUncircled === rowKey ? "uncircled" : ""}`}
                               >
                                 <button
                                   type="button"
                                   className="phone-deduction-row-label-btn"
-                                  onClick={() => toggleElimination("suspects", suspect.id)}
+                                  onClick={() => handleRowClick("suspects", suspect.id)}
+                                  onPointerDown={() => handleRowPressStart(rowKey)}
+                                  onPointerUp={handleRowPressEnd}
+                                  onPointerLeave={handleRowPressEnd}
+                                  onPointerCancel={handleRowPressEnd}
                                   aria-pressed={eliminated}
                                 >
                                   {suspect.name}
                                 </button>
                                 <span className="phone-deduction-cells">
-                                  {deductionPlayers.map((entry) => {
-                                    const symbol = rowMarks[entry.id] ?? "";
-                                    const isDot = symbol.startsWith("dot:");
-                                    const dotList = isDot
-                                      ? symbol.replace("dot:", "").split(",").filter(Boolean)
-                                      : [];
-                                    return (
-                                      <button
-                                        key={entry.id}
-                                        type="button"
-                                        className={`phone-deduction-cell phone-deduction-cell-button ${symbol ? "marked" : ""}`}
-                                        onClick={() => updateDeductionMark(rowKey, entry.id)}
-                                      >
-                                        {isDot ? (
-                                          dotList.map((dot) => (
-                                            <span
-                                              key={dot}
-                                              className={`phone-deduction-dot phone-deduction-dot-${dot}`}
-                                            />
-                                          ))
-                                        ) : (
-                                          symbol
-                                        )}
-                                        {selectedMark === "dot" && (
-                                          <span className="phone-deduction-quad">
-                                            {(["tl", "tr", "bl", "br"] as const).map((quad) => (
-                                              <button
-                                                key={quad}
-                                                type="button"
-                                                className="phone-deduction-quad-btn"
-                                                onClick={(event) => {
-                                                  event.stopPropagation();
-                                                  updateDeductionMark(rowKey, entry.id, quad);
-                                                }}
-                                              />
-                                            ))}
-                                          </span>
-                                        )}
-                                      </button>
-                                    );
-                                  })}
+                                  {deductionPlayers.map((entry) => (
+                                    <DeductionCell
+                                      key={entry.id}
+                                      rowKey={rowKey}
+                                      playerId={entry.id}
+                                      value={rowMarks[entry.id] ?? ""}
+                                      selectedMark={selectedMark}
+                                      onUpdate={updateDeductionMark}
+                                    />
+                                  ))}
                                 </span>
                               </div>
                             );
@@ -1012,58 +1181,31 @@ export default function PhonePlayerPage({ code, onNavigate }: Props) {
                             return (
                               <div
                                 key={location.id}
-                                className={`phone-deduction-row ${eliminated ? "marked eliminated" : ""}`}
+                                className={`phone-deduction-row ${eliminated ? "marked eliminated" : ""} ${finalSelections[rowKey] ? "final" : ""} ${recentlyUncircled === rowKey ? "uncircled" : ""}`}
                               >
                                 <button
                                   type="button"
                                   className="phone-deduction-row-label-btn"
-                                  onClick={() => toggleElimination("locations", location.id)}
+                                  onClick={() => handleRowClick("locations", location.id)}
+                                  onPointerDown={() => handleRowPressStart(rowKey)}
+                                  onPointerUp={handleRowPressEnd}
+                                  onPointerLeave={handleRowPressEnd}
+                                  onPointerCancel={handleRowPressEnd}
                                   aria-pressed={eliminated}
                                 >
                                   {location.name}
                                 </button>
                                 <span className="phone-deduction-cells">
-                                  {deductionPlayers.map((entry) => {
-                                    const symbol = rowMarks[entry.id] ?? "";
-                                    const isDot = symbol.startsWith("dot:");
-                                    const dotList = isDot
-                                      ? symbol.replace("dot:", "").split(",").filter(Boolean)
-                                      : [];
-                                    return (
-                                      <button
-                                        key={entry.id}
-                                        type="button"
-                                        className={`phone-deduction-cell phone-deduction-cell-button ${symbol ? "marked" : ""}`}
-                                        onClick={() => updateDeductionMark(rowKey, entry.id)}
-                                      >
-                                        {isDot ? (
-                                          dotList.map((dot) => (
-                                            <span
-                                              key={dot}
-                                              className={`phone-deduction-dot phone-deduction-dot-${dot}`}
-                                            />
-                                          ))
-                                        ) : (
-                                          symbol
-                                        )}
-                                        {selectedMark === "dot" && (
-                                          <span className="phone-deduction-quad">
-                                            {(["tl", "tr", "bl", "br"] as const).map((quad) => (
-                                              <button
-                                                key={quad}
-                                                type="button"
-                                                className="phone-deduction-quad-btn"
-                                                onClick={(event) => {
-                                                  event.stopPropagation();
-                                                  updateDeductionMark(rowKey, entry.id, quad);
-                                                }}
-                                              />
-                                            ))}
-                                          </span>
-                                        )}
-                                      </button>
-                                    );
-                                  })}
+                                  {deductionPlayers.map((entry) => (
+                                    <DeductionCell
+                                      key={entry.id}
+                                      rowKey={rowKey}
+                                      playerId={entry.id}
+                                      value={rowMarks[entry.id] ?? ""}
+                                      selectedMark={selectedMark}
+                                      onUpdate={updateDeductionMark}
+                                    />
+                                  ))}
                                 </span>
                               </div>
                             );
@@ -1091,58 +1233,31 @@ export default function PhonePlayerPage({ code, onNavigate }: Props) {
                             return (
                               <div
                                 key={time.id}
-                                className={`phone-deduction-row ${eliminated ? "marked eliminated" : ""}`}
+                                className={`phone-deduction-row ${eliminated ? "marked eliminated" : ""} ${finalSelections[rowKey] ? "final" : ""} ${recentlyUncircled === rowKey ? "uncircled" : ""}`}
                               >
                                 <button
                                   type="button"
                                   className="phone-deduction-row-label-btn"
-                                  onClick={() => toggleElimination("times", time.id)}
+                                  onClick={() => handleRowClick("times", time.id)}
+                                  onPointerDown={() => handleRowPressStart(rowKey)}
+                                  onPointerUp={handleRowPressEnd}
+                                  onPointerLeave={handleRowPressEnd}
+                                  onPointerCancel={handleRowPressEnd}
                                   aria-pressed={eliminated}
                                 >
                                   {time.name}
                                 </button>
                                 <span className="phone-deduction-cells">
-                                  {deductionPlayers.map((entry) => {
-                                    const symbol = rowMarks[entry.id] ?? "";
-                                    const isDot = symbol.startsWith("dot:");
-                                    const dotList = isDot
-                                      ? symbol.replace("dot:", "").split(",").filter(Boolean)
-                                      : [];
-                                    return (
-                                      <button
-                                        key={entry.id}
-                                        type="button"
-                                        className={`phone-deduction-cell phone-deduction-cell-button ${symbol ? "marked" : ""}`}
-                                        onClick={() => updateDeductionMark(rowKey, entry.id)}
-                                      >
-                                        {isDot ? (
-                                          dotList.map((dot) => (
-                                            <span
-                                              key={dot}
-                                              className={`phone-deduction-dot phone-deduction-dot-${dot}`}
-                                            />
-                                          ))
-                                        ) : (
-                                          symbol
-                                        )}
-                                        {selectedMark === "dot" && (
-                                          <span className="phone-deduction-quad">
-                                            {(["tl", "tr", "bl", "br"] as const).map((quad) => (
-                                              <button
-                                                key={quad}
-                                                type="button"
-                                                className="phone-deduction-quad-btn"
-                                                onClick={(event) => {
-                                                  event.stopPropagation();
-                                                  updateDeductionMark(rowKey, entry.id, quad);
-                                                }}
-                                              />
-                                            ))}
-                                          </span>
-                                        )}
-                                      </button>
-                                    );
-                                  })}
+                                  {deductionPlayers.map((entry) => (
+                                    <DeductionCell
+                                      key={entry.id}
+                                      rowKey={rowKey}
+                                      playerId={entry.id}
+                                      value={rowMarks[entry.id] ?? ""}
+                                      selectedMark={selectedMark}
+                                      onUpdate={updateDeductionMark}
+                                    />
+                                  ))}
                                 </span>
                               </div>
                             );
@@ -1173,58 +1288,31 @@ export default function PhonePlayerPage({ code, onNavigate }: Props) {
                             return (
                               <div
                                 key={item.id}
-                                className={`phone-deduction-row ${eliminated ? "marked eliminated" : ""}`}
+                                className={`phone-deduction-row ${eliminated ? "marked eliminated" : ""} ${finalSelections[rowKey] ? "final" : ""} ${recentlyUncircled === rowKey ? "uncircled" : ""}`}
                               >
                                 <button
                                   type="button"
                                   className="phone-deduction-row-label-btn"
-                                  onClick={() => toggleElimination("items", item.id)}
+                                  onClick={() => handleRowClick("items", item.id)}
+                                  onPointerDown={() => handleRowPressStart(rowKey)}
+                                  onPointerUp={handleRowPressEnd}
+                                  onPointerLeave={handleRowPressEnd}
+                                  onPointerCancel={handleRowPressEnd}
                                   aria-pressed={eliminated}
                                 >
                                   {item.name}
                                 </button>
                                 <span className="phone-deduction-cells">
-                                  {deductionPlayers.map((entry) => {
-                                    const symbol = rowMarks[entry.id] ?? "";
-                                    const isDot = symbol.startsWith("dot:");
-                                    const dotList = isDot
-                                      ? symbol.replace("dot:", "").split(",").filter(Boolean)
-                                      : [];
-                                    return (
-                                      <button
-                                        key={entry.id}
-                                        type="button"
-                                        className={`phone-deduction-cell phone-deduction-cell-button ${symbol ? "marked" : ""}`}
-                                        onClick={() => updateDeductionMark(rowKey, entry.id)}
-                                      >
-                                        {isDot ? (
-                                          dotList.map((dot) => (
-                                            <span
-                                              key={dot}
-                                              className={`phone-deduction-dot phone-deduction-dot-${dot}`}
-                                            />
-                                          ))
-                                        ) : (
-                                          symbol
-                                        )}
-                                        {selectedMark === "dot" && (
-                                          <span className="phone-deduction-quad">
-                                            {(["tl", "tr", "bl", "br"] as const).map((quad) => (
-                                              <button
-                                                key={quad}
-                                                type="button"
-                                                className="phone-deduction-quad-btn"
-                                                onClick={(event) => {
-                                                  event.stopPropagation();
-                                                  updateDeductionMark(rowKey, entry.id, quad);
-                                                }}
-                                              />
-                                            ))}
-                                          </span>
-                                        )}
-                                      </button>
-                                    );
-                                  })}
+                                  {deductionPlayers.map((entry) => (
+                                    <DeductionCell
+                                      key={entry.id}
+                                      rowKey={rowKey}
+                                      playerId={entry.id}
+                                      value={rowMarks[entry.id] ?? ""}
+                                      selectedMark={selectedMark}
+                                      onUpdate={updateDeductionMark}
+                                    />
+                                  ))}
                                 </span>
                               </div>
                             );
@@ -1240,58 +1328,31 @@ export default function PhonePlayerPage({ code, onNavigate }: Props) {
                             return (
                               <div
                                 key={item.id}
-                                className={`phone-deduction-row ${eliminated ? "marked eliminated" : ""}`}
+                                className={`phone-deduction-row ${eliminated ? "marked eliminated" : ""} ${finalSelections[rowKey] ? "final" : ""} ${recentlyUncircled === rowKey ? "uncircled" : ""}`}
                               >
                                 <button
                                   type="button"
                                   className="phone-deduction-row-label-btn"
-                                  onClick={() => toggleElimination("items", item.id)}
+                                  onClick={() => handleRowClick("items", item.id)}
+                                  onPointerDown={() => handleRowPressStart(rowKey)}
+                                  onPointerUp={handleRowPressEnd}
+                                  onPointerLeave={handleRowPressEnd}
+                                  onPointerCancel={handleRowPressEnd}
                                   aria-pressed={eliminated}
                                 >
                                   {item.name}
                                 </button>
                                 <span className="phone-deduction-cells">
-                                  {deductionPlayers.map((entry) => {
-                                    const symbol = rowMarks[entry.id] ?? "";
-                                    const isDot = symbol.startsWith("dot:");
-                                    const dotList = isDot
-                                      ? symbol.replace("dot:", "").split(",").filter(Boolean)
-                                      : [];
-                                    return (
-                                      <button
-                                        key={entry.id}
-                                        type="button"
-                                        className={`phone-deduction-cell phone-deduction-cell-button ${symbol ? "marked" : ""}`}
-                                        onClick={() => updateDeductionMark(rowKey, entry.id)}
-                                      >
-                                        {isDot ? (
-                                          dotList.map((dot) => (
-                                            <span
-                                              key={dot}
-                                              className={`phone-deduction-dot phone-deduction-dot-${dot}`}
-                                            />
-                                          ))
-                                        ) : (
-                                          symbol
-                                        )}
-                                        {selectedMark === "dot" && (
-                                          <span className="phone-deduction-quad">
-                                            {(["tl", "tr", "bl", "br"] as const).map((quad) => (
-                                              <button
-                                                key={quad}
-                                                type="button"
-                                                className="phone-deduction-quad-btn"
-                                                onClick={(event) => {
-                                                  event.stopPropagation();
-                                                  updateDeductionMark(rowKey, entry.id, quad);
-                                                }}
-                                              />
-                                            ))}
-                                          </span>
-                                        )}
-                                      </button>
-                                    );
-                                  })}
+                                  {deductionPlayers.map((entry) => (
+                                    <DeductionCell
+                                      key={entry.id}
+                                      rowKey={rowKey}
+                                      playerId={entry.id}
+                                      value={rowMarks[entry.id] ?? ""}
+                                      selectedMark={selectedMark}
+                                      onUpdate={updateDeductionMark}
+                                    />
+                                  ))}
                                 </span>
                               </div>
                             );
@@ -1307,58 +1368,31 @@ export default function PhonePlayerPage({ code, onNavigate }: Props) {
                             return (
                               <div
                                 key={item.id}
-                                className={`phone-deduction-row ${eliminated ? "marked eliminated" : ""}`}
+                                className={`phone-deduction-row ${eliminated ? "marked eliminated" : ""} ${finalSelections[rowKey] ? "final" : ""} ${recentlyUncircled === rowKey ? "uncircled" : ""}`}
                               >
                                 <button
                                   type="button"
                                   className="phone-deduction-row-label-btn"
-                                  onClick={() => toggleElimination("items", item.id)}
+                                  onClick={() => handleRowClick("items", item.id)}
+                                  onPointerDown={() => handleRowPressStart(rowKey)}
+                                  onPointerUp={handleRowPressEnd}
+                                  onPointerLeave={handleRowPressEnd}
+                                  onPointerCancel={handleRowPressEnd}
                                   aria-pressed={eliminated}
                                 >
                                   {item.name}
                                 </button>
                                 <span className="phone-deduction-cells">
-                                  {deductionPlayers.map((entry) => {
-                                    const symbol = rowMarks[entry.id] ?? "";
-                                    const isDot = symbol.startsWith("dot:");
-                                    const dotList = isDot
-                                      ? symbol.replace("dot:", "").split(",").filter(Boolean)
-                                      : [];
-                                    return (
-                                      <button
-                                        key={entry.id}
-                                        type="button"
-                                        className={`phone-deduction-cell phone-deduction-cell-button ${symbol ? "marked" : ""}`}
-                                        onClick={() => updateDeductionMark(rowKey, entry.id)}
-                                      >
-                                        {isDot ? (
-                                          dotList.map((dot) => (
-                                            <span
-                                              key={dot}
-                                              className={`phone-deduction-dot phone-deduction-dot-${dot}`}
-                                            />
-                                          ))
-                                        ) : (
-                                          symbol
-                                        )}
-                                        {selectedMark === "dot" && (
-                                          <span className="phone-deduction-quad">
-                                            {(["tl", "tr", "bl", "br"] as const).map((quad) => (
-                                              <button
-                                                key={quad}
-                                                type="button"
-                                                className="phone-deduction-quad-btn"
-                                                onClick={(event) => {
-                                                  event.stopPropagation();
-                                                  updateDeductionMark(rowKey, entry.id, quad);
-                                                }}
-                                              />
-                                            ))}
-                                          </span>
-                                        )}
-                                      </button>
-                                    );
-                                  })}
+                                  {deductionPlayers.map((entry) => (
+                                    <DeductionCell
+                                      key={entry.id}
+                                      rowKey={rowKey}
+                                      playerId={entry.id}
+                                      value={rowMarks[entry.id] ?? ""}
+                                      selectedMark={selectedMark}
+                                      onUpdate={updateDeductionMark}
+                                    />
+                                  ))}
                                 </span>
                               </div>
                             );
@@ -1372,7 +1406,7 @@ export default function PhonePlayerPage({ code, onNavigate }: Props) {
                   <button
                     type="button"
                     className="phone-deduction-tool"
-                    onClick={handleUndoDeduction}
+                    onPointerDown={handleUndoDeduction}
                     disabled={deductionHistory.length === 0}
                   >
                     <span className="phone-deduction-tool-symbol">Undo</span>
@@ -1492,7 +1526,12 @@ export default function PhonePlayerPage({ code, onNavigate }: Props) {
                     <div>
                       <div className="phone-section-title">WHO</div>
                       <div className="phone-grid phone-grid-suspects">
-                        {SUSPECTS.filter((suspect) => !eliminations.suspects.includes(suspect.id)).map((suspect) => (
+                        {SUSPECTS.filter((suspect) => {
+                          const hasFinal = hasFinalSelection("suspects:");
+                          const isFinal = finalSelections[`suspects:${suspect.id}`];
+                          if (hasFinal) return Boolean(isFinal);
+                          return !eliminations.suspects.includes(suspect.id);
+                        }).map((suspect) => (
                           <button
                             key={suspect.id}
                             type="button"
@@ -1513,7 +1552,12 @@ export default function PhonePlayerPage({ code, onNavigate }: Props) {
                     <div>
                       <div className="phone-section-title">WHAT</div>
                       <div className="phone-grid phone-grid-accuse">
-                        {ITEMS.filter((item) => !eliminations.items.includes(item.id)).map((item) => (
+                        {ITEMS.filter((item) => {
+                          const hasFinal = hasFinalSelection("items:");
+                          const isFinal = finalSelections[`items:${item.id}`];
+                          if (hasFinal) return Boolean(isFinal);
+                          return !eliminations.items.includes(item.id);
+                        }).map((item) => (
                           <button
                             key={item.id}
                             type="button"
@@ -1534,7 +1578,12 @@ export default function PhonePlayerPage({ code, onNavigate }: Props) {
                     <div>
                       <div className="phone-section-title">WHERE</div>
                       <div className="phone-grid phone-grid-accuse">
-                        {LOCATIONS.filter((location) => !eliminations.locations.includes(location.id)).map((location) => (
+                        {LOCATIONS.filter((location) => {
+                          const hasFinal = hasFinalSelection("locations:");
+                          const isFinal = finalSelections[`locations:${location.id}`];
+                          if (hasFinal) return Boolean(isFinal);
+                          return !eliminations.locations.includes(location.id);
+                        }).map((location) => (
                           <button
                             key={location.id}
                             type="button"
@@ -1555,7 +1604,12 @@ export default function PhonePlayerPage({ code, onNavigate }: Props) {
                     <div>
                       <div className="phone-section-title">WHEN</div>
                       <div className="phone-grid phone-grid-accuse">
-                        {TIMES.filter((time) => !eliminations.times.includes(time.id)).map((time) => (
+                        {TIMES.filter((time) => {
+                          const hasFinal = hasFinalSelection("times:");
+                          const isFinal = finalSelections[`times:${time.id}`];
+                          if (hasFinal) return Boolean(isFinal);
+                          return !eliminations.times.includes(time.id);
+                        }).map((time) => (
                           <button
                             key={time.id}
                             type="button"
