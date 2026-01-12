@@ -119,10 +119,10 @@ export default function PhonePlayerPage({ code, onNavigate }: Props) {
     S03: "#e5e0da",
     S04: "#6c9376",
     S05: "#54539b",
-    S06: "#6f4a9b",
+    S06: "#7A29A3",
     S07: "#49aca7",
     S08: "#78abd8",
-    S09: "#b25593",
+    S09: "#CB94F7",
     S10: "#d9673b",
   };
   const accentColor = player?.suspectId ? suspectColorMap[player.suspectId] : "#b68b2d";
@@ -330,6 +330,9 @@ export default function PhonePlayerPage({ code, onNavigate }: Props) {
         setSecretPassageUsedThisTurn(true);
         setActionContinueMessage("Secret passage resolved on the host screen.");
         setShowActionContinue(true);
+      } else if (action === "reveal_clue") {
+        setActionContinueMessage("Clue revealed on the host screen.");
+        setShowActionContinue(true);
       } else if (action === "make_suggestion") {
         setActionContinueMessage("Make your suggestion. Continue when the table resolves it.");
         setShowActionContinue(true);
@@ -440,6 +443,8 @@ export default function PhonePlayerPage({ code, onNavigate }: Props) {
   const leadPlayerId = sortedRoster[0]?.id;
   const playerId = player?.id;
   const isLead = playerId ? leadPlayerId === playerId : false;
+  const isPlum = player?.suspectId === "S06";
+  const plumButtonStyle = isPlum ? { color: "#ffffff" } : undefined;
   const isActive = session?.session.status === "active";
   const currentTurnSuspectId = session?.session.currentTurnSuspectId || null;
   const isPlayersTurn = isActive && Boolean(player?.suspectId) && currentTurnSuspectId === player?.suspectId;
@@ -581,7 +586,7 @@ export default function PhonePlayerPage({ code, onNavigate }: Props) {
                   ))}
                 </select>
               </div>
-              <button type="button" className="phone-button" onClick={startGame}>
+              <button type="button" className="phone-button" onClick={startGame} style={plumButtonStyle}>
                 Start Game
               </button>
             </div>
@@ -639,6 +644,7 @@ export default function PhonePlayerPage({ code, onNavigate }: Props) {
                     type="button"
                     className="phone-button"
                     onClick={() => sendAction("begin_investigation")}
+                    style={plumButtonStyle}
                   >
                     Begin Investigation
                   </button>
@@ -976,7 +982,13 @@ export default function PhonePlayerPage({ code, onNavigate }: Props) {
                     </div>
                   )}
 
-                  <button type="button" className="phone-button" onClick={submitAccusation} disabled={!isPlayersTurn}>
+                  <button
+                    type="button"
+                    className="phone-button"
+                    onClick={submitAccusation}
+                    disabled={!isPlayersTurn}
+                    style={plumButtonStyle}
+                  >
                     Submit to Host
                   </button>
                 </div>
@@ -996,10 +1008,15 @@ export default function PhonePlayerPage({ code, onNavigate }: Props) {
           <div className="phone-scrim-card phone-scrim-card-stack">
             <div>Reveal the next clue?</div>
             <div className="phone-button-row">
-              <button type="button" className="phone-button ghost" onClick={() => setPendingRevealConfirm(false)}>
+              <button
+                type="button"
+                className="phone-button ghost"
+                onClick={() => setPendingRevealConfirm(false)}
+                style={plumButtonStyle}
+              >
                 Cancel
               </button>
-              <button type="button" className="phone-button" onClick={confirmRevealClue}>
+              <button type="button" className="phone-button" onClick={confirmRevealClue} style={plumButtonStyle}>
                 Confirm
               </button>
             </div>
@@ -1012,10 +1029,15 @@ export default function PhonePlayerPage({ code, onNavigate }: Props) {
           <div className="phone-scrim-card phone-scrim-card-stack">
             <div>Make a suggestion?</div>
             <div className="phone-button-row">
-              <button type="button" className="phone-button ghost" onClick={() => setPendingSuggestionConfirm(false)}>
+              <button
+                type="button"
+                className="phone-button ghost"
+                onClick={() => setPendingSuggestionConfirm(false)}
+                style={plumButtonStyle}
+              >
                 Cancel
               </button>
-              <button type="button" className="phone-button" onClick={confirmSuggestion}>
+              <button type="button" className="phone-button" onClick={confirmSuggestion} style={plumButtonStyle}>
                 Confirm
               </button>
             </div>
@@ -1035,6 +1057,7 @@ export default function PhonePlayerPage({ code, onNavigate }: Props) {
               className="phone-button"
               onClick={confirmInterruption}
               disabled={interruptionConfirming}
+              style={plumButtonStyle}
             >
               {interruptionConfirming ? "Sending..." : "Continue"}
             </button>
@@ -1067,7 +1090,12 @@ export default function PhonePlayerPage({ code, onNavigate }: Props) {
                 {accusationFeedback.correctCount}/4 correct
               </div>
             )}
-            <button type="button" className="phone-button" onClick={handleContinueInvestigation}>
+            <button
+              type="button"
+              className="phone-button"
+              onClick={handleContinueInvestigation}
+              style={plumButtonStyle}
+            >
               Continue Investigation
             </button>
           </div>

@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { SUSPECTS } from "../../shared/game-elements";
-import { getSession, joinSession } from "./api";
-import { storePlayer } from "./storage";
+import { getSession, joinSession, reconnectSession } from "./api";
+import { loadLastJoinedCode, loadStoredPlayer, storePlayer } from "./storage";
 import { suspectImageById } from "./assets";
 import type { PhoneSessionSummary } from "../../phone/types";
 import "./phone.css";
@@ -16,7 +16,15 @@ export default function PhoneJoinPage({ onNavigate }: Props) {
   const [suspectId, setSuspectId] = useState("");
   const [session, setSession] = useState<PhoneSessionSummary | null>(null);
   const [loading, setLoading] = useState(false);
+  const [rejoinLoading, setRejoinLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [rejoinCode, setRejoinCode] = useState<string | null>(null);
+  const [rejoinPlayer, setRejoinPlayer] = useState<{
+    playerId: string;
+    reconnectToken: string;
+    name: string;
+    suspectId: string;
+  } | null>(null);
 
   const normalizedCode = code.replace(/[^A-Za-z0-9]/g, "").toUpperCase();
   const takenSuspects = new Set(session?.players.map((player) => player.suspectId));
@@ -41,10 +49,10 @@ export default function PhoneJoinPage({ onNavigate }: Props) {
     S03: "#e5e0da",
     S04: "#6c9376",
     S05: "#54539b",
-    S06: "#6f4a9b",
+    S06: "#7A29A3",
     S07: "#49aca7",
     S08: "#78abd8",
-    S09: "#b25593",
+    S09: "#CB94F7",
     S10: "#d9673b",
   };
 
@@ -65,6 +73,18 @@ export default function PhoneJoinPage({ onNavigate }: Props) {
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    const lastCode = loadLastJoinedCode();
+    if (!lastCode) return;
+    const stored = loadStoredPlayer(lastCode);
+    if (!stored) return;
+    setRejoinCode(lastCode);
+    setRejoinPlayer(stored);
+    if (!code) {
+      setCode(lastCode);
+    }
+  }, []);
 
   useEffect(() => {
     if (!session) return;
@@ -99,6 +119,26 @@ export default function PhoneJoinPage({ onNavigate }: Props) {
     }
   };
 
+  const handleRejoin = async () => {
+    if (!rejoinCode || !rejoinPlayer) return;
+    setRejoinLoading(true);
+    setError(null);
+    try {
+      const data = await reconnectSession(rejoinCode, rejoinPlayer.reconnectToken);
+      storePlayer(rejoinCode, {
+        playerId: data.player.id,
+        reconnectToken: data.reconnectToken,
+        name: data.player.name,
+        suspectId: data.player.suspectId,
+      });
+      onNavigate(`/phone/session/${rejoinCode}`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to reconnect.");
+    } finally {
+      setRejoinLoading(false);
+    }
+  };
+
   const [imageOkById, setImageOkById] = useState<Record<string, boolean>>({});
 
   return (
@@ -111,6 +151,22 @@ export default function PhoneJoinPage({ onNavigate }: Props) {
       </div>
 
       <div className="phone-stack">
+        {rejoinPlayer && (
+          <div className="phone-card phone-stack">
+            <div className="phone-section-title">Resume Detective</div>
+            <div className="phone-subtitle">
+              {rejoinPlayer.name} · {rejoinPlayer.suspectId}
+            </div>
+            <button
+              type="button"
+              className="phone-button"
+              onClick={handleRejoin}
+              disabled={rejoinLoading}
+            >
+              {rejoinLoading ? "Rejoining..." : "Rejoin Game"}
+            </button>
+          </div>
+        )}
         <div className="phone-card phone-stack">
           <div className="phone-field">
             <label htmlFor="code">Join Code</label>

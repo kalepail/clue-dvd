@@ -1,6 +1,7 @@
 const STORAGE_PREFIX = "clue-phone-session";
 const HOST_SESSION_KEY = "clue-phone-host-session";
 const HOST_AUTO_CREATE_KEY = "clue-phone-host-autocreate";
+const LAST_PLAYER_CODE_KEY = "clue-phone-last-code";
 
 export interface PhoneStoredPlayer {
   playerId: string;
@@ -26,6 +27,7 @@ export function loadStoredPlayer(code: string): PhoneStoredPlayer | null {
 export function storePlayer(code: string, player: PhoneStoredPlayer): void {
   try {
     localStorage.setItem(buildKey(code), JSON.stringify(player));
+    localStorage.setItem(LAST_PLAYER_CODE_KEY, code);
   } catch (error) {
     console.error("Failed to store phone player info:", error);
   }
@@ -33,6 +35,14 @@ export function storePlayer(code: string, player: PhoneStoredPlayer): void {
 
 export function clearStoredPlayer(code: string): void {
   localStorage.removeItem(buildKey(code));
+}
+
+export function loadLastJoinedCode(): string | null {
+  try {
+    return localStorage.getItem(LAST_PLAYER_CODE_KEY);
+  } catch {
+    return null;
+  }
 }
 
 export function storeHostSessionCode(code: string): void {

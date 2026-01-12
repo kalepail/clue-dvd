@@ -27,10 +27,10 @@ const suspectColorById: Record<string, string> = {
   S03: "#e5e0da",
   S04: "#6c9376",
   S05: "#54539b",
-  S06: "#6f4a9b",
+  S06: "#7A29A3",
   S07: "#49aca7",
   S08: "#78abd8",
-  S09: "#b25593",
+  S09: "#CB94F7",
   S10: "#d9673b",
 };
 
@@ -117,6 +117,7 @@ export default function GamePage({ gameId, onNavigate }: Props) {
   const [showInterruptionIntro, setShowInterruptionIntro] = useState(false);
   const [interruptionMessage, setInterruptionMessage] = useState("");
   const [interruptionType, setInterruptionType] = useState<"turn_in_card" | "unlock_rooms" | "inspector_note">("turn_in_card");
+  const [inspectorImageIndex, setInspectorImageIndex] = useState(0);
   const pauseStartRef = useRef<number | null>(null);
   const pauseAccumulatedRef = useRef(0);
   const [showInspectorNotes, setShowInspectorNotes] = useState(false);
@@ -128,7 +129,7 @@ export default function GamePage({ gameId, onNavigate }: Props) {
   const [forceRevealSymbols, setForceRevealSymbols] = useState(false);
   const [hostNotice, setHostNotice] = useState<string | null>(null);
   const [showEndTurnConfirm, setShowEndTurnConfirm] = useState(false);
-  const [pendingPhoneContinue, setPendingPhoneContinue] = useState<null | "use_secret_passage" | "make_suggestion">(null);
+  const [pendingPhoneContinue, setPendingPhoneContinue] = useState<null | "use_secret_passage" | "make_suggestion" | "reveal_clue">(null);
   const previousTurnKey = useRef<string | null>(null);
   const gameProgress = game?.totalClues ? game.currentClueIndex / game.totalClues : 0;
   const phoneSessionCode = game?.phoneSessionCode ?? null;
@@ -145,7 +146,6 @@ export default function GamePage({ gameId, onNavigate }: Props) {
     "/images/ui/Inspector Brown.png",
     "/images/ui/Inspector Brown 3.png",
   ];
-  const inspectorImageIndex = game ? game.interruptionCount % inspectorInterruptionImages.length : 0;
   const note1Available = gameProgress >= 0.5;
   const note2Available = gameProgress >= 0.65;
 
@@ -191,6 +191,11 @@ export default function GamePage({ gameId, onNavigate }: Props) {
             } else if (action === "continue_investigation") {
               setShowAccusation(false);
               setPhoneAccusation(null);
+              if (pendingPhoneContinue === "reveal_clue") {
+                setShowClueReveal(false);
+                setPendingPhoneContinue(null);
+                continue;
+              }
               if (showInterruptionIntro) {
                 acknowledgeInterruptionIntro();
               } else if (showInterruption) {
@@ -204,6 +209,7 @@ export default function GamePage({ gameId, onNavigate }: Props) {
               setPendingPhoneContinue(null);
             } else if (action === "reveal_clue" && game.status === "in_progress" && !revealingClue) {
               handleRevealClue();
+              setPendingPhoneContinue("reveal_clue");
             } else if (action === "use_secret_passage" && game.status === "in_progress") {
               handleSecretPassage();
               setPendingPhoneContinue("use_secret_passage");
@@ -330,6 +336,11 @@ export default function GamePage({ gameId, onNavigate }: Props) {
       pauseStartRef.current = null;
     }
   }, [showInterruption, showInterruptionIntro]);
+
+  useEffect(() => {
+    if (!showInterruption || inspectorInterruptionImages.length === 0) return;
+    setInspectorImageIndex((prev) => (prev + 1) % inspectorInterruptionImages.length);
+  }, [showInterruption, inspectorInterruptionImages.length]);
 
   useEffect(() => {
     if (!game?.startedAt || game.status !== "in_progress") return;

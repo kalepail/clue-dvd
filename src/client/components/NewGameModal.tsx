@@ -50,10 +50,10 @@ const suspectColorById: Record<string, string> = {
   S03: "#e5e0da",
   S04: "#6c9376",
   S05: "#54539b",
-  S06: "#6f4a9b",
+  S06: "#7A29A3",
   S07: "#49aca7",
   S08: "#78abd8",
-  S09: "#b25593",
+  S09: "#CB94F7",
   S10: "#d9673b",
 };
 
