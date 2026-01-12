@@ -131,6 +131,8 @@ export default function GamePage({ gameId, onNavigate }: Props) {
   const [showEndTurnConfirm, setShowEndTurnConfirm] = useState(false);
   const [pendingPhoneContinue, setPendingPhoneContinue] = useState<null | "use_secret_passage" | "make_suggestion" | "reveal_clue">(null);
   const previousTurnKey = useRef<string | null>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const lastSpokenRef = useRef<string | null>(null);
   const gameProgress = game?.totalClues ? game.currentClueIndex / game.totalClues : 0;
   const phoneSessionCode = game?.phoneSessionCode ?? null;
   const isPhoneLobbyActive = Boolean(phoneSessionCode)
@@ -140,6 +142,32 @@ export default function GamePage({ gameId, onNavigate }: Props) {
     "/images/ui/Butler Image.png",
     "/images/ui/Butler Image 2.png",
   ];
+
+  const interruptionIntroText = "Inspector Brown would like to see you.";
+  const interruptionFallbackText = "Inspector Brown calls for an immediate pause in the investigation.";
+
+  const playVoiceover = useCallback(async (text: string, role: "butler" | "inspector") => {
+    if (!text) return;
+    try {
+      const response = await fetch("/api/tts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text, role }),
+      });
+      if (!response.ok) return;
+      const blob = await response.blob();
+      const audio = audioRef.current ?? new Audio();
+      audioRef.current = audio;
+      audio.pause();
+      audio.currentTime = 0;
+      const url = URL.createObjectURL(blob);
+      audio.src = url;
+      audio.onended = () => URL.revokeObjectURL(url);
+      await audio.play();
+    } catch {
+      // Ignore voiceover errors to keep gameplay moving.
+    }
+  }, []);
   const butlerImageIndex = game ? game.currentClueIndex % butlerClueImages.length : 0;
   const inspectorInterruptionImages = [
     "/images/ui/Inspector Brown 2.png",
@@ -454,6 +482,34 @@ export default function GamePage({ gameId, onNavigate }: Props) {
     if (previousTurnKey.current === turnKey) return;
     previousTurnKey.current = turnKey;
   }, [game?.currentTurn, game?.currentTurnIndex]);
+
+  useEffect(() => {
+    if (!showClueReveal || !latestClue?.text) return;
+    const key = `clue:${latestClue.text}`;
+    if (lastSpokenRef.current === key) return;
+    lastSpokenRef.current = key;
+    const speaker = latestClue.speaker?.toLowerCase() ?? "";
+    const role = speaker.includes("inspector") ? "inspector" : "butler";
+    playVoiceover(latestClue.text, role);
+  }, [latestClue?.speaker, latestClue?.text, playVoiceover, showClueReveal]);
+
+  useEffect(() => {
+    if (!showInterruption && !showInterruptionIntro) return;
+    const message = showInterruptionIntro
+      ? interruptionIntroText
+      : (interruptionMessage || interruptionFallbackText);
+    const key = `interruption:${showInterruptionIntro ? "intro" : "main"}:${message}`;
+    if (lastSpokenRef.current === key) return;
+    lastSpokenRef.current = key;
+    playVoiceover(message, "inspector");
+  }, [
+    interruptionFallbackText,
+    interruptionIntroText,
+    interruptionMessage,
+    playVoiceover,
+    showInterruption,
+    showInterruptionIntro,
+  ]);
 
   const handleStartGame = () => {
     try {
@@ -1188,7 +1244,7 @@ export default function GamePage({ gameId, onNavigate }: Props) {
                 Inspector Interruption
               </CardTitle>
               <CardDescription className="text-lg md:text-xl">
-                Inspector Brown would like to see you.
+                {interruptionIntroText}
               </CardDescription>
             </CardHeader>
             <CardContent className="pt-0">
@@ -1219,7 +1275,7 @@ export default function GamePage({ gameId, onNavigate }: Props) {
             </CardHeader>
             <CardContent className="space-y-6 host-modal-body">
               <p className="italic">
-                {interruptionMessage || "Inspector Brown calls for an immediate pause in the investigation."}
+                {interruptionMessage || interruptionFallbackText}
               </p>
             </CardContent>
             <CardContent className="pt-0">

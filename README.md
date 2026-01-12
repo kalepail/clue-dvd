@@ -39,6 +39,18 @@ wrangler d1 migrations apply clue-dvd-games --local
 
 Host a lobby from `#/host-lobby` or `#/phone/host`, then have players join at `#/phone` with the code.
 
+### ElevenLabs Voiceover (Optional)
+
+Host prompts (clue reveals + inspector interruptions) can play a consistent British voice using ElevenLabs.
+
+```bash
+wrangler secret put ELEVENLABS_API_KEY
+wrangler vars set ELEVENLABS_BUTLER_VOICE_ID="your_butler_voice_id"
+wrangler vars set ELEVENLABS_INSPECTOR_VOICE_ID="your_inspector_voice_id"
+```
+
+For local dev, set the same values in `.dev.vars`.
+
 ---
 
 ## Project Overview
@@ -87,7 +99,7 @@ This web app acts as the **game master** for the 2006 Clue DVD Game, generating:
 | Server-side Game Persistence | Not started | Games only in localStorage |
 | Real-time Sync | Not started | Phone uses polling, no WebSocket sync |
 | Physical Card Verification | Not started | Manual honor system |
-| Sound/Voice | Not started | Original DVD had Inspector Brown voice |
+| Sound/Voice | Optional | ElevenLabs TTS (requires API key + voice IDs) |
 
 ---
 
