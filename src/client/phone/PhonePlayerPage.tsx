@@ -89,6 +89,8 @@ export default function PhonePlayerPage({ code, onNavigate }: Props) {
     locationId: "",
     timeId: "",
   });
+  const [deductionMarks, setDeductionMarks] = useState<Record<string, Record<string, string>>>({});
+  const [selectedMark, setSelectedMark] = useState("X");
   const [accusationStep, setAccusationStep] = useState<"suspect" | "item" | "location" | "time">("suspect");
   const [showAccusationNotice, setShowAccusationNotice] = useState(false);
   const [showActionContinue, setShowActionContinue] = useState(false);
@@ -191,6 +193,18 @@ export default function PhonePlayerPage({ code, onNavigate }: Props) {
     if (!player) return;
     accusationMessageHistoryRef.current = loadAccusationMessageHistory(code, player.id);
   }, [code, player]);
+
+  useEffect(() => {
+    if (!player) return;
+    const storageKey = `clue-phone-deduction:${code}:${player.id}`;
+    setDeductionMarks(loadDeductionMarks(storageKey));
+  }, [code, player]);
+
+  useEffect(() => {
+    if (!player) return;
+    const storageKey = `clue-phone-deduction:${code}:${player.id}`;
+    saveDeductionMarks(storageKey, deductionMarks);
+  }, [code, deductionMarks, player]);
 
   useEffect(() => {
     if (!player) return;
@@ -355,7 +369,6 @@ export default function PhonePlayerPage({ code, onNavigate }: Props) {
       setActionStatus(null);
       setAccusation({ suspectId: "", itemId: "", locationId: "", timeId: "" });
       setTab("turn");
-      setShowAccusationNotice(true);
     } catch (err) {
       setActionStatus(err instanceof Error ? err.message : "Failed to submit accusation.");
     }
@@ -377,6 +390,16 @@ export default function PhonePlayerPage({ code, onNavigate }: Props) {
       setShowActionContinue(false);
       setActionContinueMessage(null);
     }
+  };
+
+  const updateDeductionMark = (rowKey: string, playerIdValue: string) => {
+    setDeductionMarks((prev) => {
+      const row = prev[rowKey] ?? {};
+      const current = row[playerIdValue] ?? "";
+      const nextValue = current === selectedMark ? "" : selectedMark;
+      const nextRow = { ...row, [playerIdValue]: nextValue };
+      return { ...prev, [rowKey]: nextRow };
+    });
   };
 
   const requestRevealClue = () => {
@@ -440,6 +463,7 @@ export default function PhonePlayerPage({ code, onNavigate }: Props) {
   const sortedRoster = [...roster].sort(
     (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
   );
+  const deductionPlayers = sortedRoster.slice(0, 6);
   const leadPlayerId = sortedRoster[0]?.id;
   const playerId = player?.id;
   const isLead = playerId ? leadPlayerId === playerId : false;
@@ -458,6 +482,38 @@ export default function PhonePlayerPage({ code, onNavigate }: Props) {
   const note2Available = session?.session.note2Available ?? false;
   const interruptionActive = session?.session.interruptionActive ?? false;
   const interruptionMessage = session?.session.interruptionMessage ?? "";
+
+  const markOptions = [
+    { key: "x", label: "X", symbol: "X" },
+    { key: "check", label: "Check", symbol: "✓" },
+    { key: "maybe", label: "?", symbol: "?" },
+  ];
+
+  const getPlayerInitials = (name: string) => {
+    const parts = name.trim().split(/\s+/).filter(Boolean);
+    if (parts.length === 0) return "--";
+    if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+    return `${parts[0][0]}${parts[parts.length - 1][0]}`.toUpperCase();
+  };
+
+  const loadDeductionMarks = (storageKey: string) => {
+    try {
+      const raw = localStorage.getItem(storageKey);
+      if (!raw) return {};
+      const parsed = JSON.parse(raw) as Record<string, Record<string, string>>;
+      return parsed && typeof parsed === "object" ? parsed : {};
+    } catch {
+      return {};
+    }
+  };
+
+  const saveDeductionMarks = (storageKey: string, next: Record<string, Record<string, string>>) => {
+    try {
+      localStorage.setItem(storageKey, JSON.stringify(next));
+    } catch {
+      // Ignore storage errors.
+    }
+  };
 
   useEffect(() => {
     if (lastTurnRef.current !== currentTurnSuspectId) {
@@ -744,61 +800,365 @@ export default function PhonePlayerPage({ code, onNavigate }: Props) {
             )}
 
             {tab === "eliminations" && (
-              <div className="phone-card phone-stack">
-                <div className="phone-section-title">Suspects</div>
-                <div className="phone-stack">
-                  {SUSPECTS.map((suspect) => (
-                    <label key={suspect.id} className="phone-checkbox">
-                      <input
-                        type="checkbox"
-                        checked={eliminations.suspects.includes(suspect.id)}
-                        onChange={() => toggleElimination("suspects", suspect.id)}
-                      />
-                      {suspect.name}
-                    </label>
-                  ))}
-                </div>
+              <div className="phone-deduction-sheet">
+                <div
+                  className="phone-deduction-paper"
+                  style={{
+                    ["--deduction-cols" as never]: Math.max(deductionPlayers.length, 1),
+                  }}
+                >
+                  <div className="phone-deduction-columns">
+                    <div className="phone-deduction-left">
+                      <section className="phone-deduction-section">
+                        <h3>SUSPECTS</h3>
+                        <div className="phone-deduction-table">
+                          <div className="phone-deduction-header">
+                            <span className="phone-deduction-row-label" />
+                            <span className="phone-deduction-cells">
+                              {deductionPlayers.map((entry) => (
+                                <span key={entry.id} className="phone-deduction-header-cell">
+                                  {getPlayerInitials(entry.suspectName || entry.name)}
+                                </span>
+                              ))}
+                            </span>
+                          </div>
+                          <div className="phone-deduction-group-label">Men</div>
+                          {["S02", "S04", "S06", "S08", "S10"].map((id) => {
+                            const suspect = SUSPECTS.find((entry) => entry.id === id);
+                            if (!suspect) return null;
+                            const eliminated = eliminations.suspects.includes(suspect.id);
+                            const rowKey = `suspects:${suspect.id}`;
+                            const rowMarks = deductionMarks[rowKey] ?? {};
+                            return (
+                              <div
+                                key={suspect.id}
+                                className={`phone-deduction-row ${eliminated ? "marked eliminated" : ""}`}
+                              >
+                                <button
+                                  type="button"
+                                  className="phone-deduction-row-label-btn"
+                                  onClick={() => toggleElimination("suspects", suspect.id)}
+                                  aria-pressed={eliminated}
+                                >
+                                  {suspect.name}
+                                </button>
+                                <span className="phone-deduction-cells">
+                                  {deductionPlayers.map((entry) => {
+                                    const symbol = rowMarks[entry.id] ?? "";
+                                    return (
+                                      <button
+                                        key={entry.id}
+                                        type="button"
+                                        className={`phone-deduction-cell phone-deduction-cell-button ${symbol ? "marked" : ""}`}
+                                        onClick={() => updateDeductionMark(rowKey, entry.id)}
+                                      >
+                                        {symbol}
+                                      </button>
+                                    );
+                                  })}
+                                </span>
+                              </div>
+                            );
+                          })}
+                          <div className="phone-deduction-divider" />
+                          <div className="phone-deduction-group-label">Women</div>
+                          {["S01", "S03", "S05", "S07", "S09"].map((id) => {
+                            const suspect = SUSPECTS.find((entry) => entry.id === id);
+                            if (!suspect) return null;
+                            const eliminated = eliminations.suspects.includes(suspect.id);
+                            const rowKey = `suspects:${suspect.id}`;
+                            const rowMarks = deductionMarks[rowKey] ?? {};
+                            return (
+                              <div
+                                key={suspect.id}
+                                className={`phone-deduction-row ${eliminated ? "marked eliminated" : ""}`}
+                              >
+                                <button
+                                  type="button"
+                                  className="phone-deduction-row-label-btn"
+                                  onClick={() => toggleElimination("suspects", suspect.id)}
+                                  aria-pressed={eliminated}
+                                >
+                                  {suspect.name}
+                                </button>
+                                <span className="phone-deduction-cells">
+                                  {deductionPlayers.map((entry) => {
+                                    const symbol = rowMarks[entry.id] ?? "";
+                                    return (
+                                      <button
+                                        key={entry.id}
+                                        type="button"
+                                        className={`phone-deduction-cell phone-deduction-cell-button ${symbol ? "marked" : ""}`}
+                                        onClick={() => updateDeductionMark(rowKey, entry.id)}
+                                      >
+                                        {symbol}
+                                      </button>
+                                    );
+                                  })}
+                                </span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </section>
 
-                <div className="phone-section-title">Items</div>
-                <div className="phone-stack">
-                  {ITEMS.map((item) => (
-                    <label key={item.id} className="phone-checkbox">
-                      <input
-                        type="checkbox"
-                        checked={eliminations.items.includes(item.id)}
-                        onChange={() => toggleElimination("items", item.id)}
-                      />
-                      {item.name}
-                    </label>
-                  ))}
-                </div>
+                      <section className="phone-deduction-section">
+                        <h3>LOCATIONS</h3>
+                        <div className="phone-deduction-table">
+                          <div className="phone-deduction-header">
+                            <span className="phone-deduction-row-label" />
+                            <span className="phone-deduction-cells">
+                              {deductionPlayers.map((entry) => (
+                                <span key={entry.id} className="phone-deduction-header-cell">
+                                  {getPlayerInitials(entry.suspectName || entry.name)}
+                                </span>
+                              ))}
+                            </span>
+                          </div>
+                          {LOCATIONS.map((location) => {
+                            const eliminated = eliminations.locations.includes(location.id);
+                            const rowKey = `locations:${location.id}`;
+                            const rowMarks = deductionMarks[rowKey] ?? {};
+                            return (
+                              <div
+                                key={location.id}
+                                className={`phone-deduction-row ${eliminated ? "marked eliminated" : ""}`}
+                              >
+                                <button
+                                  type="button"
+                                  className="phone-deduction-row-label-btn"
+                                  onClick={() => toggleElimination("locations", location.id)}
+                                  aria-pressed={eliminated}
+                                >
+                                  {location.name}
+                                </button>
+                                <span className="phone-deduction-cells">
+                                  {deductionPlayers.map((entry) => {
+                                    const symbol = rowMarks[entry.id] ?? "";
+                                    return (
+                                      <button
+                                        key={entry.id}
+                                        type="button"
+                                        className={`phone-deduction-cell phone-deduction-cell-button ${symbol ? "marked" : ""}`}
+                                        onClick={() => updateDeductionMark(rowKey, entry.id)}
+                                      >
+                                        {symbol}
+                                      </button>
+                                    );
+                                  })}
+                                </span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </section>
 
-                <div className="phone-section-title">Locations</div>
-                <div className="phone-stack">
-                  {LOCATIONS.map((location) => (
-                    <label key={location.id} className="phone-checkbox">
-                      <input
-                        type="checkbox"
-                        checked={eliminations.locations.includes(location.id)}
-                        onChange={() => toggleElimination("locations", location.id)}
-                      />
-                      {location.name}
-                    </label>
-                  ))}
-                </div>
+                      <section className="phone-deduction-section">
+                        <h3>TIME</h3>
+                        <div className="phone-deduction-table">
+                          <div className="phone-deduction-header">
+                            <span className="phone-deduction-row-label" />
+                            <span className="phone-deduction-cells">
+                              {deductionPlayers.map((entry) => (
+                                <span key={entry.id} className="phone-deduction-header-cell">
+                                  {getPlayerInitials(entry.suspectName || entry.name)}
+                                </span>
+                              ))}
+                            </span>
+                          </div>
+                          {TIMES.map((time) => {
+                            const eliminated = eliminations.times.includes(time.id);
+                            const rowKey = `times:${time.id}`;
+                            const rowMarks = deductionMarks[rowKey] ?? {};
+                            return (
+                              <div
+                                key={time.id}
+                                className={`phone-deduction-row ${eliminated ? "marked eliminated" : ""}`}
+                              >
+                                <button
+                                  type="button"
+                                  className="phone-deduction-row-label-btn"
+                                  onClick={() => toggleElimination("times", time.id)}
+                                  aria-pressed={eliminated}
+                                >
+                                  {time.name}
+                                </button>
+                                <span className="phone-deduction-cells">
+                                  {deductionPlayers.map((entry) => {
+                                    const symbol = rowMarks[entry.id] ?? "";
+                                    return (
+                                      <button
+                                        key={entry.id}
+                                        type="button"
+                                        className={`phone-deduction-cell phone-deduction-cell-button ${symbol ? "marked" : ""}`}
+                                        onClick={() => updateDeductionMark(rowKey, entry.id)}
+                                      >
+                                        {symbol}
+                                      </button>
+                                    );
+                                  })}
+                                </span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </section>
 
-                <div className="phone-section-title">Times</div>
-                <div className="phone-stack">
-                  {TIMES.map((time) => (
-                    <label key={time.id} className="phone-checkbox">
-                      <input
-                        type="checkbox"
-                        checked={eliminations.times.includes(time.id)}
-                        onChange={() => toggleElimination("times", time.id)}
-                      />
-                      {time.name}
-                    </label>
-                  ))}
+                      <section className="phone-deduction-section">
+                        <h3>ITEMS</h3>
+                        <div className="phone-deduction-table">
+                          <div className="phone-deduction-header">
+                            <span className="phone-deduction-row-label" />
+                            <span className="phone-deduction-cells">
+                              {deductionPlayers.map((entry) => (
+                                <span key={entry.id} className="phone-deduction-header-cell">
+                                  {getPlayerInitials(entry.suspectName || entry.name)}
+                                </span>
+                              ))}
+                            </span>
+                          </div>
+                          <div className="phone-deduction-group-label">Antiques</div>
+                          {["I01", "I02", "I03"].map((id) => {
+                            const item = ITEMS.find((entry) => entry.id === id);
+                            if (!item) return null;
+                            const eliminated = eliminations.items.includes(item.id);
+                            const rowKey = `items:${item.id}`;
+                            const rowMarks = deductionMarks[rowKey] ?? {};
+                            return (
+                              <div
+                                key={item.id}
+                                className={`phone-deduction-row ${eliminated ? "marked eliminated" : ""}`}
+                              >
+                                <button
+                                  type="button"
+                                  className="phone-deduction-row-label-btn"
+                                  onClick={() => toggleElimination("items", item.id)}
+                                  aria-pressed={eliminated}
+                                >
+                                  {item.name}
+                                </button>
+                                <span className="phone-deduction-cells">
+                                  {deductionPlayers.map((entry) => {
+                                    const symbol = rowMarks[entry.id] ?? "";
+                                    return (
+                                      <button
+                                        key={entry.id}
+                                        type="button"
+                                        className={`phone-deduction-cell phone-deduction-cell-button ${symbol ? "marked" : ""}`}
+                                        onClick={() => updateDeductionMark(rowKey, entry.id)}
+                                      >
+                                        {symbol}
+                                      </button>
+                                    );
+                                  })}
+                                </span>
+                              </div>
+                            );
+                          })}
+                          <div className="phone-deduction-divider" />
+                          <div className="phone-deduction-group-label">Desk Items</div>
+                          {["I05", "I06", "I07", "I08"].map((id) => {
+                            const item = ITEMS.find((entry) => entry.id === id);
+                            if (!item) return null;
+                            const eliminated = eliminations.items.includes(item.id);
+                            const rowKey = `items:${item.id}`;
+                            const rowMarks = deductionMarks[rowKey] ?? {};
+                            return (
+                              <div
+                                key={item.id}
+                                className={`phone-deduction-row ${eliminated ? "marked eliminated" : ""}`}
+                              >
+                                <button
+                                  type="button"
+                                  className="phone-deduction-row-label-btn"
+                                  onClick={() => toggleElimination("items", item.id)}
+                                  aria-pressed={eliminated}
+                                >
+                                  {item.name}
+                                </button>
+                                <span className="phone-deduction-cells">
+                                  {deductionPlayers.map((entry) => {
+                                    const symbol = rowMarks[entry.id] ?? "";
+                                    return (
+                                      <button
+                                        key={entry.id}
+                                        type="button"
+                                        className={`phone-deduction-cell phone-deduction-cell-button ${symbol ? "marked" : ""}`}
+                                        onClick={() => updateDeductionMark(rowKey, entry.id)}
+                                      >
+                                        {symbol}
+                                      </button>
+                                    );
+                                  })}
+                                </span>
+                              </div>
+                            );
+                          })}
+                          <div className="phone-deduction-divider" />
+                          <div className="phone-deduction-group-label">Jewelry</div>
+                          {["I04", "I09", "I10", "I11"].map((id) => {
+                            const item = ITEMS.find((entry) => entry.id === id);
+                            if (!item) return null;
+                            const eliminated = eliminations.items.includes(item.id);
+                            const rowKey = `items:${item.id}`;
+                            const rowMarks = deductionMarks[rowKey] ?? {};
+                            return (
+                              <div
+                                key={item.id}
+                                className={`phone-deduction-row ${eliminated ? "marked eliminated" : ""}`}
+                              >
+                                <button
+                                  type="button"
+                                  className="phone-deduction-row-label-btn"
+                                  onClick={() => toggleElimination("items", item.id)}
+                                  aria-pressed={eliminated}
+                                >
+                                  {item.name}
+                                </button>
+                                <span className="phone-deduction-cells">
+                                  {deductionPlayers.map((entry) => {
+                                    const symbol = rowMarks[entry.id] ?? "";
+                                    return (
+                                      <button
+                                        key={entry.id}
+                                        type="button"
+                                        className={`phone-deduction-cell phone-deduction-cell-button ${symbol ? "marked" : ""}`}
+                                        onClick={() => updateDeductionMark(rowKey, entry.id)}
+                                      >
+                                        {symbol}
+                                      </button>
+                                    );
+                                  })}
+                                </span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </section>
+                    </div>
+
+                    <div className="phone-deduction-right">
+                      <div className="phone-deduction-footer">
+                        <div className="phone-deduction-footer-brand">CLUE</div>
+                        <div className="phone-deduction-footer-sub">DVD game</div>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="phone-deduction-toolbar">
+                    {markOptions.map((option) => (
+                      <button
+                        key={option.key}
+                        type="button"
+                        className={`phone-deduction-tool ${selectedMark === option.symbol ? "active" : ""}`}
+                        onClick={() => setSelectedMark(option.symbol)}
+                      >
+                        <span className="phone-deduction-tool-symbol">
+                          {option.symbol || "—"}
+                        </span>
+                        <span className="phone-deduction-tool-label">{option.label}</span>
+                      </button>
+                    ))}
+                  </div>
                 </div>
               </div>
             )}
@@ -902,7 +1262,7 @@ export default function PhonePlayerPage({ code, onNavigate }: Props) {
                     <div>
                       <div className="phone-section-title">WHO</div>
                       <div className="phone-grid phone-grid-suspects">
-                        {SUSPECTS.map((suspect) => (
+                        {SUSPECTS.filter((suspect) => !eliminations.suspects.includes(suspect.id)).map((suspect) => (
                           <button
                             key={suspect.id}
                             type="button"
@@ -923,7 +1283,7 @@ export default function PhonePlayerPage({ code, onNavigate }: Props) {
                     <div>
                       <div className="phone-section-title">WHAT</div>
                       <div className="phone-grid phone-grid-accuse">
-                        {ITEMS.map((item) => (
+                        {ITEMS.filter((item) => !eliminations.items.includes(item.id)).map((item) => (
                           <button
                             key={item.id}
                             type="button"
@@ -944,7 +1304,7 @@ export default function PhonePlayerPage({ code, onNavigate }: Props) {
                     <div>
                       <div className="phone-section-title">WHERE</div>
                       <div className="phone-grid phone-grid-accuse">
-                        {LOCATIONS.map((location) => (
+                        {LOCATIONS.filter((location) => !eliminations.locations.includes(location.id)).map((location) => (
                           <button
                             key={location.id}
                             type="button"
@@ -965,7 +1325,7 @@ export default function PhonePlayerPage({ code, onNavigate }: Props) {
                     <div>
                       <div className="phone-section-title">WHEN</div>
                       <div className="phone-grid phone-grid-accuse">
-                        {TIMES.map((time) => (
+                        {TIMES.filter((time) => !eliminations.times.includes(time.id)).map((time) => (
                           <button
                             key={time.id}
                             type="button"
