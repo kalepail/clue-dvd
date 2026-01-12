@@ -406,18 +406,19 @@
   position: relative;
   z-index: 1;
   display: grid;
-  grid-template-columns: 1.1fr 0.9fr;
-  gap: 14px;
-}
-
-.phone-deduction-left {
-  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
   gap: 14px;
 }
 
 .phone-deduction-right {
   display: grid;
   align-content: end;
+  justify-items: end;
+}
+
+.phone-deduction-left {
+  display: grid;
+  gap: 14px;
 }
 
 .phone-deduction-section {
@@ -484,6 +485,7 @@
   color: #e3ddd6;
   cursor: pointer;
   position: relative;
+  width: 100%;
 }
 
 .phone-deduction-row-label-btn {
@@ -518,6 +520,7 @@
   display: grid;
   grid-template-columns: repeat(var(--deduction-cols, 4), 20px);
   gap: 6px;
+  justify-self: end;
 }
 
 .phone-deduction-cell {
@@ -594,7 +597,6 @@
   justify-items: end;
   align-content: end;
   gap: 2px;
-  padding-right: 6px;
 }
 
 .phone-deduction-footer-brand {
@@ -743,6 +745,22 @@
 
   .phone-deduction-right {
     margin-top: 8px;
+  }
+}
+
+@media (min-width: 900px) {
+  .phone-deduction-columns {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .phone-deduction-right {
+    display: none;
+  }
+
+  .phone-deduction-footer {
+    position: absolute;
+    right: 18px;
+    bottom: 16px;
   }
 }
 

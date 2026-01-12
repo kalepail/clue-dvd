@@ -1137,13 +1137,10 @@ export default function PhonePlayerPage({ code, onNavigate }: Props) {
                         </div>
                       </section>
                     </div>
-
-                    <div className="phone-deduction-right">
-                      <div className="phone-deduction-footer">
-                        <div className="phone-deduction-footer-brand">CLUE</div>
-                        <div className="phone-deduction-footer-sub">DVD game</div>
-                      </div>
-                    </div>
+                  </div>
+                  <div className="phone-deduction-footer">
+                    <div className="phone-deduction-footer-brand">CLUE</div>
+                    <div className="phone-deduction-footer-sub">DVD game</div>
                   </div>
                 </div>
                 <div className="phone-deduction-toolbar">
