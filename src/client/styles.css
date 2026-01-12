@@ -129,6 +129,14 @@ h3 {
   line-height: 1.5;
 }
 
+.host-modal-image {
+  width: 100%;
+  height: auto;
+  max-height: 52vh;
+  object-fit: contain;
+  border-radius: 16px;
+}
+
 .host-modal-card .text-sm {
   font-size: 1.2rem;
 }

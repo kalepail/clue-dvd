@@ -12,8 +12,9 @@ import { Progress } from "@/client/components/ui/progress";
 import { IconStat } from "@/client/components/ui/icon-stat";
 import type { EliminationState } from "../../shared/api-types";
 import { getLocationName } from "../../shared/game-elements";
-import { closeSession, getSessionEvents, sendAccusationResult, sendInspectorNoteResult, updateInspectorNoteAvailability, updateInterruptionStatus, updateSessionTurn } from "../phone/api";
+import { closeSession, getSession, getSessionEvents, sendAccusationResult, sendInspectorNoteResult, updateInspectorNoteAvailability, updateInterruptionStatus, updateSessionTurn } from "../phone/api";
 import { clearHostSessionCode, setHostAutoCreate } from "../phone/storage";
+import type { PhoneSessionStatus } from "../../phone/types";
 
 interface Props {
   gameId: string;
@@ -96,6 +97,7 @@ export default function GamePage({ gameId, onNavigate }: Props) {
     text: string;
     eliminated?: { type: string; ids: string[] };
   } | null>(null);
+  const [showClueReveal, setShowClueReveal] = useState(false);
   const [showAccusation, setShowAccusation] = useState(false);
   const [phoneAccusation, setPhoneAccusation] = useState<{
     suspectId: string;
@@ -104,6 +106,7 @@ export default function GamePage({ gameId, onNavigate }: Props) {
     timeId: string;
   } | null>(null);
   const [lastPhoneEventId, setLastPhoneEventId] = useState<number | null>(null);
+  const [phoneLobbyStatus, setPhoneLobbyStatus] = useState<PhoneSessionStatus | "missing" | null>(null);
   const [showNarrative, setShowNarrative] = useState(false);
   const [secretPassageResult, setSecretPassageResult] = useState<{
     outcome: "good" | "neutral" | "bad";
@@ -129,6 +132,20 @@ export default function GamePage({ gameId, onNavigate }: Props) {
   const previousTurnKey = useRef<string | null>(null);
   const gameProgress = game?.totalClues ? game.currentClueIndex / game.totalClues : 0;
   const phoneSessionCode = game?.phoneSessionCode ?? null;
+  const isPhoneLobbyActive = Boolean(phoneSessionCode)
+    && phoneLobbyStatus !== "closed"
+    && phoneLobbyStatus !== "missing";
+  const butlerClueImages = [
+    "/images/ui/Butler Image.png",
+    "/images/ui/Butler Image 2.png",
+  ];
+  const butlerImageIndex = game ? game.currentClueIndex % butlerClueImages.length : 0;
+  const inspectorInterruptionImages = [
+    "/images/ui/Inspector Brown 2.png",
+    "/images/ui/Inspector Brown.png",
+    "/images/ui/Inspector Brown 3.png",
+  ];
+  const inspectorImageIndex = game ? game.interruptionCount % inspectorInterruptionImages.length : 0;
   const note1Available = gameProgress >= 0.5;
   const note2Available = gameProgress >= 0.65;
 
@@ -235,6 +252,32 @@ export default function GamePage({ gameId, onNavigate }: Props) {
     }, 1200);
     return () => window.clearInterval(interval);
   }, [game, lastPhoneEventId, pendingPhoneContinue, revealingClue, showInterruption, showInterruptionIntro]);
+
+  useEffect(() => {
+    if (!phoneSessionCode) {
+      setPhoneLobbyStatus(null);
+      return;
+    }
+    let active = true;
+    const poll = async () => {
+      try {
+        const data = await getSession(phoneSessionCode);
+        if (active) {
+          setPhoneLobbyStatus(data.session.status);
+        }
+      } catch {
+        if (active) {
+          setPhoneLobbyStatus("missing");
+        }
+      }
+    };
+    poll();
+    const interval = window.setInterval(poll, 3000);
+    return () => {
+      active = false;
+      window.clearInterval(interval);
+    };
+  }, [phoneSessionCode]);
 
   useEffect(() => {
     if (!game || (game.status !== "in_progress" && game.status !== "setup")) return;
@@ -425,6 +468,7 @@ export default function GamePage({ gameId, onNavigate }: Props) {
             ids: result.clue.eliminates.ids,
           } : undefined,
         });
+        setShowClueReveal(true);
       }
       loadGame();
     } catch (err) {
@@ -814,12 +858,12 @@ export default function GamePage({ gameId, onNavigate }: Props) {
             <Button
               size="lg"
               onClick={handleStartGame}
-              disabled={Boolean(phoneSessionCode)}
+              disabled={isPhoneLobbyActive}
             >
               <Search className="mr-2 h-5 w-5" />
               Begin Investigation
             </Button>
-            {phoneSessionCode && (
+            {isPhoneLobbyActive && (
               <p className="text-sm text-muted-foreground">
                 Waiting for the lead detective to begin the investigation.
               </p>
@@ -832,26 +876,6 @@ export default function GamePage({ gameId, onNavigate }: Props) {
       {isInProgress && (
         <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,0.8fr)] gap-6">
           <div className="space-y-6">
-            {/* Latest Clue */}
-            {latestClue && (
-              <Card className="border-primary latest-clue-card">
-                <CardHeader className="px-4 py-3">
-                  <CardTitle className="text-lg">Latest Clue</CardTitle>
-                </CardHeader>
-                <CardContent className="p-3 overflow-hidden">
-                  <ClueDisplay
-                    speaker={latestClue.speaker}
-                    text={latestClue.text}
-                    eliminated={latestClue.eliminated ? {
-                      type: latestClue.eliminated.type,
-                      id: latestClue.eliminated.ids[0],
-                    } : undefined}
-                    index={game.currentClueIndex}
-                  />
-                </CardContent>
-              </Card>
-            )}
-
             {/* Controls */}
             <Card>
               <CardHeader className="px-4 py-3">
@@ -866,7 +890,7 @@ export default function GamePage({ gameId, onNavigate }: Props) {
                       description: "Share the next clue with the group.",
                       icon: Search,
                       onClick: handleRevealClue,
-                      disabled: revealingClue || cluesRemaining === 0 || Boolean(phoneSessionCode),
+                      disabled: revealingClue || cluesRemaining === 0 || isPhoneLobbyActive,
                     },
                     {
                       key: "accuse",
@@ -874,7 +898,7 @@ export default function GamePage({ gameId, onNavigate }: Props) {
                       description: "Open the accusation flow on the host.",
                       icon: Gavel,
                       onClick: () => setShowAccusation(true),
-                      disabled: Boolean(phoneSessionCode),
+                      disabled: isPhoneLobbyActive,
                     },
                     {
                       key: "passage",
@@ -882,7 +906,7 @@ export default function GamePage({ gameId, onNavigate }: Props) {
                       description: "Trigger a passage result for the current turn.",
                       icon: DoorOpen,
                       onClick: handleSecretPassage,
-                      disabled: Boolean(phoneSessionCode) || secretPassageUsedThisTurn,
+                      disabled: isPhoneLobbyActive || secretPassageUsedThisTurn,
                     },
                     {
                       key: "note",
@@ -890,7 +914,7 @@ export default function GamePage({ gameId, onNavigate }: Props) {
                       description: "Open the inspector note selection.",
                       icon: BookOpen,
                       onClick: handleOpenInspectorNotes,
-                      disabled: !hasInspectorNoteAvailable || Boolean(phoneSessionCode),
+                      disabled: !hasInspectorNoteAvailable || isPhoneLobbyActive,
                     },
                     {
                       key: "story",
@@ -898,7 +922,7 @@ export default function GamePage({ gameId, onNavigate }: Props) {
                       description: "Toggle the narrative panel below.",
                       icon: BookOpen,
                       onClick: () => setShowNarrative(!showNarrative),
-                      disabled: Boolean(phoneSessionCode),
+                      disabled: isPhoneLobbyActive,
                     },
                     {
                       key: "suggestion",
@@ -906,7 +930,7 @@ export default function GamePage({ gameId, onNavigate }: Props) {
                       description: "Prompt players to handle a suggestion turn.",
                       icon: MessageCircle,
                       onClick: () => setShowEndTurnConfirm(true),
-                      disabled: Boolean(phoneSessionCode),
+                      disabled: isPhoneLobbyActive,
                     },
                   ].map((item) => {
                     const Icon = item.icon;
@@ -932,7 +956,7 @@ export default function GamePage({ gameId, onNavigate }: Props) {
                       </button>
                     );
                   })}
-                  {phoneSessionCode && (
+                  {isPhoneLobbyActive && (
                     <button
                       type="button"
                       onClick={handleResetPhoneLobby}
@@ -1157,6 +1181,13 @@ export default function GamePage({ gameId, onNavigate }: Props) {
               </CardDescription>
             </CardHeader>
             <CardContent className="pt-0">
+              <img
+                src="/images/ui/Inspector screen.png"
+                alt="Inspector screen"
+                className="host-modal-image"
+              />
+            </CardContent>
+            <CardContent className="pt-0">
               <Button size="lg" onClick={acknowledgeInterruptionIntro}>OK</Button>
             </CardContent>
           </Card>
@@ -1181,7 +1212,49 @@ export default function GamePage({ gameId, onNavigate }: Props) {
               </p>
             </CardContent>
             <CardContent className="pt-0">
+              <img
+                src={inspectorInterruptionImages[inspectorImageIndex]}
+                alt="Inspector Brown"
+                className="host-modal-image"
+              />
+            </CardContent>
+            <CardContent className="pt-0">
               <Button size="lg" onClick={closeInterruption}>Continue</Button>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {showClueReveal && latestClue && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-6 host-modal-overlay">
+          <Card className="host-modal-card">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-3 text-3xl md:text-4xl">
+                <Bell className="h-5 w-5 text-primary" />
+                New Clue
+              </CardTitle>
+              <CardDescription className="text-lg md:text-xl">
+                Inspector Brown has discovered a fresh lead.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="pt-0 space-y-6 host-modal-body">
+              <img
+                src={butlerClueImages[butlerImageIndex]}
+                alt="Butler"
+                className="host-modal-image"
+              />
+              <ClueDisplay
+                speaker={latestClue.speaker}
+                text={latestClue.text}
+                eliminated={latestClue.eliminated ? {
+                  type: latestClue.eliminated.type,
+                  id: latestClue.eliminated.ids[0],
+                } : undefined}
+                index={game.currentClueIndex}
+              />
+            </CardContent>
+            <CardContent className="pt-0">
+              <Button size="lg" onClick={() => setShowClueReveal(false)}>Continue</Button>
             </CardContent>
           </Card>
         </div>
