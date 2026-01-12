@@ -452,7 +452,7 @@ export default function PhonePlayerPage({ code, onNavigate }: Props) {
   const tabs = useMemo(
     () => [
       { key: "notes", label: "Notes" },
-      { key: "eliminations", label: "Elims" },
+      { key: "eliminations", label: "Deductions" },
       { key: "turn", label: "Turn" },
       { key: "accusation", label: "Accuse" },
     ],
