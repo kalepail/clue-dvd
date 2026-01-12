@@ -91,6 +91,9 @@ export default function PhonePlayerPage({ code, onNavigate }: Props) {
   });
   const [deductionMarks, setDeductionMarks] = useState<Record<string, Record<string, string>>>({});
   const [selectedMark, setSelectedMark] = useState("X");
+  const [deductionHistory, setDeductionHistory] = useState<
+    { rowKey: string; playerId: string; previous: string; next: string }[]
+  >([]);
   const [accusationStep, setAccusationStep] = useState<"suspect" | "item" | "location" | "time">("suspect");
   const [showAccusationNotice, setShowAccusationNotice] = useState(false);
   const [showActionContinue, setShowActionContinue] = useState(false);
@@ -392,13 +395,42 @@ export default function PhonePlayerPage({ code, onNavigate }: Props) {
     }
   };
 
-  const updateDeductionMark = (rowKey: string, playerIdValue: string) => {
+  const updateDeductionMark = (rowKey: string, playerIdValue: string, quadrant?: "tl" | "tr" | "bl" | "br") => {
     setDeductionMarks((prev) => {
       const row = prev[rowKey] ?? {};
       const current = row[playerIdValue] ?? "";
-      const nextValue = current === selectedMark ? "" : selectedMark;
+      let nextValue = selectedMark === "dot" ? current : (current === selectedMark ? "" : selectedMark);
+      if (selectedMark === "dot") {
+        const currentDots = current.startsWith("dot:")
+          ? current.replace("dot:", "").split(",").filter(Boolean)
+          : [];
+        const hasDot = quadrant ? currentDots.includes(quadrant) : false;
+        const nextDots = quadrant
+          ? (hasDot ? currentDots.filter((value) => value !== quadrant) : [...currentDots, quadrant])
+          : currentDots;
+        nextValue = nextDots.length ? `dot:${nextDots.join(",")}` : "";
+      }
+      if (nextValue !== current) {
+        setDeductionHistory((history) => [
+          { rowKey, playerId: playerIdValue, previous: current, next: nextValue },
+          ...history,
+        ].slice(0, 60));
+      }
       const nextRow = { ...row, [playerIdValue]: nextValue };
       return { ...prev, [rowKey]: nextRow };
+    });
+  };
+
+  const handleUndoDeduction = () => {
+    setDeductionHistory((history) => {
+      const [latest, ...rest] = history;
+      if (!latest) return history;
+      setDeductionMarks((prev) => {
+        const row = prev[latest.rowKey] ?? {};
+        const nextRow = { ...row, [latest.playerId]: latest.previous };
+        return { ...prev, [latest.rowKey]: nextRow };
+      });
+      return rest;
     });
   };
 
@@ -488,6 +520,7 @@ export default function PhonePlayerPage({ code, onNavigate }: Props) {
     { key: "slash", label: "Slash", symbol: "/" },
     { key: "check", label: "Check", symbol: "✓" },
     { key: "maybe", label: "?", symbol: "?" },
+    { key: "dot", label: "Dot", symbol: "dot" },
   ];
 
   const getPlayerInitials = (name: string) => {
@@ -846,6 +879,10 @@ export default function PhonePlayerPage({ code, onNavigate }: Props) {
                                 <span className="phone-deduction-cells">
                                   {deductionPlayers.map((entry) => {
                                     const symbol = rowMarks[entry.id] ?? "";
+                                    const isDot = symbol.startsWith("dot:");
+                                    const dotList = isDot
+                                      ? symbol.replace("dot:", "").split(",").filter(Boolean)
+                                      : [];
                                     return (
                                       <button
                                         key={entry.id}
@@ -853,7 +890,31 @@ export default function PhonePlayerPage({ code, onNavigate }: Props) {
                                         className={`phone-deduction-cell phone-deduction-cell-button ${symbol ? "marked" : ""}`}
                                         onClick={() => updateDeductionMark(rowKey, entry.id)}
                                       >
-                                        {symbol}
+                                        {isDot ? (
+                                          dotList.map((dot) => (
+                                            <span
+                                              key={dot}
+                                              className={`phone-deduction-dot phone-deduction-dot-${dot}`}
+                                            />
+                                          ))
+                                        ) : (
+                                          symbol
+                                        )}
+                                        {selectedMark === "dot" && (
+                                          <span className="phone-deduction-quad">
+                                            {(["tl", "tr", "bl", "br"] as const).map((quad) => (
+                                              <button
+                                                key={quad}
+                                                type="button"
+                                                className="phone-deduction-quad-btn"
+                                                onClick={(event) => {
+                                                  event.stopPropagation();
+                                                  updateDeductionMark(rowKey, entry.id, quad);
+                                                }}
+                                              />
+                                            ))}
+                                          </span>
+                                        )}
                                       </button>
                                     );
                                   })}
@@ -885,6 +946,10 @@ export default function PhonePlayerPage({ code, onNavigate }: Props) {
                                 <span className="phone-deduction-cells">
                                   {deductionPlayers.map((entry) => {
                                     const symbol = rowMarks[entry.id] ?? "";
+                                    const isDot = symbol.startsWith("dot:");
+                                    const dotList = isDot
+                                      ? symbol.replace("dot:", "").split(",").filter(Boolean)
+                                      : [];
                                     return (
                                       <button
                                         key={entry.id}
@@ -892,7 +957,31 @@ export default function PhonePlayerPage({ code, onNavigate }: Props) {
                                         className={`phone-deduction-cell phone-deduction-cell-button ${symbol ? "marked" : ""}`}
                                         onClick={() => updateDeductionMark(rowKey, entry.id)}
                                       >
-                                        {symbol}
+                                        {isDot ? (
+                                          dotList.map((dot) => (
+                                            <span
+                                              key={dot}
+                                              className={`phone-deduction-dot phone-deduction-dot-${dot}`}
+                                            />
+                                          ))
+                                        ) : (
+                                          symbol
+                                        )}
+                                        {selectedMark === "dot" && (
+                                          <span className="phone-deduction-quad">
+                                            {(["tl", "tr", "bl", "br"] as const).map((quad) => (
+                                              <button
+                                                key={quad}
+                                                type="button"
+                                                className="phone-deduction-quad-btn"
+                                                onClick={(event) => {
+                                                  event.stopPropagation();
+                                                  updateDeductionMark(rowKey, entry.id, quad);
+                                                }}
+                                              />
+                                            ))}
+                                          </span>
+                                        )}
                                       </button>
                                     );
                                   })}
@@ -936,6 +1025,10 @@ export default function PhonePlayerPage({ code, onNavigate }: Props) {
                                 <span className="phone-deduction-cells">
                                   {deductionPlayers.map((entry) => {
                                     const symbol = rowMarks[entry.id] ?? "";
+                                    const isDot = symbol.startsWith("dot:");
+                                    const dotList = isDot
+                                      ? symbol.replace("dot:", "").split(",").filter(Boolean)
+                                      : [];
                                     return (
                                       <button
                                         key={entry.id}
@@ -943,7 +1036,31 @@ export default function PhonePlayerPage({ code, onNavigate }: Props) {
                                         className={`phone-deduction-cell phone-deduction-cell-button ${symbol ? "marked" : ""}`}
                                         onClick={() => updateDeductionMark(rowKey, entry.id)}
                                       >
-                                        {symbol}
+                                        {isDot ? (
+                                          dotList.map((dot) => (
+                                            <span
+                                              key={dot}
+                                              className={`phone-deduction-dot phone-deduction-dot-${dot}`}
+                                            />
+                                          ))
+                                        ) : (
+                                          symbol
+                                        )}
+                                        {selectedMark === "dot" && (
+                                          <span className="phone-deduction-quad">
+                                            {(["tl", "tr", "bl", "br"] as const).map((quad) => (
+                                              <button
+                                                key={quad}
+                                                type="button"
+                                                className="phone-deduction-quad-btn"
+                                                onClick={(event) => {
+                                                  event.stopPropagation();
+                                                  updateDeductionMark(rowKey, entry.id, quad);
+                                                }}
+                                              />
+                                            ))}
+                                          </span>
+                                        )}
                                       </button>
                                     );
                                   })}
@@ -987,6 +1104,10 @@ export default function PhonePlayerPage({ code, onNavigate }: Props) {
                                 <span className="phone-deduction-cells">
                                   {deductionPlayers.map((entry) => {
                                     const symbol = rowMarks[entry.id] ?? "";
+                                    const isDot = symbol.startsWith("dot:");
+                                    const dotList = isDot
+                                      ? symbol.replace("dot:", "").split(",").filter(Boolean)
+                                      : [];
                                     return (
                                       <button
                                         key={entry.id}
@@ -994,7 +1115,31 @@ export default function PhonePlayerPage({ code, onNavigate }: Props) {
                                         className={`phone-deduction-cell phone-deduction-cell-button ${symbol ? "marked" : ""}`}
                                         onClick={() => updateDeductionMark(rowKey, entry.id)}
                                       >
-                                        {symbol}
+                                        {isDot ? (
+                                          dotList.map((dot) => (
+                                            <span
+                                              key={dot}
+                                              className={`phone-deduction-dot phone-deduction-dot-${dot}`}
+                                            />
+                                          ))
+                                        ) : (
+                                          symbol
+                                        )}
+                                        {selectedMark === "dot" && (
+                                          <span className="phone-deduction-quad">
+                                            {(["tl", "tr", "bl", "br"] as const).map((quad) => (
+                                              <button
+                                                key={quad}
+                                                type="button"
+                                                className="phone-deduction-quad-btn"
+                                                onClick={(event) => {
+                                                  event.stopPropagation();
+                                                  updateDeductionMark(rowKey, entry.id, quad);
+                                                }}
+                                              />
+                                            ))}
+                                          </span>
+                                        )}
                                       </button>
                                     );
                                   })}
@@ -1041,6 +1186,10 @@ export default function PhonePlayerPage({ code, onNavigate }: Props) {
                                 <span className="phone-deduction-cells">
                                   {deductionPlayers.map((entry) => {
                                     const symbol = rowMarks[entry.id] ?? "";
+                                    const isDot = symbol.startsWith("dot:");
+                                    const dotList = isDot
+                                      ? symbol.replace("dot:", "").split(",").filter(Boolean)
+                                      : [];
                                     return (
                                       <button
                                         key={entry.id}
@@ -1048,7 +1197,31 @@ export default function PhonePlayerPage({ code, onNavigate }: Props) {
                                         className={`phone-deduction-cell phone-deduction-cell-button ${symbol ? "marked" : ""}`}
                                         onClick={() => updateDeductionMark(rowKey, entry.id)}
                                       >
-                                        {symbol}
+                                        {isDot ? (
+                                          dotList.map((dot) => (
+                                            <span
+                                              key={dot}
+                                              className={`phone-deduction-dot phone-deduction-dot-${dot}`}
+                                            />
+                                          ))
+                                        ) : (
+                                          symbol
+                                        )}
+                                        {selectedMark === "dot" && (
+                                          <span className="phone-deduction-quad">
+                                            {(["tl", "tr", "bl", "br"] as const).map((quad) => (
+                                              <button
+                                                key={quad}
+                                                type="button"
+                                                className="phone-deduction-quad-btn"
+                                                onClick={(event) => {
+                                                  event.stopPropagation();
+                                                  updateDeductionMark(rowKey, entry.id, quad);
+                                                }}
+                                              />
+                                            ))}
+                                          </span>
+                                        )}
                                       </button>
                                     );
                                   })}
@@ -1080,6 +1253,10 @@ export default function PhonePlayerPage({ code, onNavigate }: Props) {
                                 <span className="phone-deduction-cells">
                                   {deductionPlayers.map((entry) => {
                                     const symbol = rowMarks[entry.id] ?? "";
+                                    const isDot = symbol.startsWith("dot:");
+                                    const dotList = isDot
+                                      ? symbol.replace("dot:", "").split(",").filter(Boolean)
+                                      : [];
                                     return (
                                       <button
                                         key={entry.id}
@@ -1087,7 +1264,31 @@ export default function PhonePlayerPage({ code, onNavigate }: Props) {
                                         className={`phone-deduction-cell phone-deduction-cell-button ${symbol ? "marked" : ""}`}
                                         onClick={() => updateDeductionMark(rowKey, entry.id)}
                                       >
-                                        {symbol}
+                                        {isDot ? (
+                                          dotList.map((dot) => (
+                                            <span
+                                              key={dot}
+                                              className={`phone-deduction-dot phone-deduction-dot-${dot}`}
+                                            />
+                                          ))
+                                        ) : (
+                                          symbol
+                                        )}
+                                        {selectedMark === "dot" && (
+                                          <span className="phone-deduction-quad">
+                                            {(["tl", "tr", "bl", "br"] as const).map((quad) => (
+                                              <button
+                                                key={quad}
+                                                type="button"
+                                                className="phone-deduction-quad-btn"
+                                                onClick={(event) => {
+                                                  event.stopPropagation();
+                                                  updateDeductionMark(rowKey, entry.id, quad);
+                                                }}
+                                              />
+                                            ))}
+                                          </span>
+                                        )}
                                       </button>
                                     );
                                   })}
@@ -1119,6 +1320,10 @@ export default function PhonePlayerPage({ code, onNavigate }: Props) {
                                 <span className="phone-deduction-cells">
                                   {deductionPlayers.map((entry) => {
                                     const symbol = rowMarks[entry.id] ?? "";
+                                    const isDot = symbol.startsWith("dot:");
+                                    const dotList = isDot
+                                      ? symbol.replace("dot:", "").split(",").filter(Boolean)
+                                      : [];
                                     return (
                                       <button
                                         key={entry.id}
@@ -1126,7 +1331,31 @@ export default function PhonePlayerPage({ code, onNavigate }: Props) {
                                         className={`phone-deduction-cell phone-deduction-cell-button ${symbol ? "marked" : ""}`}
                                         onClick={() => updateDeductionMark(rowKey, entry.id)}
                                       >
-                                        {symbol}
+                                        {isDot ? (
+                                          dotList.map((dot) => (
+                                            <span
+                                              key={dot}
+                                              className={`phone-deduction-dot phone-deduction-dot-${dot}`}
+                                            />
+                                          ))
+                                        ) : (
+                                          symbol
+                                        )}
+                                        {selectedMark === "dot" && (
+                                          <span className="phone-deduction-quad">
+                                            {(["tl", "tr", "bl", "br"] as const).map((quad) => (
+                                              <button
+                                                key={quad}
+                                                type="button"
+                                                className="phone-deduction-quad-btn"
+                                                onClick={(event) => {
+                                                  event.stopPropagation();
+                                                  updateDeductionMark(rowKey, entry.id, quad);
+                                                }}
+                                              />
+                                            ))}
+                                          </span>
+                                        )}
                                       </button>
                                     );
                                   })}
@@ -1138,12 +1367,16 @@ export default function PhonePlayerPage({ code, onNavigate }: Props) {
                       </section>
                     </div>
                   </div>
-                  <div className="phone-deduction-footer">
-                    <div className="phone-deduction-footer-brand">CLUE</div>
-                    <div className="phone-deduction-footer-sub">DVD game</div>
-                  </div>
                 </div>
                 <div className="phone-deduction-toolbar">
+                  <button
+                    type="button"
+                    className="phone-deduction-tool"
+                    onClick={handleUndoDeduction}
+                    disabled={deductionHistory.length === 0}
+                  >
+                    <span className="phone-deduction-tool-symbol">Undo</span>
+                  </button>
                   {markOptions.map((option) => (
                     <button
                       key={option.key}
@@ -1154,7 +1387,6 @@ export default function PhonePlayerPage({ code, onNavigate }: Props) {
                       <span className="phone-deduction-tool-symbol">
                         {option.symbol || "—"}
                       </span>
-                      <span className="phone-deduction-tool-label">{option.label}</span>
                     </button>
                   ))}
                 </div>

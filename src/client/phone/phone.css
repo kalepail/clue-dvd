@@ -533,6 +533,7 @@
   place-items: center;
   font-size: 0.8rem;
   color: #f2ede6;
+  position: relative;
 }
 
 .phone-deduction-row.marked .phone-deduction-cell {
@@ -548,6 +549,55 @@
   background: #544d46;
 }
 
+.phone-deduction-quad {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  grid-template-rows: repeat(2, 1fr);
+  gap: 0;
+}
+
+.phone-deduction-quad-btn {
+  background: transparent;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+}
+
+.phone-deduction-quad-btn:focus-visible {
+  outline: 1px solid rgba(255, 255, 255, 0.4);
+  outline-offset: -1px;
+}
+
+.phone-deduction-dot {
+  position: absolute;
+  width: 4px;
+  height: 4px;
+  border-radius: 999px;
+  background: #f2ede6;
+}
+
+.phone-deduction-dot-tl {
+  top: 3px;
+  left: 3px;
+}
+
+.phone-deduction-dot-tr {
+  top: 3px;
+  right: 3px;
+}
+
+.phone-deduction-dot-bl {
+  bottom: 3px;
+  left: 3px;
+}
+
+.phone-deduction-dot-br {
+  bottom: 3px;
+  right: 3px;
+}
+
 .phone-deduction-toolbar {
   position: sticky;
   bottom: calc(10px + env(safe-area-inset-bottom));
@@ -556,7 +606,7 @@
   border: 1px solid #4a4540;
   padding: 10px;
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 8px;
   z-index: 2;
   width: min(100%, 680px);
@@ -581,6 +631,11 @@
   cursor: pointer;
 }
 
+.phone-deduction-tool:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
 .phone-deduction-tool.active {
   border-color: #b9b1a8;
   color: #f2ede6;
@@ -590,27 +645,6 @@
 .phone-deduction-tool-symbol {
   font-size: 0.8rem;
   line-height: 1;
-}
-
-.phone-deduction-footer {
-  display: grid;
-  justify-items: end;
-  align-content: end;
-  gap: 2px;
-}
-
-.phone-deduction-footer-brand {
-  font-family: "Georgia", "Times New Roman", serif;
-  font-size: 1.4rem;
-  letter-spacing: 0.12em;
-  color: #e3ddd6;
-}
-
-.phone-deduction-footer-sub {
-  font-family: "Georgia", "Times New Roman", serif;
-  font-size: 0.65rem;
-  letter-spacing: 0.2em;
-  color: #b9b1a8;
 }
 
 .phone-actions {
@@ -755,12 +789,6 @@
 
   .phone-deduction-right {
     display: none;
-  }
-
-  .phone-deduction-footer {
-    position: absolute;
-    right: 18px;
-    bottom: 16px;
   }
 }
 
