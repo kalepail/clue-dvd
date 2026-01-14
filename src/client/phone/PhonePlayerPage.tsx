@@ -12,6 +12,58 @@ import {
 } from "./assets";
 import "./phone.css";
 
+// Structured notes types
+interface NoteEntry {
+  id: string;
+  text: string;
+  timestamp: number;
+  turnNumber?: number;
+}
+
+interface StructuredNotes {
+  theory: string;
+  entries: NoteEntry[];
+}
+
+const emptyStructuredNotes: StructuredNotes = {
+  theory: "",
+  entries: [],
+};
+
+function parseStructuredNotes(raw: string): StructuredNotes {
+  if (!raw) return { ...emptyStructuredNotes };
+  // Try to parse as JSON first
+  try {
+    const parsed = JSON.parse(raw);
+    if (parsed && typeof parsed === "object" && "theory" in parsed && "entries" in parsed) {
+      return {
+        theory: typeof parsed.theory === "string" ? parsed.theory : "",
+        entries: Array.isArray(parsed.entries) ? parsed.entries : [],
+      };
+    }
+  } catch {
+    // Not JSON, treat as legacy plain text - migrate to new format
+  }
+  // Legacy format: treat entire string as a single note entry
+  if (raw.trim()) {
+    return {
+      theory: "",
+      entries: [{
+        id: `legacy-${Date.now()}`,
+        text: raw,
+        timestamp: Date.now(),
+      }],
+    };
+  }
+  return { ...emptyStructuredNotes };
+}
+
+function serializeStructuredNotes(notes: StructuredNotes): string {
+  return JSON.stringify(notes);
+}
+
+type QuickInsertCategory = "suspects" | "items" | "locations" | "times" | null;
+
 type DeductionCellProps = {
   rowKey: string;
   playerId: string;
@@ -132,7 +184,9 @@ export default function PhonePlayerPage({ code, onNavigate }: Props) {
   const [player, setPlayer] = useState<PhonePlayer | null>(null);
   const [token, setToken] = useState("");
   const [tab, setTab] = useState<PhoneTab>("notes");
-  const [notes, setNotes] = useState("");
+  const [structuredNotes, setStructuredNotes] = useState<StructuredNotes>(emptyStructuredNotes);
+  const [quickNoteInput, setQuickNoteInput] = useState("");
+  const [quickInsertCategory, setQuickInsertCategory] = useState<QuickInsertCategory>(null);
   const [eliminations, setEliminations] = useState<EliminationState>(emptyEliminations);
   const [saving, setSaving] = useState(false);
   const [actionStatus, setActionStatus] = useState<string | null>(null);
@@ -240,7 +294,7 @@ export default function PhonePlayerPage({ code, onNavigate }: Props) {
         setSession({ session: data.session, players: [] });
         setPlayer(data.player);
         setToken(data.reconnectToken);
-        setNotes(data.player.notes || "");
+        setStructuredNotes(parseStructuredNotes(data.player.notes || ""));
         setEliminations(data.player.eliminations || emptyEliminations);
       } catch (err) {
         setActionStatus(err instanceof Error ? err.message : "Failed to reconnect.");
@@ -411,7 +465,7 @@ export default function PhonePlayerPage({ code, onNavigate }: Props) {
     const timeout = window.setTimeout(async () => {
       try {
         setSaving(true);
-        await updatePlayer(player.id, token, { notes });
+        await updatePlayer(player.id, token, { notes: serializeStructuredNotes(structuredNotes) });
       } catch {
         // Keep local notes even if save fails.
       } finally {
@@ -419,7 +473,7 @@ export default function PhonePlayerPage({ code, onNavigate }: Props) {
       }
     }, 800);
     return () => window.clearTimeout(timeout);
-  }, [notes, player, token]);
+  }, [structuredNotes, player, token]);
 
   const toggleElimination = (category: keyof EliminationState, id: string) => {
     if (!player || !token) return;
@@ -711,6 +765,46 @@ export default function PhonePlayerPage({ code, onNavigate }: Props) {
     []
   );
 
+  // Note management functions
+  const addQuickNote = useCallback(() => {
+    const text = quickNoteInput.trim();
+    if (!text) return;
+    const newEntry: NoteEntry = {
+      id: `note-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      text,
+      timestamp: Date.now(),
+    };
+    setStructuredNotes((prev) => ({
+      ...prev,
+      entries: [newEntry, ...prev.entries],
+    }));
+    setQuickNoteInput("");
+  }, [quickNoteInput]);
+
+  const updateTheory = useCallback((theory: string) => {
+    setStructuredNotes((prev) => ({ ...prev, theory }));
+  }, []);
+
+  const deleteNote = useCallback((noteId: string) => {
+    setStructuredNotes((prev) => ({
+      ...prev,
+      entries: prev.entries.filter((entry) => entry.id !== noteId),
+    }));
+  }, []);
+
+  const insertGameElement = useCallback((name: string) => {
+    setQuickNoteInput((prev) => {
+      const needsSpace = prev.length > 0 && !prev.endsWith(" ");
+      return `${prev}${needsSpace ? " " : ""}${name}`;
+    });
+    setQuickInsertCategory(null);
+  }, []);
+
+  const formatNoteTime = useCallback((timestamp: number) => {
+    const date = new Date(timestamp);
+    return date.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  }, []);
+
   const roster = session?.players ?? [];
   const sortedRoster = [...roster].sort(
     (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
@@ -982,15 +1076,170 @@ export default function PhonePlayerPage({ code, onNavigate }: Props) {
           {!isSetupPhase && (
             <div className="phone-stack">
             {tab === "notes" && (
-              <div className="phone-card phone-stack">
-                <div className="phone-section-title">Personal Notes</div>
-                <textarea
-                  className="phone-input"
-                  style={{ minHeight: "220px" }}
-                  value={notes}
-                  onChange={(event) => setNotes(event.target.value)}
-                  placeholder="Jot down your suspicions..."
-                />
+              <div className="phone-notes-container">
+                {/* Theory Section */}
+                <div className="phone-card phone-notes-theory">
+                  <div className="phone-notes-theory-header">
+                    <div className="phone-section-title">My Theory</div>
+                    {structuredNotes.theory && (
+                      <span className="phone-notes-theory-badge">Active</span>
+                    )}
+                  </div>
+                  <textarea
+                    className="phone-input phone-notes-theory-input"
+                    value={structuredNotes.theory}
+                    onChange={(event) => updateTheory(event.target.value)}
+                    placeholder="Who stole what, where, and when?"
+                    rows={2}
+                  />
+                </div>
+
+                {/* Quick Add Section */}
+                <div className="phone-card phone-notes-quick-add">
+                  <div className="phone-notes-input-row">
+                    <input
+                      type="text"
+                      className="phone-input phone-notes-quick-input"
+                      value={quickNoteInput}
+                      onChange={(event) => setQuickNoteInput(event.target.value)}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter" && !event.shiftKey) {
+                          event.preventDefault();
+                          addQuickNote();
+                        }
+                      }}
+                      placeholder="Quick note..."
+                    />
+                    <button
+                      type="button"
+                      className="phone-button phone-notes-add-btn"
+                      onClick={addQuickNote}
+                      disabled={!quickNoteInput.trim()}
+                    >
+                      +
+                    </button>
+                  </div>
+
+                  {/* Quick Insert Buttons */}
+                  <div className="phone-notes-quick-insert">
+                    <button
+                      type="button"
+                      className={`phone-notes-insert-btn ${quickInsertCategory === "suspects" ? "active" : ""}`}
+                      onClick={() => setQuickInsertCategory(quickInsertCategory === "suspects" ? null : "suspects")}
+                    >
+                      Who
+                    </button>
+                    <button
+                      type="button"
+                      className={`phone-notes-insert-btn ${quickInsertCategory === "items" ? "active" : ""}`}
+                      onClick={() => setQuickInsertCategory(quickInsertCategory === "items" ? null : "items")}
+                    >
+                      What
+                    </button>
+                    <button
+                      type="button"
+                      className={`phone-notes-insert-btn ${quickInsertCategory === "locations" ? "active" : ""}`}
+                      onClick={() => setQuickInsertCategory(quickInsertCategory === "locations" ? null : "locations")}
+                    >
+                      Where
+                    </button>
+                    <button
+                      type="button"
+                      className={`phone-notes-insert-btn ${quickInsertCategory === "times" ? "active" : ""}`}
+                      onClick={() => setQuickInsertCategory(quickInsertCategory === "times" ? null : "times")}
+                    >
+                      When
+                    </button>
+                  </div>
+
+                  {/* Quick Insert Dropdown */}
+                  {quickInsertCategory && (
+                    <div className="phone-notes-insert-dropdown">
+                      {quickInsertCategory === "suspects" &&
+                        SUSPECTS.map((suspect) => (
+                          <button
+                            key={suspect.id}
+                            type="button"
+                            className="phone-notes-insert-option"
+                            onClick={() => insertGameElement(suspect.name)}
+                          >
+                            {suspect.name}
+                          </button>
+                        ))}
+                      {quickInsertCategory === "items" &&
+                        ITEMS.map((item) => (
+                          <button
+                            key={item.id}
+                            type="button"
+                            className="phone-notes-insert-option"
+                            onClick={() => insertGameElement(item.name)}
+                          >
+                            {item.name}
+                          </button>
+                        ))}
+                      {quickInsertCategory === "locations" &&
+                        LOCATIONS.map((location) => (
+                          <button
+                            key={location.id}
+                            type="button"
+                            className="phone-notes-insert-option"
+                            onClick={() => insertGameElement(location.name)}
+                          >
+                            {location.name}
+                          </button>
+                        ))}
+                      {quickInsertCategory === "times" &&
+                        TIMES.map((time) => (
+                          <button
+                            key={time.id}
+                            type="button"
+                            className="phone-notes-insert-option"
+                            onClick={() => insertGameElement(time.name)}
+                          >
+                            {time.name}
+                          </button>
+                        ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Notes List */}
+                <div className="phone-notes-list">
+                  {structuredNotes.entries.length === 0 ? (
+                    <div className="phone-notes-empty">
+                      <div className="phone-notes-empty-icon">*</div>
+                      <div>No notes yet</div>
+                      <div className="phone-subtitle">Add your first observation above</div>
+                    </div>
+                  ) : (
+                    structuredNotes.entries.map((entry) => (
+                      <div key={entry.id} className="phone-notes-entry">
+                        <div className="phone-notes-entry-content">
+                          <div className="phone-notes-entry-text">{entry.text}</div>
+                          <div className="phone-notes-entry-meta">
+                            {formatNoteTime(entry.timestamp)}
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          className="phone-notes-entry-delete"
+                          onClick={() => deleteNote(entry.id)}
+                          aria-label="Delete note"
+                        >
+                          x
+                        </button>
+                      </div>
+                    ))
+                  )}
+                </div>
+
+                {/* Stats Footer */}
+                {structuredNotes.entries.length > 0 && (
+                  <div className="phone-notes-stats">
+                    {structuredNotes.entries.length} note{structuredNotes.entries.length !== 1 ? "s" : ""} recorded
+                    {saving && <span className="phone-notes-saving">Saving...</span>}
+                  </div>
+                )}
               </div>
             )}
             {showInspectorNotes && (
