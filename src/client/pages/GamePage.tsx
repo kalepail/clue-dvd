@@ -953,89 +953,95 @@ export default function GamePage({ gameId, onNavigate, onMusicPauseChange }: Pro
       {isSetup && (
         <main className="game-setup">
           <div className="game-setup-inner">
-            {/* Setup Header */}
-            <div className="game-setup-header">
-              <div className="game-setup-header-deco">
-                <span className="game-setup-header-deco-line" />
-                <span className="game-setup-header-deco-diamond" />
-                <span className="game-setup-header-deco-line" />
-              </div>
-              <h2 className="game-setup-title">The Mystery Awaits</h2>
-              <p className="game-setup-subtitle">
-                A theft has occurred at Tudor Mansion. Someone has stolen something valuable.
-                Your task is to determine WHO did it, WHAT they stole, WHERE it happened, and WHEN.
-              </p>
-            </div>
-
-            {/* Game Stats */}
-            <div className="game-setup-stats">
-              <div className="game-setup-stat">
-                <Sparkles className="w-5 h-5 text-primary" />
-                <span className="game-setup-stat-value capitalize">{game.difficulty}</span>
-                <span className="game-setup-stat-label">Difficulty</span>
-              </div>
-              <div className="game-setup-stat">
-                <Users className="w-5 h-5 text-primary" />
-                <span className="game-setup-stat-value">{game.playerCount}</span>
-                <span className="game-setup-stat-label">Players</span>
-              </div>
-              <div className="game-setup-stat">
-                <Search className="w-5 h-5 text-primary" />
-                <span className="game-setup-stat-value">{game.totalClues}</span>
-                <span className="game-setup-stat-label">Clues</span>
-              </div>
-            </div>
-
-            {/* Opening Narrative */}
-            {game.narrative?.opening && (
-              <div className="game-setup-narrative">
-                <div className="game-setup-narrative-icon">
-                  <BookOpen className="w-5 h-5" />
+            {/* Left Column: Info */}
+            <div className="game-setup-left">
+              {/* Setup Header */}
+              <div className="game-setup-header">
+                <div className="game-setup-header-deco">
+                  <span className="game-setup-header-deco-line" />
+                  <span className="game-setup-header-deco-diamond" />
+                  <span className="game-setup-header-deco-line" />
                 </div>
-                <p className="game-setup-narrative-text">{game.narrative.opening}</p>
-              </div>
-            )}
-
-            {/* Locked Rooms */}
-            {game.lockedRooms.length > 0 && (
-              <div className="game-setup-locked">
-                <div className="game-setup-locked-header">
-                  <DoorOpen className="w-4 h-4" />
-                  <h4>Sealed Rooms</h4>
-                </div>
-                <p className="game-setup-locked-text">
-                  Inspector Brown has ordered the following rooms sealed until further notice.
+                <h2 className="game-setup-title">The Mystery Awaits</h2>
+                <p className="game-setup-subtitle">
+                  A theft has occurred at Tudor Mansion. Someone has stolen something valuable.
+                  Your task is to determine WHO did it, WHAT they stole, WHERE it happened, and WHEN.
                 </p>
-                <div className="game-setup-locked-rooms">
-                  {game.lockedRooms.map((roomId) => (
-                    <span key={roomId} className="game-setup-locked-room">
-                      {getLocationName(roomId)}
-                    </span>
-                  ))}
+              </div>
+
+              {/* Game Stats */}
+              <div className="game-setup-stats">
+                <div className="game-setup-stat">
+                  <Sparkles className="w-5 h-5 text-primary" />
+                  <span className="game-setup-stat-value capitalize">{game.difficulty}</span>
+                  <span className="game-setup-stat-label">Difficulty</span>
+                </div>
+                <div className="game-setup-stat">
+                  <Users className="w-5 h-5 text-primary" />
+                  <span className="game-setup-stat-value">{game.playerCount}</span>
+                  <span className="game-setup-stat-label">Players</span>
+                </div>
+                <div className="game-setup-stat">
+                  <Search className="w-5 h-5 text-primary" />
+                  <span className="game-setup-stat-value">{game.totalClues}</span>
+                  <span className="game-setup-stat-label">Clues</span>
                 </div>
               </div>
-            )}
 
-            {/* Solution Cards for Envelope */}
-            {game.solution && (
-              <SolutionCards solution={game.solution} forceReveal={forceRevealSymbols} />
-            )}
-
-            {/* Begin Button */}
-            <div className="game-setup-actions">
-              <button
-                className="game-setup-begin-btn"
-                onClick={handleStartGame}
-                disabled={isPhoneLobbyActive}
-              >
-                <Search className="w-5 h-5" />
-                Begin Investigation
-              </button>
-              {isPhoneLobbyActive && (
-                <p className="game-setup-waiting">
-                  Waiting for the lead detective to begin the investigation.
-                </p>
+              {/* Opening Narrative */}
+              {game.narrative?.opening && (
+                <div className="game-setup-narrative">
+                  <div className="game-setup-narrative-icon">
+                    <BookOpen className="w-5 h-5" />
+                  </div>
+                  <p className="game-setup-narrative-text">{game.narrative.opening}</p>
+                </div>
               )}
+
+              {/* Locked Rooms */}
+              {game.lockedRooms.length > 0 && (
+                <div className="game-setup-locked">
+                  <div className="game-setup-locked-header">
+                    <DoorOpen className="w-4 h-4" />
+                    <h4>Sealed Rooms</h4>
+                  </div>
+                  <p className="game-setup-locked-text">
+                    Inspector Brown has ordered the following rooms sealed until further notice.
+                  </p>
+                  <div className="game-setup-locked-rooms">
+                    {game.lockedRooms.map((roomId) => (
+                      <span key={roomId} className="game-setup-locked-room">
+                        {getLocationName(roomId)}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Right Column: Cards + Actions */}
+            <div className="game-setup-right">
+              {/* Solution Cards for Envelope */}
+              {game.solution && (
+                <SolutionCards solution={game.solution} forceReveal={forceRevealSymbols} />
+              )}
+
+              {/* Begin Button */}
+              <div className="game-setup-actions">
+                <button
+                  className="game-setup-begin-btn"
+                  onClick={handleStartGame}
+                  disabled={isPhoneLobbyActive}
+                >
+                  <Search className="w-5 h-5" />
+                  Begin Investigation
+                </button>
+                {isPhoneLobbyActive && (
+                  <p className="game-setup-waiting">
+                    Waiting for the lead detective to begin the investigation.
+                  </p>
+                )}
+              </div>
             </div>
           </div>
         </main>

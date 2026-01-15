@@ -72,8 +72,8 @@ export default function HomePage({ onNavigate }: Props) {
 
 
   return (
-    <div>
-      <div className="flex justify-between items-center gap-6 mb-6">
+    <div className="home-page">
+      <div className="home-page-header">
         <h2>Your Investigations</h2>
         <div className="flex items-center gap-3">
           <Button variant="outline" onClick={() => onNavigate("/host-lobby")}>
@@ -86,65 +86,69 @@ export default function HomePage({ onNavigate }: Props) {
         </div>
       </div>
 
-      {loading ? (
-        <div className="text-center py-12 text-muted-foreground">
-          <div className="loading-spinner mx-auto mb-4" />
-          Loading investigations...
-        </div>
-      ) : games.length === 0 ? (
-        <Card className="text-center p-8">
-          <CardHeader>
-            <CardTitle>No Investigations Yet</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-muted-foreground mb-4">
-              Begin your first mystery at Tudor Mansion
-            </p>
-            <Button onClick={() => setShowNewGame(true)}>
-              <Sparkles className="mr-2 h-4 w-4" />
-              Start New Investigation
-            </Button>
-          </CardContent>
-        </Card>
-      ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {games.map((game) => (
-            <Card
-              key={game.id}
-              className="cursor-pointer hover:border-primary transition-colors group relative"
-              onClick={() => onNavigate(`/game/${game.id}`)}
-            >
-              <CardContent className="p-4">
-                <div className="flex justify-between items-center mb-3">
-                  <Badge variant={getStatusVariant(game.status) as "setup" | "in-progress" | "solved" | "abandoned"}>
-                    {game.status.replace("_", " ")}
-                  </Badge>
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs text-muted-foreground">
-                      {formatDate(game.createdAt)}
-                    </span>
-                    <button
-                      onClick={(e) => handleDeleteGame(e, game.id)}
-                      className="opacity-0 group-hover:opacity-100 transition-opacity p-1 hover:bg-destructive/10 rounded"
-                      title="Delete game"
-                    >
-                      <Trash2 className="h-4 w-4 text-destructive" />
-                    </button>
-                  </div>
-                </div>
-                <h3 className="text-base mb-3">
-                  {game.theme?.name || "Mystery"}
-                </h3>
-                <div className="space-y-1">
-                  <IconStat icon={Sparkles} className="capitalize">{game.difficulty}</IconStat>
-                  <IconStat icon={Users}>{game.playerCount} Players</IconStat>
-                  <IconStat icon={Clock}>{game.cluesRevealed}/{game.totalClues} Clues</IconStat>
-                </div>
+      <div className="home-page-content">
+        {loading ? (
+          <div className="text-center py-12 text-muted-foreground">
+            <div className="loading-spinner mx-auto mb-4" />
+            Loading investigations...
+          </div>
+        ) : games.length === 0 ? (
+          <div className="home-page-empty">
+            <Card className="text-center p-8">
+              <CardHeader>
+                <CardTitle>No Investigations Yet</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-muted-foreground mb-4">
+                  Begin your first mystery at Tudor Mansion
+                </p>
+                <Button onClick={() => setShowNewGame(true)}>
+                  <Sparkles className="mr-2 h-4 w-4" />
+                  Start New Investigation
+                </Button>
               </CardContent>
             </Card>
-          ))}
-        </div>
-      )}
+          </div>
+        ) : (
+          <div className="home-page-grid">
+            {games.map((game) => (
+              <Card
+                key={game.id}
+                className="cursor-pointer hover:border-primary transition-colors group relative"
+                onClick={() => onNavigate(`/game/${game.id}`)}
+              >
+                <CardContent className="p-4">
+                  <div className="flex justify-between items-center mb-3">
+                    <Badge variant={getStatusVariant(game.status) as "setup" | "in-progress" | "solved" | "abandoned"}>
+                      {game.status.replace("_", " ")}
+                    </Badge>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-muted-foreground">
+                        {formatDate(game.createdAt)}
+                      </span>
+                      <button
+                        onClick={(e) => handleDeleteGame(e, game.id)}
+                        className="opacity-0 group-hover:opacity-100 transition-opacity p-1 hover:bg-destructive/10 rounded"
+                        title="Delete game"
+                      >
+                        <Trash2 className="h-4 w-4 text-destructive" />
+                      </button>
+                    </div>
+                  </div>
+                  <h3 className="text-base mb-3">
+                    {game.theme?.name || "Mystery"}
+                  </h3>
+                  <div className="space-y-1">
+                    <IconStat icon={Sparkles} className="capitalize">{game.difficulty}</IconStat>
+                    <IconStat icon={Users}>{game.playerCount} Players</IconStat>
+                    <IconStat icon={Clock}>{game.cluesRevealed}/{game.totalClues} Clues</IconStat>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        )}
+      </div>
 
       {showNewGame && (
         <NewGameModal

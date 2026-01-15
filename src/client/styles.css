@@ -61,6 +61,18 @@
   --card-aspect-ratio: 0.76;
   --reveal-card-aspect-ratio: 0.76;
   --selection-card-max-width: 230px;
+
+  /* Viewport-responsive spacing (no-scroll system) */
+  --space-xs: clamp(0.25rem, 0.5vh, 0.5rem);
+  --space-sm: clamp(0.5rem, 1vh, 1rem);
+  --space-md: clamp(0.75rem, 1.5vh, 1.5rem);
+  --space-lg: clamp(1rem, 2vh, 2rem);
+  --space-xl: clamp(1.5rem, 3vh, 3rem);
+
+  /* Component heights */
+  --header-height: clamp(80px, 10vh, 140px);
+  --footer-height: clamp(40px, 5vh, 70px);
+  --solution-card-height: clamp(120px, 18vh, 220px);
 }
 
 /* Base styles */
@@ -80,7 +92,11 @@ body {
 }
 
 #root {
-  @apply min-h-screen flex flex-col;
+  height: 100dvh;
+  max-height: 100dvh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
 }
 
 /* Typography */
@@ -211,7 +227,8 @@ h3 {
 }
 
 .host-header-inner {
-  @apply relative max-w-5xl mx-auto px-6 py-8 text-center;
+  @apply relative max-w-5xl mx-auto text-center;
+  padding: var(--space-sm) var(--space-lg);
 }
 
 .host-header-corner {
@@ -816,27 +833,30 @@ h3 {
 
 .host-lobby-grid {
   display: grid;
-  gap: 16px;
+  gap: var(--space-sm);
   justify-items: center;
   justify-content: center;
+  align-content: start;
+  overflow-y: auto;
+  flex: 1;
+  min-height: 0;
+  padding: var(--space-xs);
 }
 
 .host-lobby-grid-2 {
-  grid-template-columns: repeat(2, 180px);
+  grid-template-columns: repeat(2, 140px);
 }
 
 .host-lobby-grid-3 {
-  grid-template-columns: repeat(3, 180px);
+  grid-template-columns: repeat(3, 140px);
 }
 
 .host-lobby-grid-1 {
-  grid-template-columns: repeat(auto-fit, 180px);
-  gap: 20px;
+  grid-template-columns: repeat(auto-fit, 140px);
 }
 
 .host-lobby-grid-5 {
-  grid-template-columns: repeat(auto-fit, 180px);
-  gap: 16px;
+  grid-template-columns: repeat(auto-fit, 140px);
 }
 
 .host-lobby-card {
@@ -887,16 +907,29 @@ h3 {
   color: var(--color-gold);
 }
 
+@media (max-width: 900px) {
+  .lobby-active {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto 1fr;
+  }
+  .lobby-code-section {
+    justify-content: center;
+  }
+  .lobby-code-card {
+    max-width: 380px;
+  }
+}
+
 @media (max-width: 720px) {
   .host-lobby-grid-5 {
-    grid-template-columns: repeat(auto-fit, 160px);
+    grid-template-columns: repeat(auto-fit, 120px);
   }
 }
 
 @media (max-width: 640px) {
   .host-lobby-grid-2,
   .host-lobby-grid-3 {
-    grid-template-columns: repeat(auto-fit, 160px);
+    grid-template-columns: repeat(auto-fit, 120px);
   }
   .host-lobby-code {
     font-size: clamp(2.4rem, 10vw, 4rem);
@@ -979,16 +1012,23 @@ h3 {
 */
 
 .solution-reveal-grid {
-  @apply grid grid-cols-2 md:grid-cols-4 gap-4 max-w-4xl mx-auto items-start;
+  display: flex;
+  justify-content: center;
+  gap: var(--space-sm);
+  max-width: 100%;
+  align-items: stretch;
 }
 
 .reveal-card {
-  @apply w-full relative;
+  @apply relative;
   perspective: 1200px;
+  max-width: 180px;
+  flex: 1;
+  max-height: clamp(150px, 28vh, 280px);
 }
 
 .reveal-card-inner {
-  @apply w-full relative transition-transform duration-500;
+  @apply w-full h-full relative transition-transform duration-500;
   aspect-ratio: var(--reveal-card-aspect-ratio);
   transform-style: preserve-3d;
 }
@@ -1073,6 +1113,58 @@ h3 {
 }
 
 /* ============================================
+   HOME PAGE - No-scroll layout
+   ============================================ */
+
+.home-page {
+  height: 100%;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  padding: var(--space-md) var(--space-lg);
+}
+
+.home-page-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-md);
+  margin-bottom: var(--space-md);
+  flex-shrink: 0;
+}
+
+.home-page-content {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.home-page-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--space-sm);
+}
+
+@media (max-width: 900px) {
+  .home-page-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 600px) {
+  .home-page-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.home-page-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+}
+
+/* ============================================
    HOST FOOTER - Art Deco Styled
    ============================================ */
 
@@ -1083,7 +1175,8 @@ h3 {
 }
 
 .host-footer-inner {
-  @apply max-w-5xl mx-auto px-6 py-10 text-center;
+  @apply max-w-5xl mx-auto text-center;
+  padding: var(--space-sm) var(--space-lg);
 }
 
 .host-footer-deco {
@@ -1239,7 +1332,10 @@ h3 {
    ============================================ */
 
 .lobby-page {
-  @apply min-h-screen flex flex-col;
+  height: 100%;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
   background:
     radial-gradient(ellipse at top center, rgba(212, 175, 55, 0.04) 0%, transparent 50%),
     linear-gradient(180deg, #0f0d0a 0%, #0a0908 100%);
@@ -1255,7 +1351,8 @@ h3 {
 }
 
 .lobby-header-inner {
-  @apply relative max-w-4xl mx-auto px-6 py-10 text-center;
+  @apply relative max-w-4xl mx-auto text-center;
+  padding: var(--space-md) var(--space-lg);
 }
 
 .lobby-header-corner {
@@ -1349,7 +1446,9 @@ h3 {
 
 /* Lobby Main */
 .lobby-main {
-  @apply flex-1 py-10 px-6;
+  flex: 1;
+  min-height: 0;
+  padding: var(--space-md) var(--space-lg);
 }
 
 /* Create Lobby Section */
@@ -1386,22 +1485,31 @@ h3 {
   @apply mt-4 text-sm text-destructive;
 }
 
-/* Active Lobby */
+/* Active Lobby - Side by Side Layout */
 .lobby-active {
-  @apply max-w-4xl mx-auto space-y-10;
+  display: grid;
+  grid-template-columns: minmax(280px, 380px) 1fr;
+  gap: var(--space-lg);
+  max-width: 1400px;
+  margin: 0 auto;
+  height: 100%;
+  min-height: 0;
 }
 
 /* Code Section */
 .lobby-code-section {
-  @apply flex justify-center;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
 }
 
 .lobby-code-card {
-  @apply text-center p-8 rounded-2xl border border-primary/30;
+  @apply text-center rounded-2xl border border-primary/30;
+  padding: var(--space-md);
   background:
     radial-gradient(ellipse at top, rgba(212, 175, 55, 0.08) 0%, transparent 60%),
     linear-gradient(135deg, rgba(28, 24, 20, 0.95) 0%, rgba(15, 13, 10, 0.98) 100%);
-  min-width: min(100%, 420px);
+  width: 100%;
 }
 
 .lobby-code-header {
@@ -1535,11 +1643,16 @@ h3 {
 
 /* Detectives Section */
 .lobby-detectives-section {
-  @apply space-y-6;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+  min-height: 0;
+  overflow: hidden;
 }
 
 .lobby-detectives-header {
-  @apply text-center space-y-2;
+  @apply text-center;
+  flex-shrink: 0;
 }
 
 .lobby-detectives-divider {
@@ -1593,10 +1706,11 @@ h3 {
 
 /* Detective Cards */
 .lobby-detective-card {
-  @apply relative p-3 rounded-xl border border-border/50;
+  @apply relative rounded-xl border border-border/50;
   @apply transition-all duration-300;
+  padding: var(--space-xs);
   background: linear-gradient(135deg, rgba(28, 24, 20, 0.9) 0%, rgba(15, 13, 10, 0.95) 100%);
-  max-width: 180px;
+  max-width: 140px;
   width: 100%;
 }
 
@@ -1614,7 +1728,8 @@ h3 {
 }
 
 .lobby-detective-portrait {
-  @apply w-full aspect-[0.76] rounded-lg overflow-hidden mb-3;
+  @apply w-full aspect-[0.9] rounded-lg overflow-hidden;
+  margin-bottom: var(--space-xs);
   @apply border border-border/30;
   background: rgba(15, 13, 10, 0.5);
 }
@@ -1639,7 +1754,8 @@ h3 {
 
 /* Lobby Footer */
 .lobby-footer {
-  @apply py-8 text-center;
+  @apply text-center;
+  padding: var(--space-sm) var(--space-lg);
   border-top: 1px solid rgba(212, 175, 55, 0.1);
 }
 
@@ -1669,7 +1785,10 @@ h3 {
    ============================================ */
 
 .game-page {
-  @apply min-h-screen flex flex-col;
+  height: 100%;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
   background:
     radial-gradient(ellipse at top center, rgba(212, 175, 55, 0.03) 0%, transparent 50%),
     var(--color-background);
@@ -1685,7 +1804,8 @@ h3 {
 }
 
 .game-header-inner {
-  @apply relative max-w-6xl mx-auto px-6 py-6;
+  @apply relative max-w-6xl mx-auto;
+  padding: var(--space-sm) var(--space-lg);
 }
 
 .game-header-corner {
@@ -1872,15 +1992,47 @@ h3 {
    ============================================ */
 
 .game-setup {
-  @apply flex-1 py-10 px-6;
+  flex: 1;
+  min-height: 0;
+  padding: var(--space-md) var(--space-lg);
+  overflow: hidden;
 }
 
 .game-setup-inner {
-  @apply max-w-4xl mx-auto space-y-8;
+  @apply max-w-6xl mx-auto;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-lg);
+  height: 100%;
+}
+
+.game-setup-left {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.game-setup-right {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+  min-height: 0;
+}
+
+@media (max-width: 900px) {
+  .game-setup-inner {
+    grid-template-columns: 1fr;
+    overflow-y: auto;
+  }
 }
 
 .game-setup-header {
-  @apply text-center space-y-4;
+  @apply text-center;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
 }
 
 .game-setup-header-deco {
@@ -2014,12 +2166,17 @@ h3 {
    ============================================ */
 
 .game-active {
-  @apply flex-1 py-6 px-6;
+  flex: 1;
+  min-height: 0;
+  padding: var(--space-sm) var(--space-lg);
+  overflow: hidden;
 }
 
 .game-active-grid {
-  @apply max-w-6xl mx-auto grid gap-6;
+  @apply max-w-6xl mx-auto grid;
+  gap: var(--space-sm);
   grid-template-columns: 1fr;
+  height: 100%;
 }
 
 @media (min-width: 1024px) {
@@ -2029,11 +2186,17 @@ h3 {
 }
 
 .game-active-left {
-  @apply space-y-6;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+  min-height: 0;
 }
 
 .game-active-right {
-  @apply space-y-6;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+  min-height: 0;
 }
 
 /* Game Panels */
@@ -2041,28 +2204,44 @@ h3 {
   @apply rounded-xl border overflow-hidden;
   background: rgba(28, 24, 20, 0.7);
   border-color: rgba(212, 175, 55, 0.2);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
 }
 
 .game-panel-header {
-  @apply flex items-center gap-3 px-5 py-4 border-b;
+  @apply flex items-center gap-2 border-b;
+  padding: var(--space-xs) var(--space-sm);
   background: rgba(212, 175, 55, 0.05);
   border-color: rgba(212, 175, 55, 0.15);
+  flex-shrink: 0;
 }
 
 .game-panel-header-icon {
-  @apply w-8 h-8 rounded-lg flex items-center justify-center;
+  @apply w-6 h-6 rounded-lg flex items-center justify-center;
   background: rgba(212, 175, 55, 0.1);
   color: var(--color-primary);
 }
 
 .game-panel-title {
-  @apply text-lg uppercase tracking-wider;
+  @apply text-sm uppercase tracking-wider;
   font-family: var(--font-display);
   color: var(--color-gold);
 }
 
 .game-panel-body {
-  @apply p-5;
+  padding: var(--space-sm);
+  flex: 1;
+  min-height: 0;
+}
+
+/* Timeline panel - scrollable */
+.game-panel-timeline {
+  flex: 1;
+}
+
+.game-panel-timeline .game-panel-body {
+  overflow-y: auto;
 }
 
 .game-panel-notice {
@@ -2072,18 +2251,20 @@ h3 {
 
 /* Actions Grid */
 .game-actions-grid {
-  @apply grid gap-3;
-  grid-template-columns: repeat(2, 1fr);
+  @apply grid;
+  gap: var(--space-xs);
+  grid-template-columns: repeat(3, 1fr);
 }
 
-@media (min-width: 640px) {
+@media (min-width: 900px) {
   .game-actions-grid {
-    grid-template-columns: repeat(3, 1fr);
+    grid-template-columns: repeat(6, 1fr);
   }
 }
 
 .game-action-btn {
-  @apply relative flex flex-col items-center text-center p-4 rounded-xl border transition-all duration-300;
+  @apply relative flex flex-col items-center text-center rounded-lg border transition-all duration-300;
+  padding: var(--space-xs);
   background: rgba(28, 24, 20, 0.6);
   border-color: rgba(212, 175, 55, 0.2);
 }
@@ -2197,21 +2378,33 @@ h3 {
    ============================================ */
 
 .game-solved {
-  @apply flex-1 py-10 px-6;
+  flex: 1;
+  min-height: 0;
+  padding: var(--space-md) var(--space-lg);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
 }
 
 .game-solved-inner {
-  @apply max-w-4xl mx-auto space-y-8 text-center;
+  @apply max-w-5xl mx-auto text-center;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+  height: 100%;
 }
 
 .game-solved-header {
-  @apply space-y-4;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+  flex-shrink: 0;
 }
 
 .game-solved-header-deco {
   @apply flex items-center justify-center gap-4;
   width: 200px;
-  margin: 0 auto 1rem;
+  margin: 0 auto var(--space-xs);
 }
 
 .game-solved-header-deco-line {
@@ -2226,40 +2419,47 @@ h3 {
 }
 
 .game-solved-title {
-  @apply text-4xl md:text-5xl uppercase tracking-[0.15em];
+  @apply text-2xl md:text-3xl uppercase tracking-[0.15em];
   font-family: var(--font-display);
   color: var(--color-success);
 }
 
 .game-solved-subtitle {
-  @apply text-muted-foreground;
+  @apply text-muted-foreground text-sm;
 }
 
 .game-solved-cards {
-  @apply grid grid-cols-2 md:grid-cols-4 gap-4;
+  display: flex;
+  justify-content: center;
+  gap: var(--space-sm);
+  flex: 1;
+  min-height: 0;
 }
 
 /* Narrative */
 .game-solved-narrative {
-  @apply relative p-6 rounded-xl border text-left;
+  @apply relative rounded-xl border text-left;
+  padding: var(--space-sm);
   background: rgba(28, 24, 20, 0.8);
   border-color: rgba(45, 107, 74, 0.3);
+  flex-shrink: 0;
 }
 
 .game-solved-narrative-icon {
-  @apply absolute -top-3 left-6 w-10 h-10 rounded-full flex items-center justify-center;
+  @apply absolute -top-3 left-6 w-8 h-8 rounded-full flex items-center justify-center;
   background: var(--color-card);
   border: 1px solid rgba(45, 107, 74, 0.3);
   color: var(--color-success);
 }
 
 .game-solved-narrative-text {
-  @apply italic text-muted-foreground leading-relaxed pt-2;
+  @apply italic text-muted-foreground leading-relaxed text-sm;
+  padding-top: var(--space-xs);
 }
 
 /* Return Button */
 .game-solved-actions {
-  @apply pt-4;
+  flex-shrink: 0;
 }
 
 .game-solved-return-btn {
@@ -2440,4 +2640,50 @@ h3 {
 
 .game-modal-revealed-text {
   @apply text-lg italic text-foreground;
+}
+
+/* ===========================================
+   Height-based responsive spacing (no-scroll)
+   =========================================== */
+
+/* 1080p and below - Tight spacing */
+@media (max-height: 1080px) {
+  :root {
+    --space-xs: 0.25rem;
+    --space-sm: 0.5rem;
+    --space-md: 0.75rem;
+    --space-lg: 1rem;
+    --space-xl: 1.25rem;
+    --header-height: 80px;
+    --footer-height: 40px;
+    --solution-card-height: 120px;
+  }
+}
+
+/* 1440p - Comfortable spacing */
+@media (min-height: 1081px) and (max-height: 1440px) {
+  :root {
+    --space-xs: 0.375rem;
+    --space-sm: 0.75rem;
+    --space-md: 1rem;
+    --space-lg: 1.5rem;
+    --space-xl: 2rem;
+    --header-height: 100px;
+    --footer-height: 50px;
+    --solution-card-height: 160px;
+  }
+}
+
+/* 4K and above - Spacious */
+@media (min-height: 1441px) {
+  :root {
+    --space-xs: 0.5rem;
+    --space-sm: 1rem;
+    --space-md: 1.5rem;
+    --space-lg: 2rem;
+    --space-xl: 3rem;
+    --header-height: 140px;
+    --footer-height: 70px;
+    --solution-card-height: 220px;
+  }
 }
