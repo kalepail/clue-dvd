@@ -148,6 +148,15 @@ export async function getSessionByCode(
   return rowToSession(row as Record<string, string>);
 }
 
+export async function getSessionById(
+  db: D1Database,
+  sessionId: string
+): Promise<PhoneSession | null> {
+  const row = await db.prepare("SELECT * FROM phone_sessions WHERE id = ?").bind(sessionId).first();
+  if (!row) return null;
+  return rowToSession(row as Record<string, string>);
+}
+
 export async function listPlayers(
   db: D1Database,
   sessionId: string

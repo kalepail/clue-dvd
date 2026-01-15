@@ -60,3 +60,7 @@ export interface PhoneJoinResponse {
   player: PhonePlayer;
   reconnectToken: string;
 }
+
+export type PhoneWsMessage =
+  | { type: "session"; session: PhoneSession; players: PhonePlayer[] }
+  | { type: "event"; event: PhoneEvent };

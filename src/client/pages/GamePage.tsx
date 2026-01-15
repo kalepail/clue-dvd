@@ -12,9 +12,10 @@ import { Progress } from "@/client/components/ui/progress";
 import { IconStat } from "@/client/components/ui/icon-stat";
 import type { EliminationState } from "../../shared/api-types";
 import { getLocationName } from "../../shared/game-elements";
-import { closeSession, getSession, getSessionEvents, sendAccusationResult, sendInspectorNoteResult, updateInspectorNoteAvailability, updateInterruptionStatus, updateSessionTurn } from "../phone/api";
+import { closeSession, sendAccusationResult, sendInspectorNoteResult, updateInspectorNoteAvailability, updateInterruptionStatus, updateSessionTurn } from "../phone/api";
 import { clearHostSessionCode, setHostAutoCreate } from "../phone/storage";
 import type { PhoneSessionStatus } from "../../phone/types";
+import { connectPhoneSessionSocket } from "../phone/ws";
 
 interface Props {
   gameId: string;
@@ -107,6 +108,7 @@ export default function GamePage({ gameId, onNavigate, onMusicPauseChange }: Pro
     timeId: string;
   } | null>(null);
   const [lastPhoneEventId, setLastPhoneEventId] = useState<number | null>(null);
+  const lastPhoneEventIdRef = useRef<number | null>(null);
   const [phoneLobbyStatus, setPhoneLobbyStatus] = useState<PhoneSessionStatus | "missing" | null>(null);
   const [showNarrative, setShowNarrative] = useState(false);
   const [secretPassageResult, setSecretPassageResult] = useState<{
@@ -132,6 +134,19 @@ export default function GamePage({ gameId, onNavigate, onMusicPauseChange }: Pro
   const [showEndTurnConfirm, setShowEndTurnConfirm] = useState(false);
   const [pendingPhoneContinue, setPendingPhoneContinue] = useState<null | "use_secret_passage" | "make_suggestion" | "reveal_clue">(null);
   const previousTurnKey = useRef<string | null>(null);
+  const gameRef = useRef<GameDataFormatted | null>(null);
+  const pendingPhoneContinueRef = useRef<null | "use_secret_passage" | "make_suggestion" | "reveal_clue">(null);
+  const revealingClueRef = useRef(false);
+  const showInterruptionRef = useRef(false);
+  const showInterruptionIntroRef = useRef(false);
+  const handleStartGameRef = useRef<() => void>(() => undefined);
+  const handleRevealClueRef = useRef<() => void>(() => undefined);
+  const handleSecretPassageRef = useRef<() => void>(() => undefined);
+  const handleEndTurnRef = useRef<() => void>(() => undefined);
+  const closeSecretPassageRef = useRef<() => void>(() => undefined);
+  const acknowledgeInterruptionIntroRef = useRef<() => void>(() => undefined);
+  const closeInterruptionRef = useRef<() => void>(() => undefined);
+  const loadGameRef = useRef<() => void>(() => undefined);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const lastSpokenRef = useRef<string | null>(null);
   const gameProgress = game?.totalClues ? game.currentClueIndex / game.totalClues : 0;
@@ -207,78 +222,109 @@ export default function GamePage({ gameId, onNavigate, onMusicPauseChange }: Pro
   }, [loadGame]);
 
   useEffect(() => {
-    if (!game || (game.status !== "in_progress" && game.status !== "setup")) return;
-    const code = phoneSessionCode;
-    if (!code) return;
-    const interval = window.setInterval(async () => {
-      try {
-        const data = await getSessionEvents(code, lastPhoneEventId ?? undefined);
-        if (!data.events.length) return;
-        for (const event of data.events) {
+    gameRef.current = game;
+  }, [game]);
+
+  useEffect(() => {
+    pendingPhoneContinueRef.current = pendingPhoneContinue;
+  }, [pendingPhoneContinue]);
+
+  useEffect(() => {
+    revealingClueRef.current = revealingClue;
+  }, [revealingClue]);
+
+  useEffect(() => {
+    showInterruptionRef.current = showInterruption;
+  }, [showInterruption]);
+
+  useEffect(() => {
+    showInterruptionIntroRef.current = showInterruptionIntro;
+  }, [showInterruptionIntro]);
+
+
+  useEffect(() => {
+    const status = game?.status;
+    if (!phoneSessionCode || (status !== "in_progress" && status !== "setup")) return;
+    const disconnect = connectPhoneSessionSocket(
+      phoneSessionCode,
+      {
+        onSession: ({ session }) => {
+          setPhoneLobbyStatus(session.status);
+        },
+        onEvent: (event) => {
+          const currentGame = gameRef.current;
+          if (!currentGame) return;
+          lastPhoneEventIdRef.current = event.id;
           setLastPhoneEventId(event.id);
           if (event.type === "turn_action") {
             const action = event.payload.action;
-            if (typeof action !== "string") continue;
+            if (typeof action !== "string") return;
             if (action === "begin_investigation") {
-              if (game.status === "setup") {
-                handleStartGame();
+              if (currentGame.status === "setup") {
+                handleStartGameRef.current();
               }
-            } else if (action === "toggle_setup_symbols" && game.status === "setup") {
+            } else if (action === "toggle_setup_symbols" && currentGame.status === "setup") {
               setForceRevealSymbols((prev) => !prev);
             } else if (action === "continue_investigation") {
               setShowAccusation(false);
               setPhoneAccusation(null);
-              if (pendingPhoneContinue === "reveal_clue") {
+              if (pendingPhoneContinueRef.current === "reveal_clue") {
                 setShowClueReveal(false);
                 setPendingPhoneContinue(null);
-                continue;
+                return;
               }
-              if (showInterruptionIntro) {
-                acknowledgeInterruptionIntro();
-              } else if (showInterruption) {
-                closeInterruption();
+              if (showInterruptionIntroRef.current) {
+                acknowledgeInterruptionIntroRef.current();
+              } else if (showInterruptionRef.current) {
+                closeInterruptionRef.current();
               }
-              if (pendingPhoneContinue === "make_suggestion") {
-                handleEndTurn();
-              } else if (pendingPhoneContinue === "use_secret_passage") {
-                closeSecretPassage();
+              if (pendingPhoneContinueRef.current === "make_suggestion") {
+                handleEndTurnRef.current();
+              } else if (pendingPhoneContinueRef.current === "use_secret_passage") {
+                closeSecretPassageRef.current();
               }
               setPendingPhoneContinue(null);
-            } else if (action === "reveal_clue" && game.status === "in_progress" && !revealingClue) {
-              handleRevealClue();
+            } else if (
+              action === "reveal_clue"
+              && currentGame.status === "in_progress"
+              && !revealingClueRef.current
+            ) {
+              handleRevealClueRef.current();
               setPendingPhoneContinue("reveal_clue");
-            } else if (action === "use_secret_passage" && game.status === "in_progress") {
-              handleSecretPassage();
+            } else if (action === "use_secret_passage" && currentGame.status === "in_progress") {
+              handleSecretPassageRef.current();
               setPendingPhoneContinue("use_secret_passage");
-            } else if (action === "read_inspector_note" && game.status === "in_progress") {
+            } else if (action === "read_inspector_note" && currentGame.status === "in_progress") {
               const noteId = typeof event.payload.noteId === "string" ? event.payload.noteId : "";
-              const readerId = game.currentTurn?.suspectId || "";
+              const readerId = currentGame.currentTurn?.suspectId || "";
               if (!noteId || !readerId) {
                 setHostNotice("Inspector note request was incomplete.");
-                continue;
+                return;
               }
-              try {
-                const result = gameStore.readInspectorNote(gameId, noteId, readerId);
-                await sendInspectorNoteResult(code, readerId, result.noteId, result.text);
-                gameStore.endTurn(gameId);
-                loadGame();
-              } catch (err) {
-                setHostNotice(err instanceof Error ? err.message : "Unable to read inspector note.");
-              }
-            } else if (action === "show_story" && game.status === "in_progress") {
+              void (async () => {
+                try {
+                  const result = gameStore.readInspectorNote(gameId, noteId, readerId);
+                  await sendInspectorNoteResult(phoneSessionCode, readerId, result.noteId, result.text);
+                  gameStore.endTurn(gameId);
+                  loadGameRef.current();
+                } catch (err) {
+                  setHostNotice(err instanceof Error ? err.message : "Unable to read inspector note.");
+                }
+              })();
+            } else if (action === "show_story" && currentGame.status === "in_progress") {
               setShowNarrative((prev) => !prev);
-            } else if (action === "make_suggestion" && game.status === "in_progress") {
+            } else if (action === "make_suggestion" && currentGame.status === "in_progress") {
               setShowEndTurnConfirm(true);
               setPendingPhoneContinue("make_suggestion");
             } else if (action === "acknowledge_interruption") {
-              if (showInterruptionIntro) {
-                acknowledgeInterruptionIntro();
-              } else if (showInterruption) {
-                closeInterruption();
+              if (showInterruptionIntroRef.current) {
+                acknowledgeInterruptionIntroRef.current();
+              } else if (showInterruptionRef.current) {
+                closeInterruptionRef.current();
               }
             }
           } else if (event.type === "accusation") {
-            if (game.status !== "in_progress") continue;
+            if (currentGame.status !== "in_progress") return;
             const suspectId = typeof event.payload.suspectId === "string" ? event.payload.suspectId : "";
             const itemId = typeof event.payload.itemId === "string" ? event.payload.itemId : "";
             const locationId = typeof event.payload.locationId === "string" ? event.payload.locationId : "";
@@ -288,38 +334,24 @@ export default function GamePage({ gameId, onNavigate, onMusicPauseChange }: Pro
               setShowAccusation(true);
             }
           }
-        }
-      } catch {
-        // Ignore polling errors so the game UI stays responsive.
+        },
+      },
+      {
+        getLastEventId: () => lastPhoneEventIdRef.current,
       }
-    }, 1200);
-    return () => window.clearInterval(interval);
-  }, [game, lastPhoneEventId, pendingPhoneContinue, revealingClue, showInterruption, showInterruptionIntro]);
+    );
+    return () => disconnect();
+  }, [
+    gameId,
+    phoneSessionCode,
+    game?.status,
+  ]);
 
   useEffect(() => {
     if (!phoneSessionCode) {
       setPhoneLobbyStatus(null);
       return;
     }
-    let active = true;
-    const poll = async () => {
-      try {
-        const data = await getSession(phoneSessionCode);
-        if (active) {
-          setPhoneLobbyStatus(data.session.status);
-        }
-      } catch {
-        if (active) {
-          setPhoneLobbyStatus("missing");
-        }
-      }
-    };
-    poll();
-    const interval = window.setInterval(poll, 3000);
-    return () => {
-      active = false;
-      window.clearInterval(interval);
-    };
   }, [phoneSessionCode]);
 
   useEffect(() => {
@@ -730,6 +762,26 @@ export default function GamePage({ gameId, onNavigate, onMusicPauseChange }: Pro
       default: return "secondary";
     }
   };
+
+  useEffect(() => {
+    handleStartGameRef.current = handleStartGame;
+    handleRevealClueRef.current = handleRevealClue;
+    handleSecretPassageRef.current = handleSecretPassage;
+    handleEndTurnRef.current = handleEndTurn;
+    closeSecretPassageRef.current = closeSecretPassage;
+    acknowledgeInterruptionIntroRef.current = acknowledgeInterruptionIntro;
+    closeInterruptionRef.current = closeInterruption;
+    loadGameRef.current = loadGame;
+  }, [
+    handleStartGame,
+    handleRevealClue,
+    handleSecretPassage,
+    handleEndTurn,
+    closeSecretPassage,
+    acknowledgeInterruptionIntro,
+    closeInterruption,
+    loadGame,
+  ]);
 
   if (loading) {
     return (

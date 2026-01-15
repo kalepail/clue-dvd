@@ -4,6 +4,7 @@ import {
   createPlayer,
   createSession,
   getPlayerByToken,
+  getSessionById,
   getSessionByCode,
   listEvents,
   listPlayers,
@@ -15,9 +16,39 @@ import {
   updateSessionInterruptionStatus,
 } from "./session-store";
 import { normalizeSessionCode } from "./utils";
-import type { PhoneEliminations, PhoneEventType } from "./types";
+import type { PhoneEliminations, PhoneEvent, PhoneEventType, PhoneWsMessage } from "./types";
 
 const phone = new Hono<{ Bindings: CloudflareBindings }>();
+
+const broadcastMessage = async (
+  env: CloudflareBindings,
+  code: string,
+  message: PhoneWsMessage
+) => {
+  const normalized = normalizeSessionCode(code);
+  const id = env.PHONE_SESSION_HUB.idFromName(normalized);
+  const stub = env.PHONE_SESSION_HUB.get(id);
+  try {
+    await stub.fetch(`https://phone-session-hub/broadcast?code=${normalized}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(message),
+    });
+  } catch {
+    // Ignore websocket broadcast failures to keep REST flows stable.
+  }
+};
+
+const broadcastSessionSnapshot = async (env: CloudflareBindings, code: string) => {
+  const session = await getSessionByCode(env.DB, code);
+  if (!session) return;
+  const players = await listPlayers(env.DB, session.id);
+  await broadcastMessage(env, code, { type: "session", session, players });
+};
+
+const broadcastEvent = async (env: CloudflareBindings, code: string, event: PhoneEvent) => {
+  await broadcastMessage(env, code, { type: "event", event });
+};
 
 // Create a new phone session (host lobby)
 phone.post("/sessions", async (c) => {
@@ -43,6 +74,24 @@ phone.get("/sessions/:code", async (c) => {
   return c.json({ session, players });
 });
 
+// WebSocket connection for live session updates
+phone.get("/sessions/:code/ws", async (c) => {
+  const code = normalizeSessionCode(c.req.param("code"));
+  const session = await getSessionByCode(c.env.DB, code);
+  if (!session) {
+    return c.json({ error: "Session not found" }, 404);
+  }
+  const url = `http://phone-session-hub/ws?code=${code}`;
+  const id = c.env.PHONE_SESSION_HUB.idFromName(code);
+  const stub = c.env.PHONE_SESSION_HUB.get(id);
+  return stub.fetch(
+    new Request(url, {
+      method: "GET",
+      headers: c.req.raw.headers,
+    })
+  );
+});
+
 // Close a session (host-only action)
 phone.post("/sessions/:code/close", async (c) => {
   const code = normalizeSessionCode(c.req.param("code"));
@@ -54,6 +103,7 @@ phone.post("/sessions/:code/close", async (c) => {
     .prepare("UPDATE phone_sessions SET status = 'closed', updated_at = datetime('now') WHERE id = ?")
     .bind(session.id)
     .run();
+  await broadcastSessionSnapshot(c.env, code);
   return c.json({ success: true });
 });
 
@@ -72,6 +122,7 @@ phone.post("/sessions/:code/turn", async (c) => {
     .prepare("UPDATE phone_sessions SET current_turn_suspect_id = ?, updated_at = datetime('now') WHERE id = ?")
     .bind(suspectId, session.id)
     .run();
+  await broadcastSessionSnapshot(c.env, code);
   return c.json({ success: true });
 });
 
@@ -97,6 +148,7 @@ phone.post("/sessions/:code/accusation-result", async (c) => {
     correct: body.correct,
     correctCount,
   });
+  await broadcastSessionSnapshot(c.env, code);
   return c.json({ success: true });
 });
 
@@ -117,6 +169,7 @@ phone.post("/sessions/:code/notes-availability", async (c) => {
     note1Available: body.note1Available,
     note2Available: body.note2Available,
   });
+  await broadcastSessionSnapshot(c.env, code);
   return c.json({ success: true });
 });
 
@@ -137,6 +190,7 @@ phone.post("/sessions/:code/interruption", async (c) => {
     active: body.active,
     message: body.message,
   });
+  await broadcastSessionSnapshot(c.env, code);
   return c.json({ success: true });
 });
 
@@ -160,6 +214,7 @@ phone.post("/sessions/:code/inspector-note", async (c) => {
   }
 
   await updatePlayerInspectorNotes(c.env.DB, session.id, body.suspectId, body.noteId, body.noteText);
+  await broadcastSessionSnapshot(c.env, code);
   return c.json({ success: true });
 });
 
@@ -197,6 +252,7 @@ phone.post("/sessions/:code/join", async (c) => {
       body.name.trim(),
       body.suspectId
     );
+    await broadcastSessionSnapshot(c.env, code);
     return c.json({ session, player, reconnectToken });
   } catch (error) {
     return c.json(
@@ -313,20 +369,12 @@ phone.post("/players/:playerId/actions", async (c) => {
   }
 
   await touchPlayer(c.env.DB, playerId);
-  return c.json({ event });
-});
-
-// Fetch events for host (future integration)
-phone.get("/sessions/:code/events", async (c) => {
-  const code = normalizeSessionCode(c.req.param("code"));
-  const session = await getSessionByCode(c.env.DB, code);
-  if (!session) {
-    return c.json({ error: "Session not found" }, 404);
+  const session = await getSessionById(c.env.DB, row.session_id as string);
+  if (session) {
+    await broadcastEvent(c.env, session.code, event);
+    await broadcastSessionSnapshot(c.env, session.code);
   }
-  const since = c.req.query("since");
-  const sinceId = since ? Number(since) : undefined;
-  const events = await listEvents(c.env.DB, session.id, Number.isFinite(sinceId) ? sinceId : undefined);
-  return c.json({ events });
+  return c.json({ event });
 });
 
 export default phone;

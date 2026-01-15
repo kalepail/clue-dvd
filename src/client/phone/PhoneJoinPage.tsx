@@ -4,6 +4,7 @@ import { getSession, joinSession, reconnectSession } from "./api";
 import { loadLastJoinedCode, loadStoredPlayer, storePlayer } from "./storage";
 import { suspectImageById } from "./assets";
 import type { PhoneSessionSummary } from "../../phone/types";
+import { connectPhoneSessionSocket } from "./ws";
 import "./phone.css";
 
 interface Props {
@@ -88,15 +89,12 @@ export default function PhoneJoinPage({ onNavigate }: Props) {
 
   useEffect(() => {
     if (!session) return;
-    const interval = window.setInterval(async () => {
-      try {
-        const data = await getSession(session.session.code);
+    const disconnect = connectPhoneSessionSocket(session.session.code, {
+      onSession: (data) => {
         setSession(data);
-      } catch {
-        // Keep last known state if polling fails.
-      }
-    }, 2000);
-    return () => window.clearInterval(interval);
+      },
+    });
+    return () => disconnect();
   }, [session?.session.code]);
 
   const handleJoin = async () => {

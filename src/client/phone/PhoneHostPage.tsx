@@ -1,8 +1,9 @@
-import { useEffect, useState } from "react";
-import { closeSession, createSession, getSession, getSessionEvents } from "./api";
+import { useEffect, useRef, useState } from "react";
+import { closeSession, createSession } from "./api";
 import { clearHostSessionCode, storeHostSessionCode } from "./storage";
 import { gameStore } from "../hooks/useGameStore";
 import type { PhoneSessionSummary } from "../../phone/types";
+import { connectPhoneSessionSocket } from "./ws";
 import "./phone.css";
 
 interface Props {
@@ -15,6 +16,8 @@ export default function PhoneHostPage({ onNavigate }: Props) {
   const [loading, setLoading] = useState(true);
   const [lastEventId, setLastEventId] = useState<number | null>(null);
   const [closing, setClosing] = useState(false);
+  const sessionRef = useRef<PhoneSessionSummary | null>(null);
+  const lastEventIdRef = useRef<number | null>(null);
 
   useEffect(() => {
     let alive = true;
@@ -40,39 +43,39 @@ export default function PhoneHostPage({ onNavigate }: Props) {
   }, []);
 
   useEffect(() => {
-    if (!session) return;
-    const interval = window.setInterval(async () => {
-      try {
-        const data = await getSession(session.session.code);
-        setSession(data);
-      } catch {
-        // Keep last known roster if polling fails.
-      }
-    }, 2000);
-    return () => window.clearInterval(interval);
-  }, [session?.session.code]);
+    sessionRef.current = session;
+  }, [session]);
 
   useEffect(() => {
-    if (!session) return;
-    const interval = window.setInterval(async () => {
-      try {
-        const data = await getSessionEvents(session.session.code, lastEventId ?? undefined);
-        if (data.events.length === 0) return;
-        for (const event of data.events) {
+    lastEventIdRef.current = lastEventId;
+  }, [lastEventId]);
+
+  useEffect(() => {
+    if (!session?.session.code) return;
+    const disconnect = connectPhoneSessionSocket(
+      session.session.code,
+      {
+        onSession: (data) => {
+          setSession(data);
+        },
+        onEvent: async (event) => {
+          lastEventIdRef.current = event.id;
           setLastEventId(event.id);
           if (event.type === "turn_action" && event.payload.action === "start_game") {
+            const currentSession = sessionRef.current;
+            if (!currentSession) return;
             const themeId = typeof event.payload.themeId === "string" && event.payload.themeId.length > 0
               ? event.payload.themeId
               : undefined;
             const difficulty =
               typeof event.payload.difficulty === "string" ? event.payload.difficulty : "intermediate";
-            const players = session.players.map((player) => ({
+            const players = currentSession.players.map((player) => ({
               name: player.name,
               suspectId: player.suspectId,
             }));
             if (players.length === 0) {
               setError("No players joined the phone lobby yet.");
-              continue;
+              return;
             }
             const game = await gameStore.createGame({
               themeId,
@@ -80,18 +83,18 @@ export default function PhoneHostPage({ onNavigate }: Props) {
               playerCount: players.length,
               players,
               useAI: false,
-              phoneSessionCode: session.session.code,
+              phoneSessionCode: currentSession.session.code,
             });
             onNavigate(`/game/${game.id}`);
-            return;
           }
-        }
-      } catch {
-        // Ignore polling errors to keep the lobby stable.
+        },
+      },
+      {
+        getLastEventId: () => lastEventIdRef.current,
       }
-    }, 1500);
-    return () => window.clearInterval(interval);
-  }, [session, lastEventId, onNavigate]);
+    );
+    return () => disconnect();
+  }, [session?.session.code, onNavigate]);
 
   if (loading) {
     return (

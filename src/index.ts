@@ -9,6 +9,7 @@ import setup from "./routes/setup";
 import scenarios from "./routes/scenarios";
 import tts from "./routes/tts";
 import phone from "./phone/routes";
+export { PhoneSessionHub } from "./phone/session-hub";
 
 const app = new Hono<{ Bindings: CloudflareBindings }>();
 

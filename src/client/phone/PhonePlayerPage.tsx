@@ -2,7 +2,7 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { DIFFICULTIES, ITEMS, LOCATIONS, SUSPECTS, THEMES, TIMES } from "../../shared/game-elements";
 import type { EliminationState } from "../../shared/api-types";
 import type { PhonePlayer, PhoneSessionSummary } from "../../phone/types";
-import { getSession, reconnectSession, sendPlayerAction, updatePlayer } from "./api";
+import { reconnectSession, sendPlayerAction, updatePlayer } from "./api";
 import { clearStoredPlayer, loadStoredPlayer } from "./storage";
 import {
   itemImageById,
@@ -10,6 +10,7 @@ import {
   suspectImageById,
   timeImageById,
 } from "./assets";
+import { connectPhoneSessionSocket } from "./ws";
 import "./phone.css";
 
 // Structured notes types
@@ -360,9 +361,8 @@ export default function PhonePlayerPage({ code, onNavigate }: Props) {
 
   useEffect(() => {
     if (!player) return;
-    const interval = window.setInterval(async () => {
-      try {
-        const data = await getSession(code);
+    const disconnect = connectPhoneSessionSocket(code, {
+      onSession: (data) => {
         if (data.session.status === "closed") {
           clearAccusationMessageHistory(code, player.id);
           clearStoredPlayer(code);
@@ -453,11 +453,9 @@ export default function PhonePlayerPage({ code, onNavigate }: Props) {
             setShowAccusationNotice(true);
           }
         }
-      } catch {
-        // Keep the last known roster if polling fails.
-      }
-    }, 2000);
-    return () => window.clearInterval(interval);
+      },
+    });
+    return () => disconnect();
   }, [code, player]);
 
   useEffect(() => {

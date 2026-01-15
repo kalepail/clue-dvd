@@ -24,6 +24,20 @@
 			"database_name": "clue-dvd-games",
 			"database_id": "local"
 		}
+	],
+	"durable_objects": {
+		"bindings": [
+			{
+				"name": "PHONE_SESSION_HUB",
+				"class_name": "PhoneSessionHub"
+			}
+		]
+	},
+	"migrations": [
+		{
+			"tag": "v1",
+			"new_classes": ["PhoneSessionHub"]
+		}
 	]
 	/**
 	 * Smart Placement

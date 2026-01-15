@@ -87,18 +87,6 @@ export async function sendPlayerAction(
   }
 }
 
-export async function getSessionEvents(
-  code: string,
-  sinceId?: number
-): Promise<{ events: { id: number; type: PhoneEventType; payload: Record<string, unknown> }[] }> {
-  const query = sinceId ? `?since=${sinceId}` : "";
-  const response = await fetch(`/api/phone/sessions/${code}/events${query}`);
-  if (!response.ok) {
-    throw new Error("Failed to fetch session events");
-  }
-  return response.json();
-}
-
 export async function closeSession(code: string): Promise<void> {
   const response = await fetch(`/api/phone/sessions/${code}/close`, { method: "POST" });
   if (!response.ok) {
