@@ -1,3 +1,9 @@
+01/13/26 00:30.00
+- Added looping menu music playback on host web app with fade in/out and pause during host modals
+- Added host settings hamburger menu with a persistent music mute toggle
+- Wired host clue reveal TTS to trigger from the click handler to avoid autoplay blocking
+- Added audio asset path for menu music at /public/audio/menu.mp3
+- Removed the experimental Observe Evidence turn option after review
 01/08/26 10:51.42
 - Added timer for timed events and timed interruptions
 - Added Player name and character selection

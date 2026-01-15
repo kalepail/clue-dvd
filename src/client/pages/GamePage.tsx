@@ -19,6 +19,7 @@ import type { PhoneSessionStatus } from "../../phone/types";
 interface Props {
   gameId: string;
   onNavigate: (path: string) => void;
+  onMusicPauseChange?: (paused: boolean) => void;
 }
 
 const suspectColorById: Record<string, string> = {
@@ -87,7 +88,7 @@ const emptyEliminated: EliminationState = {
   times: [],
 };
 
-export default function GamePage({ gameId, onNavigate }: Props) {
+export default function GamePage({ gameId, onNavigate, onMusicPauseChange }: Props) {
   const [game, setGame] = useState<GameDataFormatted | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -176,6 +177,14 @@ export default function GamePage({ gameId, onNavigate }: Props) {
   ];
   const note1Available = gameProgress >= 0.5;
   const note2Available = gameProgress >= 0.65;
+  const shouldPauseMusic = showClueReveal
+    || showInterruption
+    || showAccusation
+    || showInspectorNotes
+    || showLookAway
+    || showEndTurnConfirm
+    || showNarrative
+    || Boolean(secretPassageResult);
 
   const loadGame = useCallback(() => {
     setLoading(true);
@@ -484,6 +493,12 @@ export default function GamePage({ gameId, onNavigate }: Props) {
   }, [game?.currentTurn, game?.currentTurnIndex]);
 
   useEffect(() => {
+    if (!onMusicPauseChange) return;
+    onMusicPauseChange(shouldPauseMusic);
+    return () => onMusicPauseChange(false);
+  }, [onMusicPauseChange, shouldPauseMusic]);
+
+  useEffect(() => {
     if (!showClueReveal || !latestClue?.text) return;
     const key = `clue:${latestClue.text}`;
     if (lastSpokenRef.current === key) return;
@@ -527,6 +542,8 @@ export default function GamePage({ gameId, onNavigate }: Props) {
     try {
       const result = gameStore.revealNextClue(gameId);
       if (result.clue) {
+        const speaker = result.clue.speaker?.toLowerCase() ?? "";
+        const role = speaker.includes("inspector") ? "inspector" : "butler";
         setLatestClue({
           speaker: result.clue.speaker,
           text: result.clue.text,
@@ -536,6 +553,7 @@ export default function GamePage({ gameId, onNavigate }: Props) {
           } : undefined,
         });
         setShowClueReveal(true);
+        playVoiceover(result.clue.text, role);
       }
       loadGame();
     } catch (err) {
@@ -780,136 +798,165 @@ export default function GamePage({ gameId, onNavigate }: Props) {
       : "Unavailable";
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <Card>
-        <CardContent>
-          <div className="grid gap-6 items-center md:grid-cols-[1fr_auto_1fr]">
-            {/* Left: Theme info */}
-            <div className="min-w-0">
-              <h2 className="mb-1 text-lg">{game.theme?.name || "Mystery"}</h2>
-              <p className="text-muted-foreground text-sm leading-snug">
-                {game.theme?.description || "A theft has occurred at Tudor Mansion"}
-              </p>
-            </div>
+    <div className="game-page">
+      {/* Game Header */}
+      <header className="game-header">
+        <div className="game-header-inner">
+          {/* Art Deco corner ornaments */}
+          <div className="game-header-corner game-header-corner-tl" />
+          <div className="game-header-corner game-header-corner-tr" />
 
-            {/* Center: Current Turn */}
-            <div className="flex justify-center">
-              {isInProgress && game.currentTurn && (
-                <div className="text-center py-5 px-12 rounded-xl border-2 border-primary bg-secondary/80">
-                  <div className="text-xs uppercase tracking-[0.25em] text-muted-foreground mb-2">
-                    Current Turn
-                  </div>
-                  <div
-                    className="text-4xl md:text-5xl font-bold whitespace-nowrap"
-                    style={{ color: currentTurnColor }}
-                  >
-                    {game.currentTurn.suspectName}
-                  </div>
-                </div>
-              )}
-              {!isInProgress && isSolved && game.solvedBy?.playerName && (
-                <div className="text-center">
-                  <div
-                    className="flex items-center justify-center gap-3"
-                    style={{ color: "var(--color-success)" }}
-                  >
-                    <CheckCircle className="h-7 w-7" />
-                    <h2
-                      className="text-3xl md:text-4xl uppercase tracking-[0.2em]"
-                      style={{ color: "var(--color-success)" }}
-                    >
-                      Case Solved!
-                    </h2>
-                  </div>
-                  <div className="mt-3 text-2xl md:text-3xl text-muted-foreground">
-                    <div className="text-sm uppercase tracking-[0.16em] text-primary">
-                      Winner
-                    </div>
-                    {game.solvedBy.playerName}
-                  </div>
-                </div>
-              )}
-            </div>
+          {/* Top decorative line */}
+          <div className="game-header-deco-line" />
 
-            {/* Right: Status badge */}
-            <div className="flex justify-end">
-              <Badge variant={getStatusVariant(game.status) as "setup" | "in-progress" | "solved" | "abandoned"}>
-                {game.status.replace("_", " ")}
-              </Badge>
+          {/* Theme & Status Row */}
+          <div className="game-header-top">
+            <div className="game-header-theme">
+              <span className="game-header-theme-label">Case File</span>
+              <h2 className="game-header-theme-name">{game.theme?.name || "Mystery"}</h2>
             </div>
+            <Badge variant={getStatusVariant(game.status) as "setup" | "in-progress" | "solved" | "abandoned"}>
+              {game.status.replace("_", " ")}
+            </Badge>
           </div>
-          {isInProgress && (
-            <div className="mt-4 text-sm text-muted-foreground flex items-center gap-2">
-              <Clock className="h-4 w-4" />
-              DEV Game Timer: <span className="text-foreground font-semibold">{elapsedLabel}</span>
-              {nextInterruptionLabel && (
-                <span className="text-muted-foreground">
-                  (DEV next interruption in {nextInterruptionLabel})
-                </span>
-              )}
-            </div>
-          )}
 
-          {isInProgress && (
-            <div className="mt-4 space-y-2">
-              <div className="flex justify-between text-sm text-muted-foreground">
-                <span>Clues Revealed: {game.currentClueIndex} / {game.totalClues}</span>
-                <span>{cluesRemaining} remaining</span>
+          {/* Center: Current Turn Display */}
+          {isInProgress && game.currentTurn && (
+            <div className="game-header-turn">
+              <div className="game-header-turn-label">Current Turn</div>
+              <div className="game-header-turn-divider">
+                <span className="game-header-turn-divider-line" />
+                <span className="game-header-turn-divider-diamond" />
+                <span className="game-header-turn-divider-line" />
               </div>
-              <Progress value={progress} />
+              <div
+                className="game-header-turn-name"
+                style={{ color: currentTurnColor, textShadow: `0 0 30px ${currentTurnColor}40` }}
+              >
+                {game.currentTurn.suspectName}
+              </div>
+              <div className="game-header-turn-player">
+                <Users className="w-3.5 h-3.5" />
+                {game.currentTurn.playerName}
+              </div>
             </div>
           )}
 
-          <div className="mt-4 flex flex-wrap justify-end gap-3">
-            <Button variant="outline" onClick={handleExitToHome}>
+          {/* Solved State Header */}
+          {!isInProgress && isSolved && game.solvedBy?.playerName && (
+            <div className="game-header-solved">
+              <div className="game-header-solved-badge">
+                <CheckCircle className="h-6 w-6" />
+                <span>Case Solved</span>
+              </div>
+              <div className="game-header-solved-winner">
+                <span className="game-header-solved-winner-label">Winner</span>
+                <span className="game-header-solved-winner-name">{game.solvedBy.playerName}</span>
+              </div>
+            </div>
+          )}
+
+          {/* Progress Section */}
+          {isInProgress && (
+            <div className="game-header-progress">
+              <div className="game-header-progress-stats">
+                <div className="game-header-stat">
+                  <Clock className="w-4 h-4" />
+                  <span className="game-header-stat-value">{elapsedLabel}</span>
+                  <span className="game-header-stat-label">Elapsed</span>
+                </div>
+                <div className="game-header-stat">
+                  <Search className="w-4 h-4" />
+                  <span className="game-header-stat-value">{game.currentClueIndex}</span>
+                  <span className="game-header-stat-label">of {game.totalClues} Clues</span>
+                </div>
+                <div className="game-header-stat">
+                  <span className="game-header-stat-value">#{game.turnCount + 1}</span>
+                  <span className="game-header-stat-label">Turn</span>
+                </div>
+              </div>
+              <div className="game-header-progress-bar">
+                <div
+                  className="game-header-progress-fill"
+                  style={{ width: `${progress}%` }}
+                />
+              </div>
+            </div>
+          )}
+
+          {/* Action Buttons */}
+          <div className="game-header-actions">
+            <button className="game-header-action" onClick={handleExitToHome}>
+              <ArrowLeft className="w-4 h-4" />
               Save & Exit
-            </Button>
-            <Button variant="destructive" onClick={handleQuitGame}>
+            </button>
+            <button className="game-header-action game-header-action-danger" onClick={handleQuitGame}>
               Exit Without Saving
-            </Button>
+            </button>
           </div>
-        </CardContent>
-      </Card>
+        </div>
+      </header>
 
       {/* Setup Phase */}
       {isSetup && (
-        <Card className="text-center">
-          <CardHeader>
-            <CardTitle>The Mystery Awaits</CardTitle>
-            <CardDescription className="text-base max-w-2xl mx-auto">
-              A theft has occurred at Tudor Mansion. Someone has stolen something valuable.
-              Your task is to determine WHO did it, WHAT they stole, WHERE it happened, and WHEN.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-6">
-            <div className="flex flex-wrap justify-center gap-4 md:gap-6">
-              <IconStat icon={Sparkles} className="capitalize">{game.difficulty}</IconStat>
-              <IconStat icon={Users}>{game.playerCount} Players</IconStat>
-              <IconStat icon={Clock}>{game.totalClues} Clues</IconStat>
+        <main className="game-setup">
+          <div className="game-setup-inner">
+            {/* Setup Header */}
+            <div className="game-setup-header">
+              <div className="game-setup-header-deco">
+                <span className="game-setup-header-deco-line" />
+                <span className="game-setup-header-deco-diamond" />
+                <span className="game-setup-header-deco-line" />
+              </div>
+              <h2 className="game-setup-title">The Mystery Awaits</h2>
+              <p className="game-setup-subtitle">
+                A theft has occurred at Tudor Mansion. Someone has stolen something valuable.
+                Your task is to determine WHO did it, WHAT they stole, WHERE it happened, and WHEN.
+              </p>
+            </div>
+
+            {/* Game Stats */}
+            <div className="game-setup-stats">
+              <div className="game-setup-stat">
+                <Sparkles className="w-5 h-5 text-primary" />
+                <span className="game-setup-stat-value capitalize">{game.difficulty}</span>
+                <span className="game-setup-stat-label">Difficulty</span>
+              </div>
+              <div className="game-setup-stat">
+                <Users className="w-5 h-5 text-primary" />
+                <span className="game-setup-stat-value">{game.playerCount}</span>
+                <span className="game-setup-stat-label">Players</span>
+              </div>
+              <div className="game-setup-stat">
+                <Search className="w-5 h-5 text-primary" />
+                <span className="game-setup-stat-value">{game.totalClues}</span>
+                <span className="game-setup-stat-label">Clues</span>
+              </div>
             </div>
 
             {/* Opening Narrative */}
             {game.narrative?.opening && (
-              <div className="bg-muted/50 rounded-lg p-4 text-left max-w-2xl mx-auto">
-                <p className="italic text-muted-foreground">{game.narrative.opening}</p>
+              <div className="game-setup-narrative">
+                <div className="game-setup-narrative-icon">
+                  <BookOpen className="w-5 h-5" />
+                </div>
+                <p className="game-setup-narrative-text">{game.narrative.opening}</p>
               </div>
             )}
 
+            {/* Locked Rooms */}
             {game.lockedRooms.length > 0 && (
-              <div className="bg-secondary/60 border border-primary/40 rounded-lg p-4 text-left max-w-2xl mx-auto">
-                <h4 className="text-sm uppercase tracking-widest text-primary mb-2">
-                  Locked Rooms
-                </h4>
-                <p className="text-sm text-muted-foreground mb-3">
+              <div className="game-setup-locked">
+                <div className="game-setup-locked-header">
+                  <DoorOpen className="w-4 h-4" />
+                  <h4>Sealed Rooms</h4>
+                </div>
+                <p className="game-setup-locked-text">
                   Inspector Brown has ordered the following rooms sealed until further notice.
                 </p>
-                <div className="flex flex-wrap gap-2">
+                <div className="game-setup-locked-rooms">
                   {game.lockedRooms.map((roomId) => (
-                    <span
-                      key={roomId}
-                      className="px-3 py-1 rounded-full border border-primary/40 text-sm"
-                    >
+                    <span key={roomId} className="game-setup-locked-room">
                       {getLocationName(roomId)}
                     </span>
                   ))}
@@ -922,240 +969,226 @@ export default function GamePage({ gameId, onNavigate }: Props) {
               <SolutionCards solution={game.solution} forceReveal={forceRevealSymbols} />
             )}
 
-            <Button
-              size="lg"
-              onClick={handleStartGame}
-              disabled={isPhoneLobbyActive}
-            >
-              <Search className="mr-2 h-5 w-5" />
-              Begin Investigation
-            </Button>
-            {isPhoneLobbyActive && (
-              <p className="text-sm text-muted-foreground">
-                Waiting for the lead detective to begin the investigation.
-              </p>
-            )}
-          </CardContent>
-        </Card>
+            {/* Begin Button */}
+            <div className="game-setup-actions">
+              <button
+                className="game-setup-begin-btn"
+                onClick={handleStartGame}
+                disabled={isPhoneLobbyActive}
+              >
+                <Search className="w-5 h-5" />
+                Begin Investigation
+              </button>
+              {isPhoneLobbyActive && (
+                <p className="game-setup-waiting">
+                  Waiting for the lead detective to begin the investigation.
+                </p>
+              )}
+            </div>
+          </div>
+        </main>
       )}
 
       {/* Active Game */}
       {isInProgress && (
-        <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,0.8fr)] gap-6">
-          <div className="space-y-6">
-            {/* Controls */}
-            <Card>
-              <CardHeader className="px-4 py-3">
-                <CardTitle className="text-lg">Turn Options</CardTitle>
-              </CardHeader>
-              <CardContent className="p-4">
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  {[
-                    {
-                      key: "reveal",
-                      title: revealingClue ? "Revealing..." : "Reveal Next Clue",
-                      description: "Share the next clue with the group.",
-                      icon: Search,
-                      onClick: handleRevealClue,
-                      disabled: revealingClue || cluesRemaining === 0 || isPhoneLobbyActive,
-                    },
-                    {
-                      key: "accuse",
-                      title: "Make Accusation",
-                      description: "Open the accusation flow on the host.",
-                      icon: Gavel,
-                      onClick: () => setShowAccusation(true),
-                      disabled: isPhoneLobbyActive,
-                    },
-                    {
-                      key: "passage",
-                      title: "Use Secret Passage",
-                      description: "Trigger a passage result for the current turn.",
-                      icon: DoorOpen,
-                      onClick: handleSecretPassage,
-                      disabled: isPhoneLobbyActive || secretPassageUsedThisTurn,
-                    },
-                    {
-                      key: "note",
-                      title: "Read Inspector Note",
-                      description: "Open the inspector note selection.",
-                      icon: BookOpen,
-                      onClick: handleOpenInspectorNotes,
-                      disabled: !hasInspectorNoteAvailable || isPhoneLobbyActive,
-                    },
-                    {
-                      key: "story",
-                      title: showNarrative ? "Hide Story" : "Show Story",
-                      description: "Toggle the narrative panel below.",
-                      icon: BookOpen,
-                      onClick: () => setShowNarrative(!showNarrative),
-                      disabled: isPhoneLobbyActive,
-                    },
-                    {
-                      key: "suggestion",
-                      title: "Make Suggestion",
-                      description: "Prompt players to handle a suggestion turn.",
-                      icon: MessageCircle,
-                      onClick: () => setShowEndTurnConfirm(true),
-                      disabled: isPhoneLobbyActive,
-                    },
-                  ].map((item) => {
-                    const Icon = item.icon;
-                    return (
+        <main className="game-active">
+          <div className="game-active-grid">
+            {/* Left Column: Controls */}
+            <div className="game-active-left">
+              {/* Turn Actions Panel */}
+              <section className="game-panel game-panel-actions">
+                <div className="game-panel-header">
+                  <div className="game-panel-header-icon">
+                    <Sparkles className="w-4 h-4" />
+                  </div>
+                  <h3 className="game-panel-title">Turn Actions</h3>
+                </div>
+                <div className="game-panel-body">
+                  <div className="game-actions-grid">
+                    {[
+                      {
+                        key: "reveal",
+                        title: revealingClue ? "Revealing..." : "Reveal Clue",
+                        description: "Share the next clue with the group",
+                        icon: Search,
+                        onClick: handleRevealClue,
+                        disabled: revealingClue || cluesRemaining === 0 || isPhoneLobbyActive,
+                        highlight: !revealingClue && cluesRemaining > 0,
+                      },
+                      {
+                        key: "accuse",
+                        title: "Accusation",
+                        description: "Make a formal accusation",
+                        icon: Gavel,
+                        onClick: () => setShowAccusation(true),
+                        disabled: isPhoneLobbyActive,
+                      },
+                      {
+                        key: "passage",
+                        title: "Secret Passage",
+                        description: "Use a hidden passage",
+                        icon: DoorOpen,
+                        onClick: handleSecretPassage,
+                        disabled: isPhoneLobbyActive || secretPassageUsedThisTurn,
+                      },
+                      {
+                        key: "note",
+                        title: "Inspector Note",
+                        description: "Read a confidential note",
+                        icon: BookOpen,
+                        onClick: handleOpenInspectorNotes,
+                        disabled: !hasInspectorNoteAvailable || isPhoneLobbyActive,
+                      },
+                      {
+                        key: "suggestion",
+                        title: "Suggestion",
+                        description: "End turn after suggestion",
+                        icon: MessageCircle,
+                        onClick: () => setShowEndTurnConfirm(true),
+                        disabled: isPhoneLobbyActive,
+                      },
+                    ].map((item) => {
+                      const Icon = item.icon;
+                      return (
+                        <button
+                          key={item.key}
+                          type="button"
+                          onClick={item.onClick}
+                          disabled={item.disabled}
+                          className={`game-action-btn ${item.disabled ? "game-action-btn-disabled" : ""} ${item.highlight ? "game-action-btn-highlight" : ""}`}
+                        >
+                          <div className="game-action-btn-icon">
+                            <Icon className="w-5 h-5" />
+                          </div>
+                          <div className="game-action-btn-content">
+                            <span className="game-action-btn-title">{item.title}</span>
+                            <span className="game-action-btn-desc">{item.description}</span>
+                          </div>
+                        </button>
+                      );
+                    })}
+                    {isPhoneLobbyActive && (
                       <button
-                        key={item.key}
                         type="button"
-                        onClick={item.onClick}
-                        disabled={item.disabled}
-                        className={`rounded-lg border px-4 py-3 text-left transition ${
-                          item.disabled
-                            ? "border-border/50 bg-muted/40 text-muted-foreground cursor-not-allowed"
-                            : "border-primary/40 bg-card hover:border-primary/70 hover:bg-primary/5"
-                        }`}
+                        onClick={handleResetPhoneLobby}
+                        className="game-action-btn game-action-btn-secondary"
                       >
-                        <div className="flex items-center gap-2 mb-2 text-sm font-semibold">
-                          <Icon className="h-4 w-4 text-primary" />
-                          {item.title}
+                        <div className="game-action-btn-icon">
+                          <Users className="w-5 h-5" />
                         </div>
-                        <div className="text-xs text-muted-foreground">
-                          {item.description}
+                        <div className="game-action-btn-content">
+                          <span className="game-action-btn-title">Reset Lobby</span>
+                          <span className="game-action-btn-desc">Generate new join code</span>
                         </div>
                       </button>
-                    );
-                  })}
-                  {isPhoneLobbyActive && (
-                    <button
-                      type="button"
-                      onClick={handleResetPhoneLobby}
-                      className="rounded-lg border border-border/60 bg-muted/30 px-4 py-3 text-left text-sm hover:border-primary/40 hover:bg-primary/5 transition"
-                    >
-                      <div className="font-semibold text-primary mb-1">Reset Phone Lobby</div>
-                      <div className="text-xs text-muted-foreground">
-                        Generate a new join code for the next session.
-                      </div>
-                    </button>
-                  )}
-                </div>
-                {hostNotice && (
-                  <div className="mt-3 text-sm text-muted-foreground">
-                    {hostNotice}
+                    )}
                   </div>
-                )}
-              </CardContent>
-            </Card>
-
-            {/* Narrative Panel */}
-            {showNarrative && game.narrative && (
-              <Card>
-                <CardHeader className="px-4 py-3">
-                  <CardTitle className="text-lg">The Story So Far</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-3 p-4 text-sm">
-                  {game.narrative.setting && (
-                    <div>
-                      <h4 className="text-xs font-semibold text-muted-foreground mb-1 uppercase tracking-wide">Setting</h4>
-                      <p className="italic">{game.narrative.setting}</p>
-                    </div>
-                  )}
-                  {game.narrative.atmosphere && (
-                    <div>
-                      <h4 className="text-xs font-semibold text-muted-foreground mb-1 uppercase tracking-wide">Atmosphere</h4>
-                      <p className="italic">{game.narrative.atmosphere}</p>
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-            )}
-
-            <Card>
-              <CardHeader className="px-4 py-3">
-                <CardTitle className="text-lg">Turn Order</CardTitle>
-                <CardDescription>Host-only view of the rotation.</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-3 p-4">
-                <div className="flex items-center justify-between rounded-md border border-border/60 bg-muted/30 px-3 py-2 text-sm">
-                  <span className="text-xs uppercase tracking-wide text-muted-foreground">Turn</span>
-                  <span className="font-semibold">#{game.turnCount + 1}</span>
-                </div>
-                <div className="space-y-2">
-                  <div className="text-xs uppercase tracking-wide text-muted-foreground">Current Turn</div>
-                  {game.currentTurn ? (
-                    <div className="flex items-center gap-2 text-sm">
-                      <span
-                        className="h-2.5 w-2.5 rounded-full"
-                        style={{ backgroundColor: suspectColorById[game.currentTurn.suspectId] || "#b68b2d" }}
-                      />
-                      <span className="font-semibold">{game.currentTurn.playerName}</span>
-                      <span className="text-muted-foreground">
-                        ({game.currentTurn.suspectName})
-                      </span>
-                    </div>
-                  ) : (
-                    <div className="text-sm text-muted-foreground">Awaiting start.</div>
+                  {hostNotice && (
+                    <div className="game-panel-notice">{hostNotice}</div>
                   )}
                 </div>
-                <div className="space-y-2">
-                  {game.turnOrder.length === 0 ? (
-                    <div className="text-sm text-muted-foreground">Turn order set at investigation start.</div>
-                  ) : (
-                    <div className="space-y-2">
-                      {game.turnOrder.map((player, index) => {
+              </section>
+
+              {/* Narrative Panel (toggleable) */}
+              {showNarrative && game.narrative && (
+                <section className="game-panel game-panel-narrative">
+                  <div className="game-panel-header">
+                    <div className="game-panel-header-icon">
+                      <BookOpen className="w-4 h-4" />
+                    </div>
+                    <h3 className="game-panel-title">The Story So Far</h3>
+                  </div>
+                  <div className="game-panel-body">
+                    {game.narrative.setting && (
+                      <div className="game-narrative-section">
+                        <h4 className="game-narrative-label">Setting</h4>
+                        <p className="game-narrative-text">{game.narrative.setting}</p>
+                      </div>
+                    )}
+                    {game.narrative.atmosphere && (
+                      <div className="game-narrative-section">
+                        <h4 className="game-narrative-label">Atmosphere</h4>
+                        <p className="game-narrative-text">{game.narrative.atmosphere}</p>
+                      </div>
+                    )}
+                  </div>
+                </section>
+              )}
+
+              {/* Turn Order Panel */}
+              <section className="game-panel game-panel-turns">
+                <div className="game-panel-header">
+                  <div className="game-panel-header-icon">
+                    <Users className="w-4 h-4" />
+                  </div>
+                  <h3 className="game-panel-title">Turn Order</h3>
+                </div>
+                <div className="game-panel-body">
+                  <div className="game-turn-list">
+                    {game.turnOrder.length === 0 ? (
+                      <div className="game-turn-empty">Turn order set at investigation start.</div>
+                    ) : (
+                      game.turnOrder.map((player, index) => {
                         const isActive = index === game.currentTurnIndex;
+                        const color = suspectColorById[player.suspectId] || "#b68b2d";
                         return (
                           <div
                             key={`${player.name}-${player.suspectId}-${index}`}
-                            className={`flex items-center justify-between rounded-md border px-3 py-2 text-sm ${
-                              isActive ? "border-primary/60 bg-primary/10" : "border-border/60 bg-muted/30"
-                            }`}
+                            className={`game-turn-item ${isActive ? "game-turn-item-active" : ""}`}
+                            style={{ "--turn-color": color } as React.CSSProperties}
                           >
-                            <div className="flex items-center gap-2">
-                              <span
-                                className="h-2.5 w-2.5 rounded-full"
-                                style={{ backgroundColor: suspectColorById[player.suspectId] || "#b68b2d" }}
-                              />
-                              <span className={isActive ? "font-semibold" : undefined}>{player.name}</span>
+                            <span className="game-turn-indicator" style={{ backgroundColor: color }} />
+                            <div className="game-turn-info">
+                              <span className="game-turn-name">{player.name}</span>
+                              <span className="game-turn-suspect">{player.suspectName}</span>
                             </div>
-                            <span className="text-xs uppercase tracking-wide text-muted-foreground">
+                            <span className="game-turn-badge">
                               {isActive ? "Now" : `#${index + 1}`}
                             </span>
                           </div>
                         );
-                      })}
-                    </div>
-                  )}
+                      })
+                    )}
+                  </div>
                 </div>
-              </CardContent>
-            </Card>
-          </div>
+              </section>
+            </div>
 
-          <div className="space-y-6">
-            {/* Investigation Timeline */}
-            <Card>
-              <CardHeader className="px-4 py-3">
-                <CardTitle className="text-lg">Investigation Timeline</CardTitle>
-                <CardDescription>Most recent events.</CardDescription>
-              </CardHeader>
-              <CardContent className="p-4">
-                <GameHistory gameId={gameId} maxItems={4} compact />
-              </CardContent>
-            </Card>
+            {/* Right Column: Timeline */}
+            <div className="game-active-right">
+              <section className="game-panel game-panel-timeline">
+                <div className="game-panel-header">
+                  <div className="game-panel-header-icon">
+                    <Clock className="w-4 h-4" />
+                  </div>
+                  <h3 className="game-panel-title">Investigation Timeline</h3>
+                </div>
+                <div className="game-panel-body">
+                  <GameHistory gameId={gameId} maxItems={6} compact />
+                </div>
+              </section>
+            </div>
           </div>
-        </div>
+        </main>
       )}
 
       {/* Solved */}
       {isSolved && game.solution && (
-        <Card className="border-success text-center">
-          <CardHeader>
-            <CardTitle className="text-primary text-3xl">
-              Well Done, Detective!
-            </CardTitle>
-            <CardDescription className="text-base">
-              The mystery has been unraveled.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-6">
-            <div className="solution-reveal-grid">
+        <main className="game-solved">
+          <div className="game-solved-inner">
+            {/* Victory Header */}
+            <div className="game-solved-header">
+              <div className="game-solved-header-deco">
+                <span className="game-solved-header-deco-line" />
+                <span className="game-solved-header-deco-diamond" />
+                <span className="game-solved-header-deco-line" />
+              </div>
+              <h2 className="game-solved-title">Case Closed</h2>
+              <p className="game-solved-subtitle">The mystery has been unraveled.</p>
+            </div>
+
+            {/* Solution Reveal Cards */}
+            <div className="game-solved-cards">
               {[
                 { label: "WHO", value: game.solution.suspectName, id: game.solution.suspectId },
                 { label: "WHAT", value: game.solution.itemName, id: game.solution.itemId },
@@ -1175,17 +1208,23 @@ export default function GamePage({ gameId, onNavigate }: Props) {
 
             {/* Closing Narrative */}
             {game.narrative?.closing && (
-              <div className="bg-muted/50 rounded-lg p-4 text-left max-w-2xl mx-auto">
-                <p className="italic text-muted-foreground">{game.narrative.closing}</p>
+              <div className="game-solved-narrative">
+                <div className="game-solved-narrative-icon">
+                  <BookOpen className="w-5 h-5" />
+                </div>
+                <p className="game-solved-narrative-text">{game.narrative.closing}</p>
               </div>
             )}
 
-            <Button variant="outline" onClick={() => onNavigate("/")}>
-              <ArrowLeft className="mr-2 h-4 w-4" />
-              Return to Case Files
-            </Button>
-          </CardContent>
-        </Card>
+            {/* Return Button */}
+            <div className="game-solved-actions">
+              <button className="game-solved-return-btn" onClick={() => onNavigate("/")}>
+                <ArrowLeft className="w-4 h-4" />
+                Return to Case Files
+              </button>
+            </div>
+          </div>
+        </main>
       )}
 
       {/* Accusation Modal */}
@@ -1202,113 +1241,103 @@ export default function GamePage({ gameId, onNavigate }: Props) {
         />
       )}
 
+      {/* Secret Passage Modal */}
       {secretPassageResult && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-6 host-modal-overlay">
-          <Card className="host-modal-card">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-3 text-3xl md:text-4xl">
-                <DoorOpen className="h-5 w-5 text-primary" />
-                Secret Passage
-              </CardTitle>
-              <CardDescription className="text-lg md:text-xl">
+        <div className="game-modal-overlay">
+          <div className="game-modal">
+            <div className="game-modal-header">
+              <div className="game-modal-icon">
+                <DoorOpen className="w-6 h-6" />
+              </div>
+              <h3 className="game-modal-title">Secret Passage</h3>
+              <p className="game-modal-subtitle">
                 {secretPassageResult.outcome === "good" && "Fortune favors you."}
                 {secretPassageResult.outcome === "neutral" && "You pass unseen."}
                 {secretPassageResult.outcome === "bad" && "A complication arises."}
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-6 host-modal-body">
-              <p className="italic">{secretPassageResult.description}</p>
-              <div className="text-muted-foreground">
-                Your turn continues.
-              </div>
-            </CardContent>
-            <CardContent className="pt-0">
+              </p>
+            </div>
+            <div className="game-modal-body">
+              <p className="game-modal-text">{secretPassageResult.description}</p>
+              <p className="game-modal-hint">Your turn continues.</p>
+            </div>
+            <div className="game-modal-footer">
               {pendingPhoneContinue === "use_secret_passage" ? (
-                <p className="text-muted-foreground host-modal-body">
-                  Waiting for the detective to continue from their phone.
-                </p>
+                <p className="game-modal-waiting">Waiting for the detective to continue from their phone.</p>
               ) : (
-                <Button size="lg" onClick={closeSecretPassage}>Continue</Button>
+                <button className="game-modal-btn" onClick={closeSecretPassage}>Continue</button>
               )}
-            </CardContent>
-          </Card>
+            </div>
+          </div>
         </div>
       )}
 
+      {/* Interruption Intro Modal */}
       {showInterruptionIntro && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-6 host-modal-overlay">
-          <Card className="host-modal-card">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-3 text-3xl md:text-4xl">
-                <Bell className="h-5 w-5 text-primary" />
-                Inspector Interruption
-              </CardTitle>
-              <CardDescription className="text-lg md:text-xl">
-                {interruptionIntroText}
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="pt-0">
+        <div className="game-modal-overlay">
+          <div className="game-modal game-modal-lg">
+            <div className="game-modal-header">
+              <div className="game-modal-icon game-modal-icon-alert">
+                <Bell className="w-6 h-6" />
+              </div>
+              <h3 className="game-modal-title">Inspector Interruption</h3>
+              <p className="game-modal-subtitle">{interruptionIntroText}</p>
+            </div>
+            <div className="game-modal-body">
               <img
                 src="/images/ui/Inspector screen.png"
                 alt="Inspector screen"
-                className="host-modal-image"
+                className="game-modal-image"
               />
-            </CardContent>
-            <CardContent className="pt-0">
-              <Button size="lg" onClick={acknowledgeInterruptionIntro}>OK</Button>
-            </CardContent>
-          </Card>
+            </div>
+            <div className="game-modal-footer">
+              <button className="game-modal-btn" onClick={acknowledgeInterruptionIntro}>OK</button>
+            </div>
+          </div>
         </div>
       )}
 
+      {/* Interruption Main Modal */}
       {showInterruption && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-6 host-modal-overlay">
-          <Card className="host-modal-card">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-3 text-3xl md:text-4xl">
-                <Bell className="h-5 w-5 text-primary" />
-                Inspector Interruption
-              </CardTitle>
-              <CardDescription className="text-lg md:text-xl">
-                Inspector Brown has an instruction for the table.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-6 host-modal-body">
-              <p className="italic">
-                {interruptionMessage || interruptionFallbackText}
-              </p>
-            </CardContent>
-            <CardContent className="pt-0">
+        <div className="game-modal-overlay">
+          <div className="game-modal game-modal-lg">
+            <div className="game-modal-header">
+              <div className="game-modal-icon game-modal-icon-alert">
+                <Bell className="w-6 h-6" />
+              </div>
+              <h3 className="game-modal-title">Inspector Interruption</h3>
+              <p className="game-modal-subtitle">Inspector Brown has an instruction for the table.</p>
+            </div>
+            <div className="game-modal-body">
+              <p className="game-modal-text">{interruptionMessage || interruptionFallbackText}</p>
               <img
                 src={inspectorInterruptionImages[inspectorImageIndex]}
                 alt="Inspector Brown"
-                className="host-modal-image"
+                className="game-modal-image"
               />
-            </CardContent>
-            <CardContent className="pt-0">
-              <Button size="lg" onClick={closeInterruption}>Continue</Button>
-            </CardContent>
-          </Card>
+            </div>
+            <div className="game-modal-footer">
+              <button className="game-modal-btn" onClick={closeInterruption}>Continue</button>
+            </div>
+          </div>
         </div>
       )}
 
+      {/* Clue Reveal Modal */}
       {showClueReveal && latestClue && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-6 host-modal-overlay">
-          <Card className="host-modal-card">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-3 text-3xl md:text-4xl">
-                <Bell className="h-5 w-5 text-primary" />
-                New Clue
-              </CardTitle>
-              <CardDescription className="text-lg md:text-xl">
-                Inspector Brown has discovered a fresh lead.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="pt-0 space-y-6 host-modal-body">
+        <div className="game-modal-overlay">
+          <div className="game-modal game-modal-lg">
+            <div className="game-modal-header">
+              <div className="game-modal-icon">
+                <Search className="w-6 h-6" />
+              </div>
+              <h3 className="game-modal-title">New Clue Discovered</h3>
+              <p className="game-modal-subtitle">A fresh lead has emerged in the investigation.</p>
+            </div>
+            <div className="game-modal-body">
               <img
                 src={butlerClueImages[butlerImageIndex]}
                 alt="Butler"
-                className="host-modal-image"
+                className="game-modal-image"
               />
               <ClueDisplay
                 speaker={latestClue.speaker}
@@ -1319,119 +1348,97 @@ export default function GamePage({ gameId, onNavigate }: Props) {
                 } : undefined}
                 index={game.currentClueIndex}
               />
-            </CardContent>
-            <CardContent className="pt-0">
-              <Button size="lg" onClick={() => setShowClueReveal(false)}>Continue</Button>
-            </CardContent>
-          </Card>
+            </div>
+            <div className="game-modal-footer">
+              <button className="game-modal-btn" onClick={() => setShowClueReveal(false)}>Continue</button>
+            </div>
+          </div>
         </div>
       )}
 
+      {/* Inspector Notes Modal */}
       {showInspectorNotes && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-6 host-modal-overlay">
-          <Card className="host-modal-card">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-3 text-3xl md:text-4xl">
-                <BookOpen className="h-5 w-5 text-primary" />
-                Inspector's Notes
-              </CardTitle>
-              <CardDescription className="text-lg md:text-xl">
-                Select a note to read. Only the current player should view the contents.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-6 host-modal-body">
+        <div className="game-modal-overlay">
+          <div className="game-modal">
+            <div className="game-modal-header">
+              <div className="game-modal-icon">
+                <BookOpen className="w-6 h-6" />
+              </div>
+              <h3 className="game-modal-title">Inspector's Notes</h3>
+              <p className="game-modal-subtitle">Select a note to read. Only the current player should view the contents.</p>
+            </div>
+            <div className="game-modal-body">
               {!showLookAway && !revealedInspectorNote && (
-                <div className="grid gap-3 md:grid-cols-2">
+                <div className="game-modal-notes-grid">
                   <button
-                    className="rounded-lg border border-primary/40 bg-secondary/40 px-4 py-3 text-left transition hover:border-primary disabled:opacity-50"
+                    className="game-modal-note-btn"
                     disabled={!canReadNote1}
                     onClick={() => handleSelectInspectorNote("N1")}
                   >
-                    <div className="text-xs uppercase tracking-widest text-muted-foreground">
-                      Note 1
-                    </div>
-                    <div className="text-sm font-semibold text-foreground">
-                      {note1Status}
-                    </div>
+                    <span className="game-modal-note-label">Note 1</span>
+                    <span className="game-modal-note-status">{note1Status}</span>
                   </button>
                   <button
-                    className="rounded-lg border border-primary/40 bg-secondary/40 px-4 py-3 text-left transition hover:border-primary disabled:opacity-50"
+                    className="game-modal-note-btn"
                     disabled={!canReadNote2}
                     onClick={() => handleSelectInspectorNote("N2")}
                   >
-                    <div className="text-xs uppercase tracking-widest text-muted-foreground">
-                      Note 2
-                    </div>
-                    <div className="text-sm font-semibold text-foreground">
-                      {note2Status}
-                    </div>
+                    <span className="game-modal-note-label">Note 2</span>
+                    <span className="game-modal-note-status">{note2Status}</span>
                   </button>
                 </div>
               )}
 
               {showLookAway && !revealedInspectorNote && (
-                <div className="rounded-lg border border-primary/40 bg-secondary/40 p-4 text-center space-y-4">
-                  <p className="text-muted-foreground">
-                    Other players should look away now.
-                  </p>
-                  <Button size="lg" onClick={handleRevealInspectorNote}>
-                    Reveal Note
-                  </Button>
+                <div className="game-modal-lookaway">
+                  <p className="game-modal-lookaway-text">Other players should look away now.</p>
+                  <button className="game-modal-btn" onClick={handleRevealInspectorNote}>Reveal Note</button>
                 </div>
               )}
 
               {revealedInspectorNote && (
-                <div className="rounded-lg border border-primary/40 bg-secondary/40 p-4 space-y-3">
-                  <div className="text-xs uppercase tracking-widest text-muted-foreground">
+                <div className="game-modal-revealed">
+                  <span className="game-modal-revealed-label">
                     Confidential {revealedNoteId ? `(${revealedNoteId})` : ""}
-                  </div>
-                  <p className="italic">{revealedInspectorNote}</p>
+                  </span>
+                  <p className="game-modal-revealed-text">{revealedInspectorNote}</p>
                 </div>
               )}
-            </CardContent>
-            <CardContent className="pt-0 flex justify-between items-center">
-              <Button size="lg" variant="outline" onClick={closeInspectorNotes}>
-                Close
-              </Button>
+            </div>
+            <div className="game-modal-footer game-modal-footer-split">
+              <button className="game-modal-btn game-modal-btn-outline" onClick={closeInspectorNotes}>Close</button>
               {revealedInspectorNote && (
-                <span className="text-muted-foreground host-modal-body">
+                <span className="game-modal-hint">
                   {noteWasFirstRead ? "This ends your turn." : "You may continue your turn."}
                 </span>
               )}
-            </CardContent>
-          </Card>
+            </div>
+          </div>
         </div>
       )}
 
+      {/* Make Suggestion Modal */}
       {showEndTurnConfirm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-6 host-modal-overlay">
-          <Card className="host-modal-card">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-3 text-3xl md:text-4xl">
-                <MessageCircle className="h-5 w-5 text-primary" />
-                Make Suggestion
-              </CardTitle>
-              <CardDescription className="text-lg md:text-xl">
-                Announce your suggestion to the table. Once resolved, click Confirm Suggestion to end your turn.
-              </CardDescription>
-            </CardHeader>
-            {pendingPhoneContinue === "make_suggestion" ? (
-              <CardContent>
-                <p className="text-muted-foreground host-modal-body">
-                  Waiting for the detective to continue from their phone.
-                </p>
-              </CardContent>
-            ) : (
-              <CardContent className="flex gap-3">
-                <Button size="lg" variant="outline" onClick={() => setShowEndTurnConfirm(false)}>
-                  Cancel
-                </Button>
-                <Button size="lg" onClick={handleEndTurn}>
-                  Confirm Suggestion
-                </Button>
-              </CardContent>
-            )}
-          </Card>
+        <div className="game-modal-overlay">
+          <div className="game-modal">
+            <div className="game-modal-header">
+              <div className="game-modal-icon">
+                <MessageCircle className="w-6 h-6" />
+              </div>
+              <h3 className="game-modal-title">Make Suggestion</h3>
+              <p className="game-modal-subtitle">Announce your suggestion to the table. Once resolved, click Confirm to end your turn.</p>
+            </div>
+            <div className="game-modal-footer">
+              {pendingPhoneContinue === "make_suggestion" ? (
+                <p className="game-modal-waiting">Waiting for the detective to continue from their phone.</p>
+              ) : (
+                <>
+                  <button className="game-modal-btn game-modal-btn-outline" onClick={() => setShowEndTurnConfirm(false)}>Cancel</button>
+                  <button className="game-modal-btn" onClick={handleEndTurn}>Confirm Suggestion</button>
+                </>
+              )}
+            </div>
+          </div>
         </div>
       )}
     </div>

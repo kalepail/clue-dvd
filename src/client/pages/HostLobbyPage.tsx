@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Users, QrCode, DoorOpen } from "lucide-react";
+import { Users, RefreshCw, X, Smartphone } from "lucide-react";
 import { gameStore } from "../hooks/useGameStore";
 import { createSession, getSession, getSessionEvents, closeSession } from "../phone/api";
 import type { PhoneSessionSummary } from "../../phone/types";
@@ -10,8 +10,6 @@ import {
 } from "../phone/storage";
 import { DEV_PHONE_JOIN_HOST } from "../phone/phone-config";
 import { Button } from "@/client/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/client/components/ui/card";
-import { Badge } from "@/client/components/ui/badge";
 
 interface Props {
   onNavigate: (path: string) => void;
@@ -165,100 +163,176 @@ export default function HostLobbyPage({ onNavigate }: Props) {
   };
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-2xl">Phone Lobby</h2>
-          <p className="text-muted-foreground">
-            Let detectives join from their phones before you begin.
-          </p>
+    <div className="lobby-page">
+      {/* Header */}
+      <header className="lobby-header">
+        <div className="lobby-header-inner">
+          <div className="lobby-header-corner lobby-header-corner-tl" />
+          <div className="lobby-header-corner lobby-header-corner-tr" />
+
+          <div className="lobby-header-deco-line" />
+
+          <div className="lobby-header-content">
+            <span className="lobby-header-label">Detective Assembly</span>
+            <h1 className="lobby-header-title">Phone Lobby</h1>
+            <div className="lobby-header-divider">
+              <span className="lobby-header-divider-line" />
+              <span className="lobby-header-divider-diamond" />
+              <span className="lobby-header-divider-line" />
+            </div>
+            <p className="lobby-header-subtitle">
+              Summon your fellow investigators
+            </p>
+          </div>
+
+          <button
+            onClick={() => onNavigate("/")}
+            className="lobby-back-button"
+          >
+            &larr; Return to Investigations
+          </button>
         </div>
-        <Button variant="outline" onClick={() => onNavigate("/")}>
-          Back to Games
-        </Button>
-      </div>
+      </header>
 
-      {!session ? (
-        <Card>
-          <CardHeader>
-            <CardTitle>Start a Phone Lobby</CardTitle>
-            <CardDescription>
-              Generate a join code for players. You can end the lobby at any time.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Button onClick={handleCreateLobby} disabled={loading}>
-              {loading ? "Creating Lobby..." : "Start Phone Lobby"}
-            </Button>
-            {error && <p className="mt-3 text-sm text-destructive">{error}</p>}
-          </CardContent>
-        </Card>
-      ) : (
-        <div className="space-y-6">
-          <Card className="border-primary/40 host-lobby-code-card">
-            <CardHeader>
-              <CardTitle className="text-center">Join Code</CardTitle>
-              <CardDescription className="text-center">
-                Players visit the phone link below to enter the code.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-5">
-              <div className="host-lobby-code">{session.session.code}</div>
-              <div className="text-center text-base font-semibold text-foreground">
-                Go to {joinUrl}
+      {/* Main Content */}
+      <main className="lobby-main">
+        {!session ? (
+          /* No Session - Create Lobby */
+          <div className="lobby-create-section">
+            <div className="lobby-create-card">
+              <div className="lobby-create-icon">
+                <Smartphone className="w-12 h-12" />
               </div>
-              <div className="flex flex-wrap items-center justify-center gap-3">
-                <Button variant="outline" onClick={handleRegenerateCode} disabled={loading}>
-                  Regenerate Code
-                </Button>
-                <Button variant="outline" onClick={handleCloseLobby} disabled={loading}>
-                  <DoorOpen className="mr-2 h-4 w-4" />
-                  End Session
-                </Button>
-              </div>
-              <div className="flex items-center justify-center gap-3 text-sm text-muted-foreground">
-                <QrCode className="h-4 w-4" />
-                Players can type the code on their phone.
-              </div>
-              {error && <p className="text-center text-sm text-destructive">{error}</p>}
-            </CardContent>
-          </Card>
+              <h2 className="lobby-create-title">Begin Assembly</h2>
+              <p className="lobby-create-description">
+                Generate a secret code for detectives to join from their phones.
+                The lead detective will start the investigation when ready.
+              </p>
+              <Button
+                onClick={handleCreateLobby}
+                disabled={loading}
+                className="lobby-create-button"
+              >
+                {loading ? "Generating Code..." : "Create Phone Lobby"}
+              </Button>
+              {error && <p className="lobby-error">{error}</p>}
+            </div>
+          </div>
+        ) : (
+          /* Active Session */
+          <div className="lobby-active">
+            {/* Join Code Section */}
+            <section className="lobby-code-section">
+              <div className="lobby-code-card">
+                <div className="lobby-code-header">
+                  <span className="lobby-code-label">Secret Access Code</span>
+                </div>
 
-          <Card>
-            <CardHeader>
-              <CardTitle>Detectives</CardTitle>
-              <CardDescription>Lead detective can start the game from their phone.</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
+                <div className="lobby-code-display">
+                  <div className="lobby-code-corners">
+                    <span className="lobby-code-corner lobby-code-corner-tl" />
+                    <span className="lobby-code-corner lobby-code-corner-tr" />
+                    <span className="lobby-code-corner lobby-code-corner-bl" />
+                    <span className="lobby-code-corner lobby-code-corner-br" />
+                  </div>
+                  <span className="lobby-code-value">{session.session.code}</span>
+                </div>
+
+                <div className="lobby-code-instructions">
+                  <div className="lobby-code-url">
+                    <span className="lobby-code-url-label">Visit</span>
+                    <span className="lobby-code-url-value">{joinUrl}</span>
+                  </div>
+                  <p className="lobby-code-hint">
+                    Detectives enter this code on their phones to join
+                  </p>
+                </div>
+
+                <div className="lobby-code-actions">
+                  <button
+                    onClick={handleRegenerateCode}
+                    disabled={loading}
+                    className="lobby-action-button"
+                  >
+                    <RefreshCw className="w-4 h-4" />
+                    New Code
+                  </button>
+                  <button
+                    onClick={handleCloseLobby}
+                    disabled={loading}
+                    className="lobby-action-button lobby-action-button-danger"
+                  >
+                    <X className="w-4 h-4" />
+                    End Session
+                  </button>
+                </div>
+
+                {error && <p className="lobby-error">{error}</p>}
+              </div>
+            </section>
+
+            {/* Detectives Section */}
+            <section className="lobby-detectives-section">
+              <div className="lobby-detectives-header">
+                <div className="lobby-detectives-divider">
+                  <span className="lobby-detectives-divider-line" />
+                  <span className="lobby-detectives-divider-text">Assembled Detectives</span>
+                  <span className="lobby-detectives-divider-line" />
+                </div>
+                <p className="lobby-detectives-hint">
+                  Lead detective can start the game from their phone
+                </p>
+              </div>
+
               {sortedPlayers.length === 0 ? (
-                <div className="text-sm text-muted-foreground">
-                  Waiting for players to join...
+                <div className="lobby-waiting">
+                  <div className="lobby-waiting-dots">
+                    <span />
+                    <span />
+                    <span />
+                  </div>
+                  <p>Awaiting detectives...</p>
                 </div>
               ) : (
                 <div className={gridClass}>
                   {sortedPlayers.map((player, index) => (
-                    <div key={player.id} className="host-lobby-card">
-                      <div className="host-lobby-portrait">
-                        <img src={suspectImageById[player.suspectId]} alt={player.suspectName} />
+                    <div key={player.id} className="lobby-detective-card">
+                      {index === 0 && (
+                        <span className="lobby-detective-lead-badge">Lead</span>
+                      )}
+                      <div className="lobby-detective-portrait">
+                        <img
+                          src={suspectImageById[player.suspectId]}
+                          alt={player.suspectName}
+                        />
                       </div>
-                      <div className="host-lobby-info">
-                        <div className="host-lobby-name">
-                          <Users className="h-4 w-4 text-muted-foreground" />
-                          <span>{player.name}</span>
-                        </div>
-                        <div className="host-lobby-suspect">
+                      <div className="lobby-detective-info">
+                        <span className="lobby-detective-name">
+                          <Users className="w-3.5 h-3.5" />
+                          {player.name}
+                        </span>
+                        <span className="lobby-detective-suspect">
                           {player.suspectName}
-                          {index === 0 ? " · Lead" : ""}
-                        </div>
+                        </span>
                       </div>
                     </div>
                   ))}
                 </div>
               )}
-            </CardContent>
-          </Card>
+            </section>
+          </div>
+        )}
+      </main>
+
+      {/* Footer */}
+      <footer className="lobby-footer">
+        <div className="lobby-footer-deco">
+          <span className="lobby-footer-deco-line" />
+          <span className="lobby-footer-deco-diamond" />
+          <span className="lobby-footer-deco-line" />
         </div>
-      )}
+        <p className="lobby-footer-text">Tudor Mansion &bull; 1926</p>
+      </footer>
     </div>
   );
 }
