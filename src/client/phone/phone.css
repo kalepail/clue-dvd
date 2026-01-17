@@ -1,6 +1,6 @@
 :root {
-  --phone-card-bg: rgba(9, 12, 20, 0.92);
-  --phone-border: rgba(218, 200, 160, 0.22);
+  --phone-card-bg: rgba(15, 13, 10, 0.92);
+  --phone-border: rgba(212, 175, 55, 0.2);
   --phone-gap: 12px;
   --suspect-scale: 1.08;
   --suspect-scale-selected: 1.12;
@@ -27,6 +27,228 @@
   overflow-y: auto;
   overflow-x: hidden;
   -webkit-overflow-scrolling: touch;
+}
+
+.phone-shell-join {
+  --phone-accent: var(--color-gold);
+  --phone-accent-rgb: 212, 175, 55;
+  background:
+    radial-gradient(circle at 18% -8%, color-mix(in oklab, var(--color-gold) 28%, transparent), transparent 45%),
+    radial-gradient(circle at 120% 12%, color-mix(in oklab, var(--color-background) 35%, transparent), transparent 42%),
+    linear-gradient(160deg, #120f0b 0%, #1b1510 55%, var(--color-background) 100%);
+}
+
+.phone-join-hero {
+  position: relative;
+  padding: 18px 16px 20px;
+  margin-bottom: 12px;
+  border-radius: 18px;
+  background:
+    linear-gradient(135deg, color-mix(in oklab, var(--color-gold) 12%, transparent), transparent 60%),
+    rgba(22, 18, 13, 0.92);
+  border: 1px solid rgba(212, 175, 55, 0.2);
+  box-shadow: var(--phone-shadow-lg);
+  overflow: hidden;
+  animation: joinFadeUp 0.4s ease-out;
+}
+
+.phone-join-hero::after {
+  content: "";
+  position: absolute;
+  inset: 8px;
+  border-radius: 16px;
+  border: 1px dashed color-mix(in oklab, var(--color-gold) 25%, transparent);
+  pointer-events: none;
+}
+
+.phone-join-crest {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 2px;
+  font-family: var(--font-display);
+  text-transform: uppercase;
+  letter-spacing: 0.2em;
+  font-size: 0.6rem;
+  color: color-mix(in oklab, var(--color-cream) 70%, transparent);
+  margin-bottom: 10px;
+}
+
+.phone-join-title {
+  font-family: var(--font-display);
+  font-size: 1.5rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--phone-accent);
+  margin-bottom: 6px;
+  text-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
+}
+
+.phone-join-lede {
+  font-size: 0.9rem;
+  color: color-mix(in oklab, var(--color-cream) 70%, transparent);
+  line-height: 1.5;
+  margin: 0 0 12px;
+}
+
+.phone-join-steps {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.phone-join-step {
+  padding: 6px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(212, 175, 55, 0.16);
+  font-family: var(--font-display);
+  text-transform: uppercase;
+  font-size: 0.6rem;
+  letter-spacing: 0.12em;
+  color: color-mix(in oklab, var(--color-cream) 60%, transparent);
+  background: rgba(18, 15, 11, 0.7);
+}
+
+.phone-join-step.active {
+  border-color: rgba(var(--phone-accent-rgb), 0.55);
+  color: var(--phone-accent);
+  background: rgba(var(--phone-accent-rgb), 0.12);
+  box-shadow: 0 0 12px rgba(var(--phone-accent-rgb), 0.2);
+}
+
+.phone-join-step.done {
+  border-color: color-mix(in oklab, var(--color-success) 70%, transparent);
+  color: color-mix(in oklab, var(--color-success) 75%, var(--color-cream));
+  background: color-mix(in oklab, var(--color-success) 20%, transparent);
+}
+
+.phone-join-card {
+  position: relative;
+  overflow: hidden;
+}
+
+.phone-join-card::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.03), transparent 30%);
+  pointer-events: none;
+}
+
+.phone-join-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.phone-join-card-title {
+  font-family: var(--font-display);
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  font-size: 0.68rem;
+  color: color-mix(in oklab, var(--color-cream) 65%, transparent);
+}
+
+.phone-join-card-subtitle {
+  font-size: 0.78rem;
+  color: color-mix(in oklab, var(--color-cream) 55%, transparent);
+  margin-top: 4px;
+}
+
+.phone-join-card-tag {
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(var(--phone-accent-rgb), 0.4);
+  font-size: 0.55rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  font-family: var(--font-display);
+  color: var(--phone-accent);
+  background: rgba(var(--phone-accent-rgb), 0.12);
+}
+
+.phone-join-meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.75rem;
+  color: color-mix(in oklab, var(--color-cream) 60%, transparent);
+  margin-bottom: 12px;
+}
+
+.phone-join-code {
+  margin-bottom: 6px;
+}
+
+.phone-join-code-input {
+  font-family: var(--font-display);
+  font-size: 1.2rem;
+  letter-spacing: 0.32em;
+  text-transform: uppercase;
+  text-align: center;
+  padding: 14px 12px;
+}
+
+.phone-join-code-hint {
+  font-size: 0.7rem;
+  letter-spacing: 0.04em;
+  color: rgba(245, 239, 230, 0.4);
+}
+
+.phone-join-suspects {
+  display: grid;
+  gap: 10px;
+}
+
+.phone-join-selected {
+  display: grid;
+  grid-template-columns: 54px 1fr;
+  gap: 12px;
+  align-items: center;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: rgba(20, 16, 12, 0.9);
+  border: 1px solid rgba(212, 175, 55, 0.25);
+  box-shadow: 0 0 18px rgba(var(--phone-accent-rgb), 0.12);
+}
+
+.phone-join-selected img {
+  width: 54px;
+  height: 54px;
+  border-radius: 12px;
+  object-fit: cover;
+}
+
+.phone-join-selected-name {
+  font-family: var(--font-display);
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
+  font-size: 0.7rem;
+}
+
+.phone-join-suspect-grid {
+  gap: 8px;
+}
+
+.phone-join-suspect {
+  background: rgba(18, 14, 10, 0.9);
+  border-color: rgba(212, 175, 55, 0.18);
+}
+
+.phone-join-suspect.selected {
+  background: rgba(var(--phone-accent-rgb), 0.15);
+}
+
+@keyframes joinFadeUp {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .phone-header {
@@ -83,8 +305,8 @@
 }
 
 .phone-input {
-  background: rgba(15, 20, 32, 0.9);
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(22, 18, 13, 0.92);
+  border: 1px solid rgba(212, 175, 55, 0.15);
   border-radius: 12px;
   color: var(--color-cream);
   padding: 12px 14px;
@@ -93,7 +315,7 @@
 }
 
 .phone-input:hover {
-  border-color: rgba(255, 255, 255, 0.18);
+  border-color: rgba(212, 175, 55, 0.25);
 }
 
 .phone-input:focus {
@@ -103,7 +325,7 @@
 }
 
 .phone-input::placeholder {
-  color: rgba(255, 255, 255, 0.35);
+  color: rgba(245, 239, 230, 0.35);
 }
 
 .phone-button {

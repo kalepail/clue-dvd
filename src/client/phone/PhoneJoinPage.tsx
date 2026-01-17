@@ -140,20 +140,37 @@ export default function PhoneJoinPage({ onNavigate }: Props) {
   const [imageOkById, setImageOkById] = useState<Record<string, boolean>>({});
 
   return (
-    <div className="phone-shell">
-      <div className="phone-header">
-        <h1>Detective Link</h1>
-        <div className="phone-subtitle">
-          Enter the lobby code shown on the host screen.
+    <div className="phone-shell phone-shell-join">
+      <header className="phone-join-hero">
+        <div className="phone-join-crest">
+          <span>Clue</span>
+          <span>Manor</span>
         </div>
-      </div>
+        <div className="phone-join-title">Join the Investigation</div>
+        <p className="phone-join-lede">
+          Sync your phone with the host screen. Enter the access code to begin.
+        </p>
+        <div className="phone-join-steps">
+          <span className={`phone-join-step ${session ? "done" : "active"}`}>Code</span>
+          <span className={`phone-join-step ${session ? "active" : ""}`}>Identity</span>
+          <span className={`phone-join-step ${session && name.trim() && suspectId ? "active" : ""}`}>Ready</span>
+        </div>
+      </header>
 
       <div className="phone-stack">
         {rejoinPlayer && (
-          <div className="phone-card phone-stack">
-            <div className="phone-section-title">Resume Detective</div>
-            <div className="phone-subtitle">
-              {rejoinPlayer.name} · {rejoinPlayer.suspectId}
+          <div className="phone-card phone-join-card phone-stack">
+            <div className="phone-join-card-header">
+              <div>
+                <div className="phone-join-card-title">Resume Detective</div>
+                <div className="phone-join-card-subtitle">Pick up where you left off.</div>
+              </div>
+              <span className="phone-join-card-tag">Auto</span>
+            </div>
+            <div className="phone-join-meta">
+              <span>{rejoinPlayer.name}</span>
+              <span>·</span>
+              <span>{rejoinPlayer.suspectId}</span>
             </div>
             <button
               type="button"
@@ -165,17 +182,27 @@ export default function PhoneJoinPage({ onNavigate }: Props) {
             </button>
           </div>
         )}
-        <div className="phone-card phone-stack">
-          <div className="phone-field">
+
+        <div className="phone-card phone-join-card phone-stack">
+          <div className="phone-join-card-header">
+            <div>
+              <div className="phone-join-card-title">Access Code</div>
+              <div className="phone-join-card-subtitle">Shown on the host screen.</div>
+            </div>
+            <span className="phone-join-card-tag">Step 1</span>
+          </div>
+          <div className="phone-field phone-join-code">
             <label htmlFor="code">Join Code</label>
             <input
               id="code"
-              className="phone-input"
+              className="phone-input phone-join-code-input"
               value={code}
               onChange={(event) => setCode(event.target.value.toUpperCase())}
               placeholder="AB12"
               maxLength={6}
+              inputMode="text"
             />
+            <span className="phone-join-code-hint">4 characters. Letters and numbers only.</span>
           </div>
           <button
             type="button"
@@ -183,12 +210,24 @@ export default function PhoneJoinPage({ onNavigate }: Props) {
             onClick={handleCheckCode}
             disabled={loading}
           >
-            {loading ? "Checking..." : "Check Code"}
+            {loading ? "Checking..." : "Verify Code"}
           </button>
         </div>
 
         {session && (
-          <div className="phone-card phone-stack">
+          <div className="phone-card phone-join-card phone-stack">
+            <div className="phone-join-card-header">
+              <div>
+                <div className="phone-join-card-title">Detective Profile</div>
+                <div className="phone-join-card-subtitle">Choose your identity.</div>
+              </div>
+              <span className="phone-join-card-tag">Step 2</span>
+            </div>
+            <div className="phone-join-meta">
+              <span>Lobby {session.session.code}</span>
+              <span>·</span>
+              <span>{session.players.length} detectives assembled</span>
+            </div>
             <div className="phone-field">
               <label htmlFor="name">Detective Name</label>
               <input
@@ -200,26 +239,32 @@ export default function PhoneJoinPage({ onNavigate }: Props) {
               />
             </div>
 
-            <div>
+            <div className="phone-join-suspects">
               <div className="phone-section-title">Choose Your Suspect</div>
               {selectedSuspect && (
-                <div className="mb-2 phone-selection-center">
-                  <span
-                    className="phone-selection-badge"
-                    style={{ color: selectedColorMap[selectedSuspect.id] || "var(--color-gold)" }}
-                  >
+                <div className="phone-join-selected">
+                  {imageOkById[selectedSuspect.id] !== false && (
+                    <img
+                      src={suspectImageById[selectedSuspect.id]}
+                      alt={selectedSuspect.name}
+                      onError={() =>
+                        setImageOkById((current) => ({ ...current, [selectedSuspect.id]: false }))
+                      }
+                    />
+                  )}
+                  <div className="phone-join-selected-name" style={{ color: selectedColorMap[selectedSuspect.id] }}>
                     {selectedSuspect.name}
-                  </span>
+                  </div>
                 </div>
               )}
-              <div className="phone-grid phone-grid-suspects">
+              <div className="phone-grid phone-grid-suspects phone-join-suspect-grid">
                 {orderedSuspects.map((suspect) => {
                   const disabled = takenSuspects.has(suspect.id);
                   return (
                     <button
                       key={suspect.id}
                       type="button"
-                      className={`phone-option phone-option-suspect ${suspectId === suspect.id ? "selected" : ""}`}
+                      className={`phone-option phone-option-suspect phone-join-suspect ${suspectId === suspect.id ? "selected" : ""}`}
                       onClick={() => !disabled && setSuspectId(suspect.id)}
                       disabled={disabled}
                     >
@@ -252,7 +297,7 @@ export default function PhoneJoinPage({ onNavigate }: Props) {
         )}
 
         {error && (
-          <div className="phone-card">
+          <div className="phone-card phone-join-card">
             <p className="text-sm text-destructive">{error}</p>
           </div>
         )}
