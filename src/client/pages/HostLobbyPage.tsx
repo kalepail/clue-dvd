@@ -176,8 +176,19 @@ export default function HostLobbyPage({ onNavigate }: Props) {
           <div className="lobby-header-deco-line" />
 
           <div className="lobby-header-content">
-            <span className="lobby-header-label">Detective Assembly</span>
-            <h1 className="lobby-header-title">Phone Lobby</h1>
+            <div className="lobby-header-top-row">
+              <button
+                onClick={() => onNavigate("/")}
+                className="lobby-back-button"
+              >
+                &larr; Return to Investigations
+              </button>
+              <div className="lobby-header-title-wrap">
+                <span className="lobby-header-label">Detective Assembly</span>
+                <h1 className="lobby-header-title">Phone Lobby</h1>
+              </div>
+              <div className="lobby-header-spacer" aria-hidden="true" />
+            </div>
             <div className="lobby-header-divider">
               <span className="lobby-header-divider-line" />
               <span className="lobby-header-divider-diamond" />
@@ -187,13 +198,6 @@ export default function HostLobbyPage({ onNavigate }: Props) {
               Summon your fellow investigators
             </p>
           </div>
-
-          <button
-            onClick={() => onNavigate("/")}
-            className="lobby-back-button"
-          >
-            &larr; Return to Investigations
-          </button>
         </div>
       </header>
 

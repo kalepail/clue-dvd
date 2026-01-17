@@ -1351,12 +1351,13 @@ h3 {
 }
 
 .lobby-header-inner {
-  @apply relative max-w-4xl mx-auto text-center;
-  padding: var(--space-md) var(--space-lg);
+  @apply relative max-w-5xl mx-auto text-center;
+  padding: calc(var(--space-md) + 4px) calc(var(--space-lg) + 12px);
 }
 
 .lobby-header-corner {
-  @apply absolute w-12 h-12 pointer-events-none;
+  @apply absolute w-14 h-14 pointer-events-none;
+  border: 1px solid rgba(212, 175, 55, 0.28);
 }
 
 .lobby-header-corner::before,
@@ -1367,6 +1368,8 @@ h3 {
 
 .lobby-header-corner-tl {
   @apply top-4 left-4;
+  border-right: none;
+  border-bottom: none;
 }
 
 .lobby-header-corner-tl::before {
@@ -1379,6 +1382,8 @@ h3 {
 
 .lobby-header-corner-tr {
   @apply top-4 right-4;
+  border-left: none;
+  border-bottom: none;
 }
 
 .lobby-header-corner-tr::before {
@@ -1397,6 +1402,20 @@ h3 {
 
 .lobby-header-content {
   @apply flex flex-col items-center gap-1;
+}
+
+.lobby-header-top-row {
+  @apply grid items-center gap-4;
+  grid-template-columns: auto 1fr auto;
+  width: 100%;
+}
+
+.lobby-header-title-wrap {
+  @apply flex flex-col items-center gap-1;
+}
+
+.lobby-header-spacer {
+  width: 190px;
 }
 
 .lobby-header-label {
@@ -1434,14 +1453,30 @@ h3 {
 }
 
 .lobby-back-button {
-  @apply absolute top-6 left-6 px-4 py-2 text-xs uppercase tracking-wider;
+  @apply px-4 py-2 text-xs uppercase tracking-wider;
   @apply bg-transparent border border-border/50 rounded-lg text-muted-foreground;
   @apply transition-all duration-300;
   font-family: var(--font-display);
+  white-space: nowrap;
 }
 
 .lobby-back-button:hover {
   @apply border-primary/50 text-primary;
+}
+
+@media (max-width: 720px) {
+  .lobby-header-inner {
+    padding: var(--space-md) var(--space-md);
+  }
+
+  .lobby-header-top-row {
+    grid-template-columns: 1fr;
+    justify-items: center;
+  }
+
+  .lobby-header-spacer {
+    display: none;
+  }
 }
 
 /* Lobby Main */
