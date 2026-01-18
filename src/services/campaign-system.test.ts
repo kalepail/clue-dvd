@@ -68,12 +68,12 @@ describe("Campaign Planner (Phase 1)", () => {
       expect(plan1.themeId).toEqual(plan2.themeId);
     });
 
-    it("should respect difficulty setting", () => {
+    it("should lock difficulty to expert", () => {
       const difficulties: Difficulty[] = ["beginner", "intermediate", "expert"];
 
       for (const difficulty of difficulties) {
         const plan = planCampaign({ difficulty });
-        expect(plan.difficulty).toBe(difficulty);
+        expect(plan.difficulty).toBe("expert");
       }
     });
 
@@ -92,7 +92,7 @@ describe("Campaign Planner (Phase 1)", () => {
     });
 
     it("should respect theme selection", () => {
-      const themeId = "M04"; // One of the mystery theme IDs
+      const themeId = "DEV01";
       const plan = planCampaign({ themeId });
       expect(plan.themeId).toBe(themeId);
     });
@@ -196,7 +196,7 @@ describe("Campaign Planner (Phase 1)", () => {
     });
 
     it("should have correct act distribution", () => {
-      const plan = planCampaign({ difficulty: "intermediate" });
+      const plan = planCampaign({});
 
       expect(plan.narrativeArc.act1).toBeDefined();
       expect(plan.narrativeArc.act2).toBeDefined();
@@ -226,19 +226,9 @@ describe("Campaign Planner (Phase 1)", () => {
   });
 
   describe("Difficulty settings", () => {
-    it("beginner should have 12 clues", () => {
-      const plan = planCampaign({ difficulty: "beginner" });
-      expect(plan.clues.length).toBe(12);
-    });
-
-    it("intermediate should have 10 clues", () => {
-      const plan = planCampaign({ difficulty: "intermediate" });
-      expect(plan.clues.length).toBe(10);
-    });
-
-    it("expert should have 8 clues", () => {
-      const plan = planCampaign({ difficulty: "expert" });
-      expect(plan.clues.length).toBe(8);
+    it("expert should have 7 clues", () => {
+      const plan = planCampaign({});
+      expect(plan.clues.length).toBe(7);
     });
   });
 });
@@ -253,7 +243,7 @@ describe("Clue Generator (Phase 2)", () => {
     let scenario: GeneratedScenario;
 
     beforeAll(() => {
-      plan = planCampaign({ difficulty: "intermediate", seed: 42 });
+      plan = planCampaign({ seed: 42 });
       scenario = generateScenarioFromPlan(plan);
     });
 
@@ -401,7 +391,7 @@ describe("Validation (Phase 3)", () => {
 
 describe("Integration Tests", () => {
   describe("generateScenario()", () => {
-    it("should generate valid scenarios for all difficulties", () => {
+    it("should generate valid scenarios with expert difficulty", () => {
       const difficulties: Difficulty[] = ["beginner", "intermediate", "expert"];
 
       for (const difficulty of difficulties) {
@@ -410,6 +400,7 @@ describe("Integration Tests", () => {
 
         expect(validation.valid).toBe(true);
         expect(validation.errors).toHaveLength(0);
+        expect(scenario.metadata.difficulty).toBe("expert");
       }
     });
 
@@ -469,16 +460,16 @@ describe("Integration Tests", () => {
       }
     });
 
-    it("should cover all themes across many generations", () => {
+    it("should default to the AI theme when none is requested", () => {
       const usedThemes = new Set<string>();
 
-      for (let i = 0; i < 100; i++) {
+      for (let i = 0; i < 20; i++) {
         const scenario = generateScenario({ seed: i });
         usedThemes.add(scenario.theme.id);
       }
 
-      // Should use at least half of available themes
-      expect(usedThemes.size).toBeGreaterThanOrEqual(MYSTERY_THEMES.length / 2);
+      expect(usedThemes.size).toBe(1);
+      expect(usedThemes.has("AI01")).toBe(true);
     });
   });
 });

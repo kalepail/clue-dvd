@@ -233,15 +233,15 @@ class GameStore {
   }): Promise<LocalGame> {
     const {
       themeId,
-      difficulty = "intermediate",
+      difficulty = "expert",
       playerCount = 3,
       players = [],
-      useAI = false,
+      useAI: _useAI = true,
       phoneSessionCode = null,
     } = options;
 
-    // Call the scenario generation API
-    const endpoint = useAI ? "/api/scenarios/generate-enhanced" : "/api/scenarios/generate";
+    // Call the AI-driven scenario generation API (mandatory)
+    const endpoint = "/api/scenarios/generate";
     const response = await fetch(endpoint, {
       method: "POST",
       headers: { "Content-Type": "application/json" },

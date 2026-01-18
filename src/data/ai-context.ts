@@ -174,13 +174,13 @@ export function getThemeContext(): string {
   ).join("\n");
 
   return `
-## THE 12 MYSTERY THEMES
+## THE 2 MYSTERY THEMES
 
 ${themeDetails}
 
 ### THEME NOTES:
 - Each theme suggests a reason for the gathering
-- Themes affect which rooms might be locked (outdoor areas locked in winter themes)
+- Themes affect which rooms might be locked
 - The theme sets the mood but doesn't change the core mystery mechanics
 `;
 }

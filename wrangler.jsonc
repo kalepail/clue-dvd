@@ -18,6 +18,9 @@
 		"binding": "AI",
 		"remote": true
 	},
+	"vars": {
+		"OPENAI_API_KEY": ""
+	},
 	"d1_databases": [
 		{
 			"binding": "DB",

@@ -1,8 +1,7 @@
 import { useEffect, useState } from "react";
 import { Sparkles } from "lucide-react";
 import { gameStore } from "../hooks/useGameStore";
-import { THEMES, DIFFICULTIES, PLAYER_COUNTS, SUSPECTS } from "../../shared/game-elements";
-import type { Difficulty } from "../../types/campaign";
+import { THEMES, PLAYER_COUNTS, SUSPECTS } from "../../shared/game-elements";
 import { Button } from "@/client/components/ui/button";
 import {
   Dialog,
@@ -71,6 +70,7 @@ const suspectOrderByRow = [
 ];
 
 const DEV_THEME_ID = "DEV01";
+const DEFAULT_THEME_ID = "AI01";
 const DEV_PLAYERS: PlayerSetup[] = [
   { name: "Dev One", suspectId: "S01" },
   { name: "Dev Two", suspectId: "S02" },
@@ -124,8 +124,7 @@ function SuspectPickerCard({
 }
 
 export default function NewGameModal({ onClose, onCreated }: Props) {
-  const [themeId, setThemeId] = useState(THEMES[0].id);
-  const [difficulty, setDifficulty] = useState<Difficulty>("intermediate");
+  const [themeId, setThemeId] = useState(DEFAULT_THEME_ID);
   const [playerCount, setPlayerCount] = useState("3");
   const [players, setPlayers] = useState<PlayerSetup[]>(() => buildDefaultPlayers(3));
   const [pickerPlayerIndex, setPickerPlayerIndex] = useState<number | null>(null);
@@ -199,7 +198,6 @@ export default function NewGameModal({ onClose, onCreated }: Props) {
     try {
       const game = await gameStore.createGame({
         themeId,
-        difficulty,
         playerCount: Number(playerCount),
         players,
         useAI: false, // Set to true if AI enhancement is desired
@@ -232,22 +230,6 @@ export default function NewGameModal({ onClose, onCreated }: Props) {
                 {THEMES.map((theme) => (
                   <SelectItem key={theme.id} value={theme.id}>
                     {theme.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="difficulty">Difficulty</Label>
-            <Select value={difficulty} onValueChange={(v) => setDifficulty(v as Difficulty)}>
-              <SelectTrigger id="difficulty">
-                <SelectValue placeholder="Select difficulty" />
-              </SelectTrigger>
-              <SelectContent>
-                {DIFFICULTIES.map((d) => (
-                  <SelectItem key={d.id} value={d.id}>
-                    {d.name} - {d.description}
                   </SelectItem>
                 ))}
               </SelectContent>

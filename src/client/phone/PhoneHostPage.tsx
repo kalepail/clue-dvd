@@ -68,7 +68,7 @@ export default function PhoneHostPage({ onNavigate }: Props) {
               ? event.payload.themeId
               : undefined;
             const difficulty =
-              typeof event.payload.difficulty === "string" ? event.payload.difficulty : "intermediate";
+              typeof event.payload.difficulty === "string" ? event.payload.difficulty : "expert";
             const players = currentSession.players.map((player) => ({
               name: player.name,
               suspectId: player.suspectId,

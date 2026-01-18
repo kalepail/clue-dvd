@@ -1,5 +1,5 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { DIFFICULTIES, ITEMS, LOCATIONS, SUSPECTS, THEMES, TIMES } from "../../shared/game-elements";
+import { ITEMS, LOCATIONS, SUSPECTS, THEMES, TIMES } from "../../shared/game-elements";
 import type { EliminationState } from "../../shared/api-types";
 import type { PhonePlayer, PhoneSessionSummary } from "../../phone/types";
 import { reconnectSession, sendPlayerAction, updatePlayer } from "./api";
@@ -224,8 +224,7 @@ export default function PhonePlayerPage({ code, onNavigate }: Props) {
   const [twoAccusationMessage, setTwoAccusationMessage] = useState<string | null>(null);
   const [threeAccusationMessage, setThreeAccusationMessage] = useState<string | null>(null);
   const accusationMessageHistoryRef = useRef<AccusationMessageHistory | null>(null);
-  const [themeId, setThemeId] = useState("");
-  const [difficulty, setDifficulty] = useState("intermediate");
+  const [themeId, setThemeId] = useState("AI01");
   const [secretPassageUsedThisTurn, setSecretPassageUsedThisTurn] = useState(false);
   const lastTurnRef = useRef<string | null>(null);
   const [selectedInspectorNote, setSelectedInspectorNote] = useState<string | null>(null);
@@ -745,7 +744,7 @@ export default function PhonePlayerPage({ code, onNavigate }: Props) {
       await sendPlayerAction(player.id, token, "turn_action", {
         action: "start_game",
         themeId: themeId || null,
-        difficulty,
+        difficulty: "expert",
       });
       setActionStatus("Waiting for host to launch the game.");
     } catch (err) {
@@ -965,25 +964,9 @@ export default function PhonePlayerPage({ code, onNavigate }: Props) {
                   value={themeId}
                   onChange={(event) => setThemeId(event.target.value)}
                 >
-                  <option value="">Random Theme</option>
                   {THEMES.map((theme) => (
                     <option key={theme.id} value={theme.id}>
                       {theme.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div className="phone-field">
-                <label htmlFor="difficulty">Difficulty</label>
-                <select
-                  id="difficulty"
-                  className="phone-input"
-                  value={difficulty}
-                  onChange={(event) => setDifficulty(event.target.value)}
-                >
-                  {DIFFICULTIES.map((level) => (
-                    <option key={level.id} value={level.id}>
-                      {level.name}
                     </option>
                   ))}
                 </select>

@@ -99,23 +99,12 @@ export const TIMES: GameElement[] = [
 ];
 
 // ============================================
-// MYSTERY THEMES (12 Total)
+// MYSTERY THEMES (2 Total)
 // ============================================
 
 export const THEMES: ThemeElement[] = [
+  { id: "AI01", name: "AI Mystery", description: "A bespoke evening generated for each investigation", period: "1925-1926" },
   { id: "DEV01", name: "Developer Test Case", description: "Fixed-solution test theme", period: "Testing Window" },
-  { id: "M01", name: "The Monte Carlo Affair", description: "A gambling-themed weekend with high stakes and higher tensions", period: "September 1925" },
-  { id: "M02", name: "The Garden Party", description: "An outdoor celebration turns sinister when something goes missing", period: "Fall 1925" },
-  { id: "M03", name: "A Bad Sport", description: "Competitive games bring out the worst in the guests", period: "Fall 1925" },
-  { id: "M04", name: "The Hunt", description: "A hunting weekend where the prey isn't just foxes", period: "Fall 1925" },
-  { id: "M05", name: "The Autumn Leaves", description: "As leaves fall, so do secrets long buried", period: "Late Fall 1925" },
-  { id: "M06", name: "The Costume Party", description: "Behind the masks, someone hides a guilty secret", period: "Winter 1925" },
-  { id: "M07", name: "Spring Cleaning", description: "Cleaning house uncovers more than dust", period: "Spring 1926" },
-  { id: "M08", name: "A Princess Is Born", description: "A royal visit brings glamour and danger to Tudor Mansion", period: "Spring 1926" },
-  { id: "M09", name: "A Grand Ball", description: "The social event of the season ends in scandal", period: "Spring 1926" },
-  { id: "M10", name: "The Last Straw", description: "Tensions finally boil over in this dramatic finale", period: "May 1926" },
-  { id: "M11", name: "Christmas at the Mansion", description: "Holiday cheer can't hide the darkness within", period: "December 1925" },
-  { id: "M12", name: "A Dark and Stormy Night", description: "Trapped by the storm, secrets come to light", period: "Winter 1925-1926" },
 ];
 
 // ============================================
@@ -123,9 +112,7 @@ export const THEMES: ThemeElement[] = [
 // ============================================
 
 export const DIFFICULTIES: DifficultyLevel[] = [
-  { id: "beginner", name: "Beginner", description: "More clues, easier deduction", clueCount: 12 },
-  { id: "intermediate", name: "Intermediate", description: "Balanced challenge", clueCount: 10 },
-  { id: "expert", name: "Expert", description: "Fewer clues, harder deduction", clueCount: 8 },
+  { id: "expert", name: "Expert", description: "Fixed expert difficulty", clueCount: 7 },
 ];
 
 // ============================================

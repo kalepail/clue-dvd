@@ -58,6 +58,7 @@ import type {
 } from "../types/campaign";
 
 const DEV_THEME_ID = "DEV01";
+const DEFAULT_THEME_ID = "AI01";
 const DEV_SOLUTION = {
   suspectId: "S05", // Mrs. Peacock
   itemId: "I07", // Letter Opener
@@ -75,7 +76,7 @@ const DEV_SOLUTION = {
 export function planCampaign(request: GenerateCampaignRequest = {}): CampaignPlan {
   const seed = request.seed ?? Date.now();
   const rng = new SeededRandom(seed);
-  const difficulty = request.difficulty ?? "intermediate";
+  const difficulty: Difficulty = "expert";
   const settings = DIFFICULTY_SETTINGS[difficulty];
 
   // 1. Select theme
@@ -158,7 +159,8 @@ function selectTheme(rng: SeededRandom, themeId?: string): MysteryTheme {
     const theme = MYSTERY_THEMES.find(t => t.id === themeId);
     if (theme) return theme;
   }
-  return rng.pick(MYSTERY_THEMES);
+  const defaultTheme = MYSTERY_THEMES.find((theme) => theme.id === DEFAULT_THEME_ID);
+  return defaultTheme ?? rng.pick(MYSTERY_THEMES);
 }
 
 // ============================================
@@ -575,24 +577,7 @@ function selectDeliveryMethod(
   rng: SeededRandom,
   eliminationType: EliminationType
 ): PlannedClue["delivery"] {
-  const info = ELIMINATION_TYPE_INFO[eliminationType];
-  const deliveryTypes: ClueDeliveryType[] = ["butler", "inspector_note", "observation"];
-
-  let type: ClueDeliveryType;
-  let speaker: ClueSpeaker;
-
-  if (info.preferredSpeaker === "Ashe") {
-    type = rng.nextBool(0.7) ? "butler" : rng.pick(deliveryTypes);
-    speaker = type === "butler" ? "Ashe" : rng.pick(["Ashe", "Inspector Brown"]);
-  } else if (info.preferredSpeaker === "Inspector Brown") {
-    type = rng.nextBool(0.7) ? "inspector_note" : rng.pick(deliveryTypes);
-    speaker = type === "butler" ? "Ashe" : "Inspector Brown";
-  } else {
-    type = rng.pick(deliveryTypes);
-    speaker = type === "butler" ? "Ashe" : rng.pick(["Ashe", "Inspector Brown"]);
-  }
-
-  return { type, speaker };
+  return { type: "butler", speaker: "Ashe" };
 }
 
 function buildReferences(

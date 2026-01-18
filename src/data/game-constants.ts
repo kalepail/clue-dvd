@@ -205,22 +205,10 @@ export const SECRET_PASSAGES = [
 // ============================================
 
 export const DIFFICULTY_LEVELS = {
-  beginner: {
-    name: "Beginner",
-    description: "More clues, fewer red herrings, easier deduction",
-    clueCount: 12,
-    estimatedMinutes: 45,
-  },
-  intermediate: {
-    name: "Intermediate",
-    description: "Balanced challenge for experienced players",
-    clueCount: 10,
-    estimatedMinutes: 60,
-  },
   expert: {
     name: "Expert",
-    description: "Fewer clues, more red herrings, requires careful deduction",
-    clueCount: 8,
+    description: "Fixed expert difficulty",
+    clueCount: 7,
     estimatedMinutes: 75,
   },
 } as const;
