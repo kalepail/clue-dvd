@@ -38,6 +38,27 @@ type AiScenarioOutput = {
   inspectorNotes: string[];
 };
 
+type TimelineOutput = {
+  event: {
+    name: string;
+    type: string;
+    purpose: string;
+  };
+  beats: Array<{
+    order: number;
+    time: string;
+    title: string;
+    whatHappened: string;
+    mainLocations: string[];
+  }>;
+  suspects: Record<string, Array<{
+    beat: number;
+    location: string;
+    activity: string;
+    social: string;
+  }>>;
+};
+
 let lastAiScenarioOutput: AiScenarioOutput | null = null;
 
 function stripJsonFence(text: string): string {
@@ -132,8 +153,8 @@ function parseJsonSafely<T>(text: string): T {
     return JSON.parse(raw) as T;
   } catch {
     const sanitized = sanitizeJsonText(raw)
-      .replace(/[“”]/g, "\"")
-      .replace(/[‘’]/g, "'")
+      .replace(/[""]/g, "\"")
+      .replace(/[‘']/g, "'")
       .replace(/,\s*([}\]])/g, "$1");
     return JSON.parse(sanitized) as T;
   }
@@ -145,13 +166,85 @@ function countSentences(text: string): number {
   return matches.length;
 }
 
-function validateAiOutput(plan: CampaignPlan, output: AiScenarioOutput): void {
-  if (!output.event?.name || !output.event?.purpose) {
-    throw new Error("AI output missing event details.");
+function normalizeForMatch(text: string): string {
+  return (text || "")
+    .toLowerCase()
+    .replace(/[’‘]/g, "'")
+    .replace(/[“”]/g, "\"")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function countSentencesLoose(text: string): number {
+  const t = (text || "").trim();
+  if (!t) return 0;
+  const matches = t.match(/[.!?]+/g);
+  return matches ? matches.length : 1;
+}
+
+function containsTheftLanguage(raw: string): boolean {
+  const t = normalizeForMatch(raw);
+  const patterns = [
+    /\btheft\b/,
+    /\bstolen\b/,
+    /\bmissing\b/,
+    /\btaken\b/,
+    /\bvanished\b/,
+    /\bdisappeared\b/,
+    /\bcrime\b/,
+    /\binvestigation\b/,
+    /\bculprit\b/,
+    /\bguilty\b/,
+  ];
+  return patterns.some((re) => re.test(t));
+}
+
+function containsAlibiOrClearanceLanguage(raw: string): boolean {
+  const t = normalizeForMatch(raw);
+
+  const alwaysBad = [
+    /\bruled out\b/,
+    /\bcouldn't have\b/,
+    /\bcould not have\b/,
+    /\bnever left\b/,
+    /\balibi\b/,
+    /\bexonerat(?:ed|e|es|ing)\b/,
+  ];
+  if (alwaysBad.some((re) => re.test(t))) return true;
+
+  if (/\binnocent\b/.test(t) && !/\binnocent-looking\b/.test(t)) return true;
+
+  const clearedBad = [
+    /\bcleared of\b/,
+    /\bcleared (him|her|them|you|me)\b/,
+    /\bcleared the suspect\b/,
+    /\bcleared from suspicion\b/,
+  ];
+  if (clearedBad.some((re) => re.test(t))) return true;
+
+  return false;
+}
+
+function extractStage1Anchors(timeline: TimelineOutput) {
+  const beatTitles = new Set<string>();
+  const beatTimes = new Set<string>();
+  const beatLocations = new Set<string>();
+
+  for (const beat of timeline?.beats || []) {
+    if (typeof beat?.title === "string") beatTitles.add(beat.title);
+    if (typeof beat?.time === "string") beatTimes.add(beat.time);
+    if (Array.isArray(beat?.mainLocations)) {
+      for (const loc of beat.mainLocations) {
+        if (typeof loc === "string") beatLocations.add(loc);
+      }
+    }
   }
-  if (!output.intro?.trim()) {
-    throw new Error("AI output missing intro paragraph.");
-  }
+  return { beatTitles, beatTimes, beatLocations };
+}
+
+function validateAiOutput(plan: CampaignPlan, output: AiScenarioOutput, timeline: TimelineOutput): void {
+  if (!output.event?.name || !output.event?.purpose) throw new Error("AI output missing event details.");
+  if (!output.intro?.trim()) throw new Error("AI output missing intro paragraph.");
   if (!output.narrative?.opening || !output.narrative?.setting || !output.narrative?.atmosphere || !output.narrative?.closing) {
     throw new Error("AI output missing narrative fields.");
   }
@@ -165,54 +258,89 @@ function validateAiOutput(plan: CampaignPlan, output: AiScenarioOutput): void {
     throw new Error("AI output must contain exactly 2 inspector notes.");
   }
 
-  const item = ITEMS.find((i) => i.id === plan.solution.itemId);
-  if (item) {
-    const narrativeBlock = [
-      output.event.name,
-      output.event.purpose,
-      output.intro,
-      output.narrative.opening,
-      output.narrative.setting,
-      output.narrative.atmosphere,
-      output.narrative.closing,
-    ].join(" ");
-    if (narrativeBlock.includes(item.nameUS)) {
-      throw new Error("Solution item must not appear in event or narrative text.");
-    }
+  const stage1EventName = timeline?.event?.name;
+  if (stage1EventName && output.event.name !== stage1EventName) {
+    throw new Error("Stage 2 event.name must match Stage 1 event.name exactly.");
   }
 
-  const alibiPhrases = [
-    "innocent",
-    "ruled out",
-    "couldn't have",
-    "could not have",
-    "never left",
-    "alibi",
-    "cleared",
-    "exonerated",
-  ];
+  const suspectName = SUSPECTS.find((s) => s.id === plan.solution.suspectId)?.displayName;
+  const locationName = LOCATIONS.find((l) => l.id === plan.solution.locationId)?.name;
+  const timeName = TIME_PERIODS.find((t) => t.id === plan.solution.timeId)?.name;
+  const item = ITEMS.find((i) => i.id === plan.solution.itemId);
+
+  if (suspectName && output.solution.suspect !== suspectName) throw new Error("Solution suspect echo mismatch.");
+  if (locationName && output.solution.location !== locationName) throw new Error("Solution location echo mismatch.");
+  if (timeName && output.solution.time !== timeName) throw new Error("Solution time echo mismatch.");
+  if (item && output.solution.item !== item.nameUS) throw new Error("Solution item echo mismatch.");
+
+  if (item) {
+    const outside = normalizeForMatch(
+      [
+        output.event.name,
+        output.event.purpose,
+        output.intro,
+        output.narrative.opening,
+        output.narrative.setting,
+        output.narrative.atmosphere,
+        output.narrative.closing,
+        ...output.clues,
+        ...output.inspectorNotes,
+      ].join(" ")
+    );
+    const needle = normalizeForMatch(item.nameUS);
+    if (needle && outside.includes(needle)) throw new Error("Solution item must not appear outside solution.item.");
+  }
+
+  const narrativeBlock = [
+    output.event.name,
+    output.event.purpose,
+    output.intro,
+    output.narrative.opening,
+    output.narrative.setting,
+    output.narrative.atmosphere,
+    output.narrative.closing,
+  ].join(" ");
+
+  if (containsTheftLanguage(narrativeBlock)) throw new Error("Event or narrative contains theft/crime language.");
+  if (containsAlibiOrClearanceLanguage(narrativeBlock)) throw new Error("Event or narrative contains alibi/clearance language.");
+
+  const { beatTitles, beatTimes, beatLocations } = extractStage1Anchors(timeline);
+  const allowedPrefixes = ["coming...", "'ello...", "good day...", "as I recall..."];
 
   for (const [index, clue] of output.clues.entries()) {
-    if (typeof clue !== "string" || !clue.trim()) {
-      throw new Error(`AI output contains invalid clue entry at index ${index}.`);
+    if (typeof clue !== "string" || !clue.trim()) throw new Error(`AI output contains invalid clue entry at index ${index}.`);
+
+    if (!allowedPrefixes.some((prefix) => clue.startsWith(prefix))) {
+      throw new Error(`Clue ${index + 1} must start with a valid prefix (no leading spaces).`);
     }
-    const sentences = countSentences(clue);
-    if (sentences < 1 || sentences > 5) {
-      throw new Error(`Clue ${index + 1} must be 1-5 sentences.`);
-    }
-    const lower = clue.toLowerCase();
-    if (alibiPhrases.some((phrase) => lower.includes(phrase))) {
-      throw new Error(`Clue ${index + 1} contains alibi/clearance language.`);
+
+    const sentences = typeof countSentences === "function" ? countSentences(clue) : countSentencesLoose(clue);
+    if (sentences < 1 || sentences > 5) throw new Error(`Clue ${index + 1} must be 1-5 sentences.`);
+
+    if (containsTheftLanguage(clue)) throw new Error(`Clue ${index + 1} contains theft/crime language.`);
+    if (containsAlibiOrClearanceLanguage(clue)) throw new Error(`Clue ${index + 1} contains alibi/clearance language.`);
+
+    const lc = normalizeForMatch(clue);
+    const hasTime = Array.from(beatTimes).some((time) => lc.includes(normalizeForMatch(time)));
+    const hasLoc = Array.from(beatLocations).some((loc) => lc.includes(normalizeForMatch(loc)));
+    const hasBeat = Array.from(beatTitles).some((title) => lc.includes(normalizeForMatch(title)));
+    if (!hasTime && !hasLoc && !hasBeat) {
+      throw new Error(`Clue ${index + 1} is not grounded to the Stage 1 timeline (no beat/time/location reference).`);
     }
   }
 
-  for (const note of output.inspectorNotes) {
-    if (!note || !note.trim()) {
-      throw new Error("Inspector note text is required.");
-    }
-    const lower = note.toLowerCase();
-    if (alibiPhrases.some((phrase) => lower.includes(phrase))) {
-      throw new Error("Inspector note contains alibi/clearance language.");
+  for (const [index, note] of output.inspectorNotes.entries()) {
+    if (!note || !note.trim()) throw new Error("Inspector note text is required.");
+
+    if (containsTheftLanguage(note)) throw new Error(`Inspector note ${index + 1} contains theft/crime language.`);
+    if (containsAlibiOrClearanceLanguage(note)) throw new Error("Inspector note contains alibi/clearance language.");
+
+    const ln = normalizeForMatch(note);
+    const hasTime = Array.from(beatTimes).some((time) => ln.includes(normalizeForMatch(time)));
+    const hasLoc = Array.from(beatLocations).some((loc) => ln.includes(normalizeForMatch(loc)));
+    const hasBeat = Array.from(beatTitles).some((title) => ln.includes(normalizeForMatch(title)));
+    if (!hasTime && !hasLoc && !hasBeat) {
+      throw new Error(`Inspector note ${index + 1} is not grounded to the Stage 1 timeline (no beat/time/location reference).`);
     }
   }
 }
@@ -273,6 +401,82 @@ async function callOpenAi(
   return text;
 }
 
+function validateTimelineOutput(plan: CampaignPlan, output: TimelineOutput): void {
+  if (!output.event?.name || !output.event?.type || !output.event?.purpose) {
+    throw new Error("Timeline output missing event details.");
+  }
+  if (!Array.isArray(output.beats) || output.beats.length < 5 || output.beats.length > 7) {
+    throw new Error("Timeline output must include 5 to 7 beats.");
+  }
+  if (!output.suspects || typeof output.suspects !== "object") {
+    throw new Error("Timeline output missing suspects map.");
+  }
+
+  const suspectNames = SUSPECTS.map((s) => s.displayName);
+  const locationNames = LOCATIONS.map((l) => l.name);
+  const timeNames = TIME_PERIODS.map((t) => t.name);
+
+  const outputSuspects = Object.keys(output.suspects);
+  for (const name of outputSuspects) {
+    if (!suspectNames.includes(name)) {
+      throw new Error(`Timeline output includes unknown suspect "${name}".`);
+    }
+  }
+  for (const name of suspectNames) {
+    if (!output.suspects[name]) {
+      throw new Error(`Timeline output missing suspect "${name}".`);
+    }
+  }
+
+  const beatOrders = new Set<number>();
+  for (const beat of output.beats) {
+    if (typeof beat.order !== "number") {
+      throw new Error("Timeline beat missing order number.");
+    }
+    beatOrders.add(beat.order);
+    if (!timeNames.includes(beat.time)) {
+      throw new Error(`Timeline beat has invalid time "${beat.time}".`);
+    }
+    if (!beat.title || !beat.whatHappened) {
+      throw new Error("Timeline beat missing title or whatHappened.");
+    }
+    if (!Array.isArray(beat.mainLocations) || beat.mainLocations.length < 1 || beat.mainLocations.length > 2) {
+      throw new Error("Timeline beat must include 1-2 main locations.");
+    }
+    for (const loc of beat.mainLocations) {
+      if (!locationNames.includes(loc)) {
+        throw new Error(`Timeline beat uses unknown location "${loc}".`);
+      }
+    }
+  }
+
+  for (const [name, entries] of Object.entries(output.suspects)) {
+    if (!Array.isArray(entries) || entries.length !== output.beats.length) {
+      throw new Error(`Timeline suspect "${name}" must appear in every beat.`);
+    }
+    const seenBeats = new Set<number>();
+    for (const entry of entries) {
+      if (typeof entry.beat !== "number") {
+        throw new Error(`Timeline suspect "${name}" has invalid beat reference.`);
+      }
+      seenBeats.add(entry.beat);
+      if (!beatOrders.has(entry.beat)) {
+        throw new Error(`Timeline suspect "${name}" references unknown beat ${entry.beat}.`);
+      }
+      if (!locationNames.includes(entry.location)) {
+        throw new Error(`Timeline suspect "${name}" has invalid location "${entry.location}".`);
+      }
+      if (!entry.activity || !entry.social) {
+        throw new Error(`Timeline suspect "${name}" missing activity or social details.`);
+      }
+    }
+    if (seenBeats.size != output.beats.length) {
+      throw new Error(`Timeline suspect "${name}" must include one entry per beat.`);
+    }
+  }
+}
+
+
 export async function generateAiScenarioText(
   apiKey: string,
   plan: CampaignPlan
@@ -286,8 +490,77 @@ export async function generateAiScenarioText(
     throw new Error("Invalid plan data for AI generation.");
   }
 
-  const schema = {
-    name: "ClueSinglePrompt",
+  const suspectEntriesSchema = {
+    type: "array",
+    minItems: 5,
+    maxItems: 7,
+    items: {
+      type: "object",
+      additionalProperties: false,
+      required: ["beat", "location", "activity", "social"],
+      properties: {
+        beat: { type: "number" },
+        location: { type: "string", enum: LOCATIONS.map((l) => l.name) },
+        activity: { type: "string" },
+        social: { type: "string" },
+      },
+    },
+  };
+
+  const timelineSchema = {
+    name: "ClueTimeline",
+    strict: true,
+    schema: {
+      type: "object",
+      additionalProperties: false,
+      required: ["event", "beats", "suspects"],
+      properties: {
+        event: {
+          type: "object",
+          additionalProperties: false,
+          required: ["name", "type", "purpose"],
+          properties: {
+            name: { type: "string" },
+            type: { type: "string" },
+            purpose: { type: "string" },
+          },
+        },
+        beats: {
+          type: "array",
+          minItems: 5,
+          maxItems: 7,
+          items: {
+            type: "object",
+            additionalProperties: false,
+            required: ["order", "time", "title", "whatHappened", "mainLocations"],
+            properties: {
+              order: { type: "number" },
+              time: { type: "string", enum: TIME_PERIODS.map((t) => t.name) },
+              title: { type: "string" },
+              whatHappened: { type: "string" },
+              mainLocations: {
+                type: "array",
+                minItems: 1,
+                maxItems: 2,
+                items: { type: "string", enum: LOCATIONS.map((l) => l.name) },
+              },
+            },
+          },
+        },
+        suspects: {
+          type: "object",
+          additionalProperties: false,
+          required: SUSPECTS.map((s) => s.displayName),
+          properties: Object.fromEntries(
+            SUSPECTS.map((s) => [s.displayName, suspectEntriesSchema])
+          ),
+        },
+      },
+    },
+  };
+
+  const scenarioSchema = {
+    name: "ClueScenario",
     strict: true,
     schema: {
       type: "object",
@@ -347,23 +620,320 @@ export async function generateAiScenarioText(
   const locationsList = LOCATIONS.map((l) => l.name).join(", ");
   const timesList = TIME_PERIODS.map((t) => t.name).join(", ");
 
-  const prompt = `You are a narrative generator for a Clue-style mystery game.
+  const promptStage1 = `You are an EVENT SCHEDULER and CAUSAL PLANNER.
 
-You must generate the event, intro, narrative, 7 clues, and 2 inspector notes from scratch
-using ONLY the provided suspects, items, locations, and times.
+You are generating the hidden ground-truth timeline for a Clue-style mystery.
 
-Follow ALL rules strictly.
+This timeline will be used by another system to generate clues.
+
+Your job is NOT to write prose or clues.
+Your job IS to produce a coherent, causal schedule of:
+- what the event is
+- what the scheduled program segments are
+- where everyone is during each segment
+- why people move, gather, split, or get delayed
+
+The solution is already decided (see inputs).
+
+You MUST design the event flow AROUND the solution time and place so that:
+- It feels natural
+- It creates distraction, transition, or divided attention at that moment
+- But you MUST NOT mention the item, theft, disappearance, or crime in any way.
 
 ────────────────────────────────────────
-OUTPUT FORMAT (JSON ONLY)
+OUTPUT FORMAT (JSON ONLY -- NO MARKDOWN, NO COMMENTS, NO EXTRA TEXT)
 
-Output a single JSON object with exactly these fields:
+Return EXACTLY this structure:
 
 {
   "event": {
     "name": string,
+    "type": string,
     "purpose": string
   },
+  "beats": [
+    {
+      "order": number,
+      "time": string,
+      "title": string,
+      "whatHappened": string,
+      "mainLocations": [ string, string ]
+    }
+  ],
+  "suspects": {
+    "SUSPECT NAME": [
+      {
+        "beat": number,
+        "location": string,
+        "activity": string,
+        "social": string
+      }
+    ]
+  }
+}
+
+Do not add fields. Do not omit fields.
+
+────────────────────────────────────────
+ABSOLUTE CONSTRAINTS
+
+- Use ONLY the provided:
+  - suspect names
+  - location names
+  - time names
+
+- Do NOT invent:
+  - new people
+  - unnamed guests
+  - unnamed staff
+  - new rooms or areas
+  - new times
+
+- If staff are referenced, they MUST be Mrs. White and/or Rusty and treated as normal suspects.
+
+- Every suspect MUST appear in EVERY beat.
+
+- Do NOT mention:
+  - the item
+  - a theft
+  - a disappearance
+  - a crime
+  - an investigation
+
+────────────────────────────────────────
+STRUCTURE RULES
+
+- Use 5 to 7 beats total (do not exceed 7).
+- Each beat MUST:
+  - Use exactly one of the provided TIMES
+  - Use 1-2 of the provided LOCATIONS
+
+- The event MUST be a specific real-world gathering.
+
+Examples include (but are not limited to):
+- a birthday or anniversary celebration
+- a holiday gathering or New Year's party
+- a garden party or outdoor social
+- a sports-and-games social afternoon
+- a hosted dinner or formal banquet
+- a murder-mystery dinner party
+- a charity event or fundraiser
+- an exhibition opening or gallery showing
+- a concert, recital, or performance evening
+- an auction preview or society showing
+- a promotion, award, or business deal celebration
+- a movie deal announcement or book deal party
+- a memorial, dedication, or commemorative event
+
+- The event MUST:
+  - Have a host or a guest of honor or a clear reason for being held
+  - Have a clear purpose
+  - Have a planned program or schedule
+
+- The program MUST include:
+  - A beginning (arrival / welcome)
+  - A middle (one or more activities)
+  - An end (closing, departure, or final gathering)
+
+────────────────────────────────────────
+CENTRAL OCCASION RULE
+
+The entire timeline MUST revolve around ONE clear central occasion.
+
+This occasion MUST:
+- Be the reason everyone is present
+- Be the reason the schedule exists
+- Be the narrative "glue" that explains the whole event
+
+The "event" object MUST clearly state:
+- What the occasion is
+- Who is hosting or being honored (if applicable)
+- Why this gathering is happening now
+
+Every beat should feel like a natural, planned part of THIS occasion's program.
+
+This event should be coherent enough that, after the mystery is solved, someone could give a full monologue recounting the entire evening in order.
+
+────────────────────────────────────────
+CAUSALITY RULES (CRITICAL)
+
+The beats are PROGRAM SEGMENTS of the event.
+
+They MUST form a cause -> effect chain.
+
+Each beat must naturally lead to the next, for example:
+- A toast causes people to gather
+- A performance causes people to move
+- An announcement causes people to split up
+- A disturbance, delay, or interruption causes confusion or rerouting
+
+NO RANDOM MOVEMENT.
+
+A suspect may only change rooms if:
+- The beat's "whatHappened" explains why, OR
+- Their "social" field explains why.
+
+"whatHappened" MUST explain:
+- What part of the event program is happening
+- What changed from the previous segment
+- Why people moved, regrouped, or were distracted
+
+────────────────────────────────────────
+DISTURBANCE & AMBIGUITY RULE
+
+At least one beat SHOULD include:
+- A minor disturbance, delay, interruption, lull, late arrival, or distraction
+- Something that divides attention or creates a time window
+- Something ordinary and non-suspicious
+
+Examples:
+- Something is knocked over
+- A disagreement draws attention
+- An unscheduled pause occurs
+- The group splits into separate activities
+- Part of the group is briefly occupied elsewhere
+
+This must remain vague and ordinary.
+Do NOT mention any crime, item, or wrongdoing.
+
+────────────────────────────────────────
+MOTIF & CONVERSATION SEEDING RULE
+
+Across the entire event, you SHOULD naturally include several vague conversational or thematic motifs, such as:
+- books, history, research, or documents
+- jewelry, fashion, or accessories
+- tools, weapons, or sporting topics
+- art, artifacts, or collectibles
+- personal items, gifts, or curiosities
+
+These should appear as:
+- casual conversations
+- passing remarks
+- background chatter
+- social interactions
+
+Rules:
+- Do NOT mention any specific item from the solution.
+- Do NOT imply that anything is missing.
+- Do NOT make any one motif feel uniquely important.
+- Do NOT attach these motifs only to the solution suspect.
+- At least THREE different motifs must appear across the event.
+
+These exist only to be harvested later by the clue generator.
+
+────────────────────────────────────────
+SUSPECT TRACKING RULES
+
+For EACH suspect at EACH beat, you MUST include:
+- location
+- activity
+- social (who they are with OR why they are there)
+
+- Movements must make physical sense.
+- No teleporting.
+- No being in two places at once.
+- If someone stays in place, explain why.
+
+────────────────────────────────────────
+SOLUTION INTEGRATION (SECRET DESIGN CONSTRAINT)
+
+You MUST design the event so that:
+
+- The solution TIME and LOCATION are:
+  - A normal, scheduled part of the event
+  - A moment of distraction, transition, or divided attention
+  - Not highlighted or treated as special in the narrative
+
+- The solution must feel:
+  - Plausible
+  - Naturally embedded
+  - Only obvious in hindsight
+
+You may include vague phrasing like:
+- "sometime around this point"
+- "during the confusion"
+- "while attention was elsewhere"
+
+But NEVER mention a crime or missing item.
+
+────────────────────────────────────────
+INPUTS
+
+THEME:
+- Name: ${theme.name}
+- Period: ${theme.period}
+- Atmosphere: ${theme.atmosphericElements.join(", ")}
+
+SOLUTION (DO NOT MENTION IN OUTPUT):
+- Suspect: ${suspect.displayName}
+- Item: ${item.nameUS}
+- Location: ${location.name}
+- Time: ${time.name}
+
+SUSPECTS: ${suspectsList}
+LOCATIONS: ${locationsList}
+TIMES: ${timesList}
+
+────────────────────────────────────────
+FINAL VALIDATION CHECKLIST
+
+- Every suspect appears in every beat
+- Every beat has a cause and an effect
+- All movement is motivated
+- The event makes sense as a real scheduled gathering
+- The entire timeline is unified by one central occasion
+- The solution is naturally embedded as a plausible opportunity
+- The motifs are present but not suspicious
+- Output is valid JSON and matches the schema EXACTLY
+
+Return ONLY the JSON.`;
+
+  const timelineText = await callOpenAi(apiKey, promptStage1, timelineSchema);
+  const timeline = parseJsonSafely<TimelineOutput>(timelineText);
+  validateTimelineOutput(plan, timeline);
+
+  const promptStage2 = `You are given a hidden ground-truth event timeline JSON (from Stage 1).
+
+Your job is to transform it into:
+- A Clue-style narrative wrapper
+- 7 difficult, messy, human clues
+- 2 precise inspector notes
+- And an embedded solution object for the game engine
+
+These clues MUST be challenging and require cross-referencing to solve.
+No clue should be clean, obvious, or sufficient on its own.
+
+You MUST follow ALL rules.
+
+────────────────────────────────────────
+INPUTS YOU RECEIVE
+
+1) TIMELINE_JSON:
+${JSON.stringify(timeline)}
+
+2) THEME:
+- Name: ${theme.name}
+- Period: ${theme.period}
+- Atmosphere: ${theme.atmosphericElements.join(", ")}
+
+3) SOLUTION (CONFIDENTIAL -- DO NOT REVEAL IN STORY/CLUES/NOTES):
+- Suspect: ${suspect.displayName}
+- Item: ${item.nameUS}
+- Location: ${location.name}
+- Time: ${time.name}
+
+4) SUSPECTS: ${suspectsList}
+5) ITEMS: ${itemsList}
+6) LOCATIONS: ${locationsList}
+7) TIMES: ${timesList}
+
+────────────────────────────────────────
+OUTPUT FORMAT (JSON ONLY)
+
+Return exactly:
+
+{
+  "event": { "name": string, "purpose": string },
   "intro": string,
   "narrative": {
     "opening": string,
@@ -381,278 +951,164 @@ Output a single JSON object with exactly these fields:
   "inspectorNotes": [ string, string ]
 }
 
-No extra fields.
-No markdown.
-No explanations.
-Return ONLY the JSON object.
+No extra fields. No markdown. Output ONLY the JSON.
 
 ────────────────────────────────────────
-HARD RULES (must never be violated)
+HARD GROUNDING RULES (CRITICAL)
 
-- Crime is always THEFT (never murder).
-- Clues must each be 1–5 sentences.
-- Do NOT use alibi or clearance language (including words or phrases like:
-  “innocent”, “ruled out”, “couldn’t have”, “never left”, “alibi”, “cleared”, “exonerated”, etc.).
+- You MUST reuse the Stage 1 event identity:
+  - output.event.name MUST equal TIMELINE_JSON.event.name exactly.
+  - output.event.purpose MUST be a close paraphrase of TIMELINE_JSON.event.purpose (or copy it).
+
+- You MUST use ONLY provided names:
+  - Any named suspect in clues/notes MUST be from SUSPECTS.
+  - Any location mentioned MUST be from LOCATIONS.
+  - Any time mentioned MUST be from TIMES.
+  - You MAY reference Stage 1 beat titles, but you MUST NOT invent new beat names.
+
+- Do NOT invent:
+  - new people (no "Lady Lavender", etc.)
+  - new rooms/areas (no "Conservatory", etc.)
+  - new time labels (no "Breakfast", etc.)
+
+────────────────────────────────────────
+ABSOLUTE SECRECY RULES (CRITICAL)
+
+- The solution item text MUST appear ONLY in solution.item.
 - The solution item MUST NOT appear in:
-  - the event name
-  - the event purpose
-  - the intro
-  - any narrative text (opening, setting, atmosphere, closing)
-- The solution item must not be named in any clue or inspector note.
-  It MAY be hinted at thematically or indirectly.
-- Use ONLY the provided suspects, items, locations, and times.
-- Do NOT invent new suspects, items, rooms, or times.
-- Do NOT reveal the solution explicitly in the story, clues, or inspector notes.
-- Do NOT invent any character names, titles, or nicknames.
-- Every named person must be EXACTLY one of the provided SUSPECTS names.
-- Do not use placeholders like “a companion,” “the newcomer,” or invented names.
+  - event.name, event.purpose
+  - intro
+  - narrative
+  - any clue
+  - any inspector note
+
+- Do NOT name the solution item's CATEGORY or TYPE anywhere outside solution.item.
+
+- The story MUST NOT say:
+  - theft happened
+  - something was stolen, missing, taken, vanished, or gone
+  - a crime occurred
+  - an investigation is underway
+
+- The "problem" must be implied ONLY by:
+  - confusion
+  - a space or surface not looking right
+  - a schedule disruption
+  - people reacting to something being "out of place" or "disturbed"
 
 ────────────────────────────────────────
-CAMOUFLAGE & DISTRIBUTION RULES
+VALIDATOR-SAFE LANGUAGE (HARD BAN)
 
-- The solution suspect, location, and time MAY appear in the story and clues.
-- They must:
-  - Not be clustered together in the same clue or note.
-  - Not be described more vividly or suspiciously than other suspects/locations/times.
-  - Not appear more often or more prominently than other comparable elements.
-- The story should mention multiple suspects, rooms, and times in comparable ways so the solution elements are camouflaged among them.
+NEVER use any of these phrases anywhere in intro, narrative, clues, or inspectorNotes:
+- innocent
+- ruled out
+- couldn't have
+- could not have
+- never left
+- alibi
+- cleared (in the sense of clearing a person; avoid the word entirely to be safe)
+- exonerated
 
-────────────────────────────────────────
-EVENT STRUCTURE REQUIREMENT
-
-- The mystery MUST be centered around a specific, concrete event
-  (e.g., birthday party, holiday dinner, ball, concert, charity auction, themed party, etc.).
-- The event must:
-  - Be named clearly
-  - Have a purpose
-  - Explain why all suspects are present
-  - Event name must NOT include the words: "AI", "Mystery", "Theft".
-  - Event name must be specific (e.g., "The Winter Masquerade Ball", "The Garden Benefit Concert").
-
-- The story must describe:
-  - What kind of event it is
-  - What activities or program it includes
-  - How the day/evening flows from start to finish
-
-- The narrative must include at least 3 distinct event “beats” such as:
-  - a speech, toast, or announcement
-  - a performance, game, or group activity
-  - a distraction, interruption, or moment of confusion (lights flicker, applause, crowd movement, etc.)
-
-- These beats must:
-  - Naturally cause people to move between rooms
-  - Create moments where attention is divided
+Use uncertain memory phrasing instead (seemed like / felt like / maybe / I'm not sure / I can't swear to it).
 
 ────────────────────────────────────────
-THEFT CONTEXT REQUIREMENT
+USING THE STAGE 1 TIMELINE (CRITICAL)
 
-- The theft must have affected the flow of the event.
-- At least 4 of the 7 clues must reference one of:
-  - Someone missing time from the event
-  - A small disturbance, interruption, or confusion
-  - Staff or guests reacting to something being misplaced
-  - A hurried movement, dropped object, or raised voices
-  - People retracing steps or whispering about a problem
+- TIMELINE_JSON is the hidden truth.
+- Movements and groupings MUST remain consistent with it.
+- You may blur exact sequencing, but you MUST NOT contradict:
+  - where a person was during a beat
+  - which rooms/times exist
 
-- These references must be:
-  - Indirect
-  - Casual
-  - Anecdotal
-  - Not stated as “the theft happened here” or “X stole Y”
+────────────────────────────────────────
+NARRATIVE WRAPPER RULES
 
-- The theft must feel like:
-  - A social disruption
-  - Not yet a solved crime
+- Narrative is NOT about a crime.
+- It must establish the central occasion and reference multiple program segments.
+- End with a sense that something felt "off" without naming what.
 
-- Do NOT explicitly state that a theft occurred inside any clue.
-  The theft must only be implied through reactions, confusion, or disruption.
+────────────────────────────────────────
+MOTIF USAGE RULE
+
+- Reuse several vague motifs seeded in Stage 1 (books, jewelry, tools, art, etc.).
+- Spread them across different suspects.
+- Never imply which matters.
+- Never imply any specific object is important.
 
 ────────────────────────────────────────
 CLUE WRITING RULES
 
-- Each clue must read like a remembered moment from the event, not like evidence.
-- Each clue should sound like:
-  - a guest recalling something odd or memorable
-  - a servant repeating gossip or a passing comment
-  - a casual observation that mixes relevant and irrelevant details
-- Write clues in a natural, conversational, first-person or anecdotal voice.
-- Prefer:
-  “I remember…”
-  “Someone mentioned…”
-  “There was a moment when…”
-  “I couldn’t help noticing…”
-- Do not write in a neutral narrator voice.
+Clues are unreliable human memories.
 
-- Clues MUST:
-  - Contain multiple details, only some of which are important
-  - Include social context (conversation, mood, activity, distraction)
-  - Often include either:
-    - a small disruption
-    - a missing presence
-    - a moment of confusion
-    - or a hurried movement
+- Each clue MUST start with EXACTLY one of these prefixes (no leading spaces):
+  "coming..."
+  "'ello..."
+  "good day..."
+  "as I recall..."
 
-- Clues MUST NOT:
-  - State or explain the theft directly
-  - State or explain what they prove
-  - Sound like police notes or evidence logs
+- Each clue:
+  - 2-5 sentences
+  - Contains multiple details
+  - Blends at least TWO moments or beats together
+  - Includes at least ONE distraction, interruption, or mistaken assumption
+  - Does NOT explain what it means
+  - MUST contain at least ONE explicit uncertainty marker:
+    "maybe", "I'm not sure", "I might be mixing it up", or "I can't swear to it".
 
-- Clues 1–2:
-  - Should focus on the event’s normal flow and early oddities
-  - Must not mention the solution suspect, item, location, or time
+- At least 5 of 7 clues MUST reference:
+  - confusion
+  - disruption
+  - people being pulled away
+  - a delay
+  - something being "out of place"
 
-- Across all 7 clues:
-  - Vary suspects, locations, and times
-  - Make them feel like overlapping, imperfect memories of the same event
+Clues 1 and 2:
+  - Early scene-setting
+  - MUST NOT mention:
+    - solution suspect
+    - solution location
+    - solution time
 
-SUSPECT COVERAGE REQUIREMENT
+────────────────────────────────────────
+SUSPECT DISTRIBUTION RULES
 
-- Every suspect must be mentioned by name in at least one of the 7 clues.
-- At least 5 of the 7 clues must mention exactly ONE suspect by name (to create distinct suspect “threads”).
-- Each suspect-mentioned clue must include at least two of the following about that suspect:
-  - an activity they were doing
-  - who they were talking to (must be another suspect name or “staff/guest” unnamed)
-  - a mood/condition (nervous, unwell, distracted, cheerful, impatient, etc.)
-  - a specific object interaction (without naming the solution item)
-  - a reason they were in that area (game, toast, performance, dessert, coat check, etc.)
+- Exactly 2 clues mention NO suspect.
+- Remaining 5 clues each mention EXACTLY ONE suspect name (from SUSPECTS).
+- Do NOT list multiple suspects in one clue.
 
-CLUE ANCHOR REQUIREMENT
+────────────────────────────────────────
+PHYSICALITY & SPACE RULE
 
-Every clue must contain:
-- at least one suspect name (unless it is one of the “no suspect named” clues),
-- at least one location name OR one event beat (toast, game, performance, dinner, etc.),
-- at least one time reference using a provided time name OR an implied sequence marker tied to the program (before the toast, during the interlude, after dessert, etc.).
-
-At least 2 clues must name NO suspect (these are atmosphere/scene clues), but they must still include a location + time + event beat.
-
-- Most clues should contain at least one concrete anchor:
-  a location, a time reference, or a named activity from the event.
-- Not every clue must contain all three.
-- Anchors can be implied through context, not always stated explicitly.
-- Vary sentence length and structure across clues.
-- Some clues should be one long, rambling memory.
-- Some should be short and slightly vague.
-- Avoid repeating the same grammatical pattern.
-- Even if multiple suspects appear in a clue, one moment or one interaction should be the emotional focus.
-- Do not list several suspects doing unrelated things in the same clue.
+- At least 5 of 7 clues MUST involve a physical surface/display/table/stand/shelf/case/furniture interaction.
+- Do NOT imply something is missing.
+- Only imply something was disturbed or not as expected.
 
 ────────────────────────────────────────
 INSPECTOR NOTES RULES
 
-- Inspector notes are in-world observations recorded by staff or the inspector.
-- They are more concrete and specific than normal clues, but still not conclusive.
-- They describe:
-  - a physical condition of a room or object
-  - a timing-related observation
-  - a movement or access pattern
-  - or something that changed during the event
-
-- Each inspector note must:
-  - Contain exactly ONE concrete observation
-  - Be written as a factual observation, not a conclusion
-  - Avoid naming the solution item
-  - Avoid stating who is guilty
-  - Avoid using alibi or clearance language
-  - Describe ONLY ONE physical or environmental observation
-  - It may be 1–3 sentences and may include descriptive detail, but it must not:
-    - Combine multiple different observations
-    - Describe cause, sequence, or interpretation
-    - Mention more than one room or more than one object
-  - Think of each note as one entry in a staff or inspector’s log describing a single thing that looked wrong or out of place.
-  - If two odd things were noticed, they must be written as two separate inspector notes.
-  - An inspector note must never mention more than two of:
-    - a location
-    - an object
-    - a physical condition
-
-- Inspector notes must:
-  - Not repeat the same information as any clue
-  - Add new, concrete details
-
-INSPECTOR NOTES UTILITY REQUIREMENT
-
-- Each inspector note must reference:
-  - a specific location name AND
-  - either a time name OR a program beat (after the toast, during intermission, etc.)
-- Each inspector note must help narrow possibilities by describing access, movement, or a changed condition.
-- Do not introduce mysterious objects unless they are from the ITEMS list.
+- Exactly 2 notes.
+- Each note:
+  - EXACTLY ONE location name (from LOCATIONS)
+  - References EXACTLY ONE time (from TIMES) OR one Stage 1 beat title
+  - 1-3 sentences
+  - Only physical irregularity, no theft/absence language, no blame
 
 ────────────────────────────────────────
-STYLE & REALISM RULES
+FINAL CHECK
 
-- Tone: classic Clue, grounded, subtle.
-- Clues should feel like:
-  - overheard stories
-  - remembered conversations
-  - casual remarks
-  - personal impressions
-- Avoid:
-  - clinical wording
-  - procedural wording
-  - modern slang
-  - melodrama
+- No invented names, rooms, or time labels
+- output.event.name equals Stage 1 event name
+- Solution item appears ONLY in solution.item
+- JSON schema matches exactly
 
-- Every clue must sound like it could have been spoken by someone who attended the event.
-- At least 4 of the 7 clues must:
-  - Mention a conversation, social interaction, or shared moment
-  - Contain at least one irrelevant detail that does not matter to the solution
-- Do not optimize clues for efficiency.
-- Do not write “clean” clues.
-- Messy, human, indirect memories are better.
+Return ONLY the JSON.`;
 
-────────────────────────────────────────
-NARRATIVE REQUIREMENTS
-
-- The narrative must make the event feel real, scheduled, and structured.
-- It must be possible to imagine:
-  - Where people were at different parts of the event
-  - What they were likely doing at those times
-- The theft must feel like it happened because:
-  - People were distracted
-  - Or rooms were briefly unattended
-  - Or the schedule created a natural opportunity
-
-- Most clues should reference:
-  - specific moments in the event
-  - specific activities (speeches, games, music, dinner, intermission, etc.)
-  - or transitions between activities
-
-────────────────────────────────────────
-INPUTS (YOU MUST USE THESE EXACT NAMES)
-
-THEME:
-- Name: ${theme.name}
-- Period: ${theme.period}
-- Atmosphere: ${theme.atmosphericElements.join(", ")}
-
-SOLUTION (CONFIDENTIAL — DO NOT REVEAL IN STORY TEXT):
-- Suspect: ${suspect.displayName}
-- Item: ${item.nameUS}
-- Location: ${location.name}
-- Time: ${time.name}
-
-SUSPECTS: ${suspectsList}
-ITEMS: ${itemsList}
-LOCATIONS: ${locationsList}
-TIMES: ${timesList}
-
-────────────────────────────────────────
-FINAL CHECK BEFORE YOU OUTPUT
-
-- The solution item does NOT appear anywhere except in solution.item.
-- The solution is NOT stated or implied directly.
-- All names come ONLY from the provided lists.
-- The output is valid JSON and matches the schema exactly.
-
-Return ONLY the JSON object.`;
-
-  const text = await callOpenAi(apiKey, prompt, schema);
+  const text = await callOpenAi(apiKey, promptStage2, scenarioSchema);
   const parsed = parseJsonSafely<AiScenarioOutput>(text);
-  validateAiOutput(plan, parsed);
+  validateAiOutput(plan, parsed, timeline);
   lastAiScenarioOutput = parsed;
   return parsed;
 }
-
 export function getLastAiScenarioOutput(): AiScenarioOutput | null {
   return lastAiScenarioOutput;
 }
