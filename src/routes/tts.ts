@@ -9,6 +9,13 @@ type TtsRole = "butler" | "inspector";
 const roleToVoiceBinding = (role: TtsRole) =>
   role === "inspector" ? "ELEVENLABS_INSPECTOR_VOICE_ID" : "ELEVENLABS_BUTLER_VOICE_ID";
 
+const getEnvVoiceId = (env: Record<string, string | undefined>, role: TtsRole): string | undefined => {
+  if (role === "inspector") {
+    return env.ELEVENLABS_INSPECTOR_VOICE_ID || env.INSPECTOR_VOICE_ID;
+  }
+  return env.ELEVENLABS_BUTLER_VOICE_ID || env.BUTLER_VOICE_ID;
+};
+
 const toHex = (buffer: ArrayBuffer) =>
   Array.from(new Uint8Array(buffer))
     .map((byte) => byte.toString(16).padStart(2, "0"))
@@ -39,10 +46,8 @@ tts.post("/tts", async (c) => {
     return c.json({ error: "TTS not configured" }, 500);
   }
 
-  const voiceBinding = roleToVoiceBinding(role);
-  const inspectorVoiceId = (c.env as Record<string, string | undefined>)[voiceBinding];
-  const butlerVoiceId = (c.env as Record<string, string | undefined>).ELEVENLABS_BUTLER_VOICE_ID;
-  const voiceId = inspectorVoiceId || butlerVoiceId;
+  const envVars = c.env as Record<string, string | undefined>;
+  const voiceId = getEnvVoiceId(envVars, role);
   if (!voiceId) {
     return c.json({ error: "TTS voice not configured" }, 500);
   }

@@ -150,12 +150,11 @@ scenarios.get("/last-ai", (c) => {
   }
 
   const clueLines = output.clues
-    .sort((a, b) => a.position - b.position)
-    .map((clue) => `<li><strong>${clue.position}.</strong> ${escapeHtml(clue.text)}</li>`)
+    .map((clue, index) => `<li><strong>${index + 1}.</strong> ${escapeHtml(clue)}</li>`)
     .join("");
 
   const noteLines = output.inspectorNotes
-    .map((note) => `<li><strong>${note.id}.</strong> ${escapeHtml(note.text)}</li>`)
+    .map((note, index) => `<li><strong>N${index + 1}.</strong> ${escapeHtml(note)}</li>`)
     .join("");
 
   const solutionHtml = `<ul>
