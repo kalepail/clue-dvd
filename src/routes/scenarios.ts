@@ -4,7 +4,7 @@ import {
   generatePlanOnly,
   validateScenario,
 } from "../services/scenario-generator";
-import { applyAiScenarioText, generateAiScenarioText, getLastAiScenarioOutput } from "../services/ai-scenario";
+import { applyAiScenarioText, generateAiScenarioText, getLastAiScenarioOutput, getLastAiStageOutputs } from "../services/ai-scenario";
 import type { GenerateCampaignRequest } from "../types/campaign";
 
 const scenarios = new Hono<{ Bindings: CloudflareBindings }>();
@@ -219,6 +219,20 @@ scenarios.get("/last-ai.json", (c) => {
     headers: {
       "Content-Type": "application/json; charset=utf-8",
       "Content-Disposition": "attachment; filename=\"ai-last.json\"",
+    },
+  });
+});
+
+scenarios.get("/last-ai-stages.json", (c) => {
+  const output = getLastAiStageOutputs();
+  if (!output.stage4.parsed) {
+    return c.text("No AI scenario has been generated yet.", 404);
+  }
+
+  return new Response(JSON.stringify(output, null, 2), {
+    headers: {
+      "Content-Type": "application/json; charset=utf-8",
+      "Content-Disposition": "attachment; filename=\"ai-last-stages.json\"",
     },
   });
 });
