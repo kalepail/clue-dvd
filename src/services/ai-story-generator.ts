@@ -150,24 +150,40 @@ export function getLastStoryAiDebug(): StoryAiDebug | null {
 
 function formatButlerClue(value: string, index: number): string {
   const text = value.trim();
-  const leadPattern = /^(Good day|Hello|Coming|Good evening)\\s*[-–—]\\s*(.+)$/i;
-  const leadMatch = text.match(leadPattern);
-  const greeting = leadMatch
-    ? normalizeGreeting(leadMatch[1])
-    : ALLOWED_GREETINGS[index % ALLOWED_GREETINGS.length];
-  const body = leadMatch ? leadMatch[2].trim() : text;
-  const normalizedBody = stripLeadingGreeting(body);
+  const extracted = extractGreeting(text);
+  const greeting = extracted.greeting ?? ALLOWED_GREETINGS[index % ALLOWED_GREETINGS.length];
+  let normalizedBody = stripGreetingPrefixes(extracted.body);
+  normalizedBody = stripTimePreface(normalizedBody);
   return `${greeting} — ${normalizedBody}`;
 }
 
-function stripLeadingGreeting(value: string): string {
-  for (const candidate of ALLOWED_GREETINGS) {
-    const prefix = new RegExp(`^${candidate}\\s*[,:-]\\s*`, "i");
-    if (prefix.test(value)) {
-      return value.replace(prefix, "");
-    }
+function stripGreetingPrefixes(value: string): string {
+  let result = value.trim();
+  const prefix = /^(?:["'“”‘’]*\\s*)?(Good day|Hello|Coming|Good evening)\\b\\s*[-–—,:]*\\s*/i;
+  while (prefix.test(result)) {
+    result = result.replace(prefix, "").trim();
   }
-  return value;
+  return result;
+}
+
+function extractGreeting(value: string): { greeting?: string; body: string } {
+  const trimmed = value.trim();
+  const greetingPattern = /^(?:["'“”‘’]*\\s*)?(Good day|Hello|Coming|Good evening)\\b/i;
+  const match = trimmed.match(greetingPattern);
+  if (!match) return { body: trimmed };
+  const greeting = normalizeGreeting(match[1]);
+  let body = trimmed.slice(match[0].length).trim();
+  body = body.replace(/^[-–—,:]\\s*/, "");
+  return { greeting, body };
+}
+
+function stripTimePreface(value: string): string {
+  const prefixed = value.trim();
+  const pattern = /^(earlier|later|just|right|shortly)\\s+this\\s+(morning|afternoon|evening|night|day)\\s*[,:-]?\\s+/i;
+  if (pattern.test(prefixed)) {
+    return prefixed.replace(pattern, "");
+  }
+  return prefixed;
 }
 
 function normalizeGreeting(value: string): string {

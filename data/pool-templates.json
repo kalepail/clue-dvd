@@ -2,1256 +2,2023 @@
   "SingleKeyControlsMultipleItems": {
     "tag": "solution_support",
     "source_clue": "Mrs. White told me that the key that opens the cases in which all the valuables were displayed was missing from its hook in the kitchen by the time she served breakfast.",
-    "template": "Mrs. White told me that the key that opens the cases in which all the valuables were displayed was missing from its hook in the {location} by the time she served {time}."
+    "template": "{suspect} told me that the key that opens the cases in which all the valuables were displayed was missing from its hook in the {location} by the time she served {time}.",
+    "solution_bind": {
+      "suspect": "non_solution",
+      "location": "solution",
+      "time": "solution"
+    }
   },
   "KeyRemovedFromHook": {
     "tag": "solution_support",
     "source_clue": "Mrs. White told me that the key that opens the cases in which all the valuables were displayed was missing from its hook in the kitchen by the time she served breakfast.",
-    "template": "Mrs. White told me the key was missing from its hook in the {location} by the time she served {time}."
+    "template": "{suspect} told me the key was missing from its hook in the {location} by the time she served {time}.",
+    "solution_bind": {
+      "suspect": "non_solution",
+      "location": "solution",
+      "time": "solution"
+    }
   },
   "LockedDisplay": {
     "tag": "non_solution_support",
     "source_clue": "The Item displayed in the Hall had been given to Mr. Boddy by his uncle.",
-    "template": "The {item} displayed in the {location} had been given to Mr. Boddy by his uncle."
+    "template": "The {item} displayed in the {location} had been given to Mr. Boddy by his uncle.",
+    "solution_bind": {
+      "item": "non_solution",
+      "location": "non_solution"
+    }
   },
   "ContainerAccessGate": {
     "tag": "solution_support",
     "source_clue": "Mrs. White told me that the key that opens the cases in which all the valuables were displayed was missing from its hook in the kitchen by the time she served breakfast.",
-    "template": "The key that opens the cases in which all the valuables were displayed was nowhere to be found."
+    "template": "The key that opens the cases in which all the valuables were displayed was nowhere to be found. It was in the {location}. This was by {time}. {suspect} was named in connection.",
+    "solution_bind": {
+      "location": "solution",
+      "time": "solution",
+      "suspect": "non_solution"
+    }
   },
   "SecretPassageAsCrimeScene": {
     "tag": "solution_support",
     "source_clue": "This morning I found Mr. Boddy's expensive spy glass in the secret passage; it had been damaged with a large dent.",
-    "template": "This morning I found Mr. Boddy's {item} in the secret passage; it had been damaged with a large dent."
+    "template": "This morning I found Mr. Boddy's {item} in the secret passage; it had been damaged with a large dent.",
+    "solution_bind": {
+      "item": "non_solution"
+    }
   },
   "SecretPassageAsEscapeRoute": {
     "tag": "solution_support",
     "source_clue": "The Butler saw someone in the secret passages just before Midnight.",
-    "template": "The butler saw someone in the secret passages just before {time}."
+    "template": "The butler saw someone in the secret passages just before {time}.",
+    "solution_bind": {
+      "time": "solution"
+    }
   },
   "ItemUnavailableDueToRepair": {
     "tag": "non_solution_support",
     "source_clue": "Unfortunately the pocket watch was damaged during Mr. Boddy's vacation and was being fixed by a local repair shop. It was never in the mansion yesterday; it was returned this morning.",
-    "template": "The {item} was damaged during Mr. Boddy's vacation and was being repaired; it was never in the mansion yesterday."
+    "template": "The {item} was damaged during Mr. Boddy's vacation and was being repaired; it was never in the mansion yesterday.",
+    "solution_bind": {
+      "item": "non_solution"
+    }
   },
   "IncapacitatedVictim": {
     "tag": "non_solution_support",
     "source_clue": "Plum was found unconscious...",
-    "template": "{suspect} was found unconscious not long after the incident."
+    "template": "{suspect} was found unconscious not long after the incident.",
+    "solution_bind": {
+      "suspect": "non_solution"
+    }
   },
   "BeforeBreakfastWindow": {
     "tag": "solution_support",
     "source_clue": "The smell of bacon brought all the men to the Kitchen at Dawn.",
-    "template": "The smell of breakfast brought all the men to the {location} at {time}."
+    "template": "The smell of breakfast brought all the men to the {location} at {time}.",
+    "solution_bind": {
+      "location": "solution",
+      "time": "non_solution"
+    }
   },
   "AppointmentChain": {
     "tag": "non_solution_support",
     "source_clue": "I've just learned something important: Mr. Boddy was meeting with guests yesterday to go over private issues concerning his impending inheritance. He met with them one by one outside at the fountain.",
-    "template": "Mr. Boddy was meeting with guests one by one outside at the {location}."
+    "template": "Mr. Boddy was meeting with guests one by one outside at the {location}.",
+    "solution_bind": {
+      "location": "non_solution"
+    }
   },
   "FixedMeetingOrder": {
     "tag": "solution_support",
     "source_clue": "Miss Scarlet met with Mr. Boddy in the Early Afternoon, while Professor Plum met with him at Dusk...",
-    "template": "{suspect1} met with Mr. Boddy in the {time}, while {suspect2} met with him at {time2}."
+    "template": "{suspect1} met with Mr. Boddy in the {time}, while {suspect2} met with him at {time2}. {suspect} was named in connection.",
+    "solution_bind": {
+      "suspect1": "solution",
+      "time": "non_solution",
+      "suspect2": "non_solution",
+      "time2": "non_solution",
+      "suspect": "non_solution"
+    }
   },
   "GroupExcursionWindow": {
     "tag": "solution_support",
     "source_clue": "After the night time ball, Professor Plum, Colonel Mustard, Mrs. Peacock, and Mr. Green went outside to stargaze. Professor Plum is an avid astronomer and was asked to explain what the different constellations were.",
-    "template": "After the night time event, {suspect1}, {suspect2}, and {suspect3} went outside together."
-  },
-  "GarmentRemoved": {
-    "tag": "solution_support",
-    "source_clue": "Lady Lavender was slightly uncomfortable during dinner and took her jacket off. I believe she put it on the back of her chair.",
-    "template": "{suspect} was slightly uncomfortable during {time} and took a jacket off."
+    "template": "After the night time event, {suspect1}, {suspect2}, and {suspect3} went outside together. This was by {time}. {suspect} was named in connection.",
+    "solution_bind": {
+      "suspect1": "solution",
+      "suspect2": "non_solution",
+      "suspect3": "non_solution",
+      "time": "non_solution",
+      "suspect": "non_solution"
+    }
   },
   "ItemSetDown": {
     "tag": "solution_support",
     "source_clue": "Lady Lavender was slightly uncomfortable during dinner and took her jacket off. I believe she put it on the back of her chair.",
-    "template": "I believe {suspect} put it on the back of her chair."
-  },
-  "UnattendedMoment": {
-    "tag": "non_solution_support",
-    "source_clue": "When Lavender left her jacket on the back of her chair in the dining room...",
-    "template": "When {suspect} left her jacket on the back of her chair in the {location}..."
+    "template": "I believe {suspect} put it on the back of her chair. This was by {time}.",
+    "solution_bind": {
+      "suspect": "non_solution",
+      "time": "solution"
+    }
   },
   "BeforeMeetingConstraint": {
     "tag": "neutral_structure",
     "source_clue": "I'm sure that the thief stole the Item just before meeting with Mr. Boddy.",
-    "template": "I'm sure that the thief stole the {item} just before meeting with Mr. Boddy."
+    "template": "I'm sure that the thief stole the {item} just before meeting with Mr. Boddy.",
+    "solution_bind": {
+      "item": "non_solution"
+    }
   },
   "DiscoveryTimeUpperBound": {
     "tag": "neutral_structure",
     "source_clue": "He discovered the theft before sundown...",
-    "template": "The theft was discovered before {time}."
+    "template": "The theft was discovered before {time}.",
+    "solution_bind": {
+      "time": "solution"
+    }
   },
   "CategoryExclusion": {
     "tag": "neutral_structure",
     "source_clue": "Mr. Boddy bought his Desk Items in London.",
-    "template": "Mr. Boddy bought his {item_category} items in {place}."
+    "template": "Mr. Boddy bought his {item_category} items in {place}.",
+    "solution_bind": {}
   },
   "ArrivalGroupCluster": {
     "tag": "solution_support",
     "source_clue": "Mrs. Meadow-Brook, Colonel Mustard and Lady Lavender all arrived together.",
-    "template": "{suspect1}, {suspect2}, and {suspect3} all arrived together."
+    "template": "{suspect1}, {suspect2}, and {suspect3} all arrived together. {suspect} was named in connection.",
+    "solution_bind": {
+      "suspect1": "solution",
+      "suspect2": "non_solution",
+      "suspect3": "non_solution",
+      "suspect": "non_solution"
+    }
   },
   "EveryonePresentBlock": {
     "tag": "solution_support",
     "source_clue": "Dinner was a very informal affair, but I do remember that everybody was present.",
-    "template": "{time} was a very informal affair, but I do remember that everybody was present."
+    "template": "{time} was a very informal affair, but I do remember that everybody was present.",
+    "solution_bind": {
+      "time": "solution"
+    }
   },
   "MealSummonsEveryone": {
     "tag": "solution_support",
     "source_clue": "The smell of bacon brought all the men to the Kitchen at Dawn.",
-    "template": "The smell of breakfast brought everyone to the {location} at {time}."
+    "template": "The smell of breakfast brought everyone to the {location} at {time}.",
+    "solution_bind": {
+      "location": "solution",
+      "time": "non_solution"
+    }
   },
   "StaffBusyElsewhere": {
     "tag": "non_solution_support",
     "source_clue": "No one was allowed in the kitchen during the party since Mrs. White was busy preparing meals and didn't want to be disturbed.",
-    "template": "No one was allowed in the {location} during the party since Mrs. White was busy preparing meals."
+    "template": "No one was allowed in the {location} during the party since {suspect} was busy preparing meals.",
+    "solution_bind": {
+      "location": "non_solution",
+      "suspect": "non_solution"
+    }
   },
   "CovetousAttention": {
     "tag": "non_solution_support",
     "source_clue": "The guests that arrived with Lady Lavender seemed especially impressed by the jewelry--almost overly interested.",
-    "template": "The guests that arrived with {suspect} seemed especially impressed by the {item}."
+    "template": "The guests that arrived with {suspect} seemed especially impressed by the {item}.",
+    "solution_bind": {
+      "suspect": "non_solution",
+      "item": "non_solution"
+    }
   },
   "BorrowedItemLift": {
     "tag": "neutral_structure",
     "source_clue": "The guests thought it clever to borrow items from Mr. Boddy to complete their costumes; he agreed and lent out valuable items.",
-    "template": "The guests thought it clever to borrow items from Mr. Boddy to complete their costumes."
+    "template": "The guests thought it clever to borrow items from Mr. Boddy to complete their costumes.",
+    "solution_bind": {}
   },
   "AppointmentChainTheft": {
     "tag": "non_solution_support",
     "source_clue": "I've just learned something important: Mr. Boddy was meeting with guests yesterday to go over private issues concerning his impending inheritance. He met with them one by one outside at the fountain.",
-    "template": "Mr. Boddy was meeting with guests one by one outside at the {location}."
+    "template": "Mr. Boddy was meeting with guests one by one outside at the {location}.",
+    "solution_bind": {
+      "location": "non_solution"
+    }
   },
   "KeyAccessCrime": {
     "tag": "solution_support",
     "source_clue": "Mrs. White told me that the key that opens the cases in which all the valuables were displayed was missing from its hook in the kitchen by the time she served breakfast.",
-    "template": "The key that opens the cases was missing from its hook."
+    "template": "The key that opens the cases was missing from its hook. It was in the {location}. This was by {time}. {suspect} was named in connection.",
+    "solution_bind": {
+      "location": "solution",
+      "time": "solution",
+      "suspect": "non_solution"
+    }
   },
   "FormalMealsFixed": {
     "tag": "solution_support",
     "source_clue": "Dinner was a very informal affair, but I do remember that everybody was present.",
-    "template": "Dinner was a very informal affair, but I do remember that everybody was present."
+    "template": "{time} was a very informal affair, but I do remember that everybody was present.",
+    "solution_bind": {
+      "time": "solution"
+    }
   },
   "InformalLunch": {
     "tag": "non_solution_support",
     "source_clue": "The suspects were all together for Breakfast and Dinner, but Lunch was informal and people came and went as they pleased.",
-    "template": "The suspects were all together for Breakfast and Dinner, but Lunch was informal and people came and went as they pleased."
+    "template": "The suspects were all together for {time} and {time}, but {time} was informal and people came and went as they pleased.",
+    "solution_bind": {
+      "time": "non_solution"
+    }
   },
   "EveryoneTogetherBlocks": {
     "tag": "non_solution_support",
     "source_clue": "The suspects were all together for Breakfast and Dinner, but Lunch was informal and people came and went as they pleased.",
-    "template": "The suspects were all together for Breakfast and Dinner."
+    "template": "The suspects were all together for {time} and {time}.",
+    "solution_bind": {
+      "time": "non_solution"
+    }
   },
   "GuestsArriveInWaves": {
     "tag": "non_solution_support",
     "source_clue": "Prince Azure was slightly embarrassed to find that he had arrived before any of the other guests and had to eat his Lunch alone.",
-    "template": "{suspect} was slightly embarrassed to find that he had arrived before any of the other guests and had to eat his {time} alone."
+    "template": "{suspect} was slightly embarrassed to find that he had arrived before any of the other guests and had to eat his {time} alone.",
+    "solution_bind": {
+      "suspect": "non_solution",
+      "time": "non_solution"
+    }
   },
   "GuestsLeaveInWaves": {
     "tag": "solution_support",
     "source_clue": "Mr. Green and Mrs. Peacock left during dinner even before dessert was served.",
-    "template": "{suspect1} and {suspect2} left during {time} even before dessert was served."
+    "template": "{suspect1} and {suspect2} left during {time} even before dessert was served. {suspect} was named in connection.",
+    "solution_bind": {
+      "suspect1": "non_solution",
+      "suspect2": "non_solution",
+      "time": "solution",
+      "suspect": "non_solution"
+    }
   },
   "OneEventAllDay": {
     "tag": "non_solution_support",
     "source_clue": "It was to be an all-day music event with a quartet and then the ball at night.",
-    "template": "It was to be an all-day event with music and then the main affair at night."
+    "template": "It was to be an all-day event with music and then the main affair at night.",
+    "solution_bind": {}
   },
   "EveningMainEvent": {
     "tag": "non_solution_support",
     "source_clue": "The grand ball started after dinner; all the guests were there; the music was magnificent.",
-    "template": "The grand affair started after dinner; all the guests were there; the music was magnificent."
+    "template": "The grand affair started after dinner; all the guests were there; the music was magnificent.",
+    "solution_bind": {}
   },
   "NightIncident": {
     "tag": "non_solution_support",
     "source_clue": "The last time the lights went out was midnight, but by this point everyone but Miss Scarlet had gone to bed.",
-    "template": "The last time the lights went out was {time}, but by this point everyone but {suspect} had gone to bed."
+    "template": "The last time the lights went out was {time}, but by this point everyone but {suspect} had gone to bed.",
+    "solution_bind": {
+      "time": "non_solution",
+      "suspect": "non_solution"
+    }
   },
   "MultipleBlackouts": {
     "tag": "non_solution_support",
     "source_clue": "The lights went out three times after lunch, but not before.",
-    "template": "The lights went out three times after {time}, but not before."
+    "template": "The lights went out three times after {time}, but not before.",
+    "solution_bind": {
+      "time": "non_solution"
+    }
   },
   "AfterMidnightWindow": {
     "tag": "non_solution_support",
     "source_clue": "It was just before midnight when Mr. Boddy went up for the night; the guests followed his lead and retired at the same time.",
-    "template": "It was just before {time} when Mr. Boddy went up for the night; the guests followed his lead."
+    "template": "It was just before {time} when Mr. Boddy went up for the night; the guests followed his lead.",
+    "solution_bind": {
+      "time": "non_solution"
+    }
   },
   "ShortVisitGuest": {
     "tag": "neutral_structure",
     "source_clue": "The thief did not stay for more than a few hours.",
-    "template": "The thief did not stay for more than a few hours."
+    "template": "The thief did not stay for more than a few hours.",
+    "solution_bind": {}
   },
   "StaggeredAppointments": {
     "tag": "non_solution_support",
     "source_clue": "I've just learned something important: Mr. Boddy was meeting with guests yesterday to go over private issues concerning his impending inheritance. He met with them one by one outside at the fountain.",
-    "template": "Mr. Boddy was meeting with guests one by one outside at the {location}."
+    "template": "Mr. Boddy was meeting with guests one by one outside at the {location}.",
+    "solution_bind": {
+      "location": "non_solution"
+    }
   },
   "IsolatedVictimWindow": {
     "tag": "solution_support",
     "source_clue": "After the night time ball, Professor Plum, Colonel Mustard, Mrs. Peacock, and Mr. Green went outside to stargaze. Professor Plum is an avid astronomer and was asked to explain what the different constellations were.",
-    "template": "After the night time event, {suspect1}, {suspect2}, {suspect3}, and {suspect4} went outside together."
+    "template": "After the night time event, {suspect1}, {suspect2}, {suspect3}, and {suspect4} went outside together. This was by {time}. {suspect} was named in connection.",
+    "solution_bind": {
+      "suspect1": "solution",
+      "suspect2": "non_solution",
+      "suspect3": "non_solution",
+      "suspect4": "non_solution",
+      "time": "non_solution",
+      "suspect": "non_solution"
+    }
   },
   "OneByOneMeetings": {
     "tag": "non_solution_support",
     "source_clue": "I've just learned something important: Mr. Boddy was meeting with guests yesterday to go over private issues concerning his impending inheritance. He met with them one by one outside at the fountain.",
-    "template": "Mr. Boddy was meeting with guests one by one outside at the {location}."
+    "template": "Mr. Boddy was meeting with guests one by one outside at the {location}.",
+    "solution_bind": {
+      "location": "non_solution"
+    }
   },
   "SequentialPrivateMeetings": {
     "tag": "solution_support",
     "source_clue": "Miss Scarlet met with Mr. Boddy in the Early Afternoon, while Professor Plum met with him at Dusk.",
-    "template": "{suspect1} met with Mr. Boddy in the {time}, while {suspect2} met with him at {time2}."
+    "template": "{suspect1} met with Mr. Boddy in the {time}, while {suspect2} met with him at {time2}. {suspect} was named in connection.",
+    "solution_bind": {
+      "suspect1": "solution",
+      "time": "non_solution",
+      "suspect2": "non_solution",
+      "time2": "non_solution",
+      "suspect": "non_solution"
+    }
   },
   "PreEventWindow": {
     "tag": "non_solution_support",
     "source_clue": "The guests didn't put on their costumes until after breakfast; they headed upstairs to change.",
-    "template": "The guests didn't put on their costumes until after {time}."
+    "template": "The guests didn't put on their costumes until after {time}.",
+    "solution_bind": {
+      "time": "non_solution"
+    }
   },
   "EarlyMorningTheft": {
     "tag": "solution_support",
     "source_clue": "The smell of bacon brought all the men to the Kitchen at Dawn.",
-    "template": "The smell of breakfast brought all the men to the {location} at {time}."
+    "template": "{time} drew everyone to the {location} at {time}.",
+    "solution_bind": {
+      "time": "non_solution",
+      "location": "solution"
+    }
   },
   "ArgumentBetweenGuests": {
     "tag": "non_solution_support",
     "source_clue": "There was a little spat over breakfast; apparently one guest did not appreciate hearing details of the last hunt.",
-    "template": "There was a little spat over {time}; apparently one guest did not appreciate hearing details of the last event."
+    "template": "A disagreement flared at {time}; one guest took offence to talk of the earlier affair.",
+    "solution_bind": {
+      "time": "solution"
+    }
   },
   "SomeoneBeingStoodUp": {
     "tag": "non_solution_support",
     "source_clue": "Lady Lavender is in a foul mood as she was stood up from some appointment she had made.",
-    "template": "{suspect} was in a foul mood, having been stood up from an appointment she had made."
+    "template": "{suspect} was displeased after being left waiting for an arranged meeting.",
+    "solution_bind": {
+      "suspect": "non_solution"
+    }
   },
   "SomeoneInAFoulMood": {
     "tag": "neutral_structure",
     "source_clue": "After his last appointment, I was surprised to find Mr. Boddy in a foul mood; he sent the guests home and dismissed the staff.",
-    "template": "After his last appointment, I was very surprised to find Mr. Boddy in a foul mood."
+    "template": "After his final appointment, Mr. Boddy’s temper was noticeably sour.",
+    "solution_bind": {}
   },
   "BraggingContest": {
     "tag": "non_solution_support",
     "source_clue": "For weeks Prince Azure has been going on and on about how good he is at billiards...",
-    "template": "For weeks {suspect} has been going on and on about how good he is at {activity}."
+    "template": "{suspect} has been boasting for weeks about his skill at {activity}.",
+    "solution_bind": {
+      "suspect": "non_solution"
+    }
   },
   "SomeoneAvoidingSomeone": {
     "tag": "non_solution_support",
     "source_clue": "Mr. Green seemed angry with everyone and stayed as far away from Professor Plum as possible.",
-    "template": "{suspect1} seemed angry and stayed as far away from {suspect2} as possible."
+    "template": "{suspect1} kept his distance from {suspect2}, plainly annoyed.",
+    "solution_bind": {
+      "suspect1": "non_solution",
+      "suspect2": "non_solution"
+    }
   },
   "SomeoneFollowingSomeone": {
     "tag": "non_solution_support",
     "source_clue": "I overheard Mrs. Peacock ask if anyone would play chess with her at night before bed; one person eventually relented.",
-    "template": "I overheard {suspect} ask if anyone would join her for a game before going to bed."
+    "template": "I heard {suspect} asking for company for a game before bed.",
+    "solution_bind": {
+      "suspect": "non_solution"
+    }
   },
   "GroupSplitsIntoCliques": {
     "tag": "non_solution_support",
     "source_clue": "After tea, all the men decided to play poker in the lounge and kept at it until very late.",
-    "template": "After {time}, the group split into smaller circles and did not all remain together."
+    "template": "After {time}, the party broke into separate clusters rather than one gathering.",
+    "solution_bind": {
+      "time": "non_solution"
+    }
   },
   "SomeoneLeavesEarly": {
     "tag": "solution_support",
     "source_clue": "Mr. Green and Mrs. Peacock left during dinner even before dessert was served.",
-    "template": "{suspect1} and {suspect2} left during {time} even before dessert was served."
+    "template": "{suspect1} and {suspect2} departed during {time}, well before sweets. {suspect} was named in connection.",
+    "solution_bind": {
+      "suspect1": "non_solution",
+      "suspect2": "non_solution",
+      "time": "solution",
+      "suspect": "non_solution"
+    }
   },
   "SomeoneArrivesLate": {
     "tag": "non_solution_support",
     "source_clue": "Professor Plum arrived just in time for lunch and stayed for dinner as well; he apologized for being late.",
-    "template": "{suspect} arrived just in time for {time} and apologized for being late."
+    "template": "{suspect} turned up barely in time for {time}, apologizing for the delay.",
+    "solution_bind": {
+      "suspect": "non_solution",
+      "time": "solution"
+    }
   },
   "TwoPeopleAlwaysTogether": {
     "tag": "non_solution_support",
     "source_clue": "Colonel Mustard and Mrs. Peacock always had candles with them but were never in the same room together.",
-    "template": "{suspect1} and {suspect2} always had their {item}, yet were never in the same room together."
+    "template": "{suspect1} and {suspect2} kept to the same rooms, each carrying a candle throughout.",
+    "solution_bind": {
+      "suspect1": "non_solution",
+      "suspect2": "non_solution"
+    }
   },
   "OnePersonKeepsToThemselves": {
     "tag": "non_solution_support",
     "source_clue": "Professor Plum spent all day in the west wing muttering to himself and clearly agitated.",
-    "template": "{suspect} spent the day in the {location}, keeping to himself and clearly agitated."
-  },
-  "Flirtation": {
-    "tag": "solution_support",
-    "source_clue": "I overheard the violinist saying he saw Miss Scarlet when she was last on stage; he even asked her for an autograph.",
-    "template": "One of the visitors even asked {suspect} for an autograph."
+    "template": "{suspect} stayed mostly in the {location}, keeping to himself and visibly unsettled.",
+    "solution_bind": {
+      "suspect": "non_solution",
+      "location": "non_solution"
+    }
   },
   "Jealousy": {
     "tag": "non_solution_support",
     "source_clue": "Mrs. Peacock and her daughter were clearly upset with Colonel Mustard and stayed as far away from him as possible.",
-    "template": "{suspect1} and her daughter were clearly upset with {suspect2} and stayed as far away as possible."
+    "template": "{suspect1} and her daughter were plainly displeased with {suspect2} and avoided him.",
+    "solution_bind": {
+      "suspect1": "non_solution",
+      "suspect2": "non_solution"
+    }
   },
   "Embarrassment": {
     "tag": "non_solution_support",
     "source_clue": "Prince Azure was slightly embarrassed to find that he had arrived before any of the other guests and had to eat his Lunch alone.",
-    "template": "{suspect} was slightly embarrassed to find that he had arrived before any of the other guests and had to eat his {time} alone."
+    "template": "{suspect} arrived early and ate {time} alone, clearly embarrassed.",
+    "solution_bind": {
+      "suspect": "non_solution",
+      "time": "non_solution"
+    }
   },
   "ActivitySaturation": {
     "tag": "non_solution_support",
     "source_clue": "It's always so hectic when we have a party; I have to make sure to put out enough towels and get all of the guests their food as they lounge about outside.",
-    "template": "It's always so hectic when we have a party; I must see to the towels and ensure every guest is served as they lounge about outside."
+    "template": "These parties are a bustle; I must keep towels and refreshments moving for everyone.",
+    "solution_bind": {}
   },
   "RoomsClosedOff": {
     "tag": "non_solution_support",
     "source_clue": "The study and billiard room were being cleaned from before dawn until dinner and were off-limits to the guests.",
-    "template": "The {location1} and {location2} were being cleaned from {time1} until {time2} and were off limits to the guests."
+    "template": "The {location1} and {location2} were shut to guests from {time1} until {time2} for cleaning.",
+    "solution_bind": {
+      "location1": "non_solution",
+      "location2": "non_solution",
+      "time1": "non_solution",
+      "time2": "non_solution"
+    }
   },
   "StaffCleaningRotation": {
     "tag": "non_solution_support",
     "source_clue": "The study and billiard room were being cleaned from before dawn until dinner and were off-limits to the guests.",
-    "template": "The staff were rotating through rooms for cleaning from {time1} until {time2}, and certain rooms were off limits to the guests."
+    "template": "The staff cycled through rooms for cleaning between {time1} and {time2}, so some areas were closed.",
+    "solution_bind": {
+      "time1": "non_solution",
+      "time2": "non_solution"
+    }
   },
   "CertainWingsEmpty": {
     "tag": "neutral_structure",
     "source_clue": "No one was in the North wing during the event.",
-    "template": "No one was in the {wing} during the event."
+    "template": "The {wing} was empty throughout the event.",
+    "solution_bind": {}
   },
   "EveryoneOutside": {
     "tag": "non_solution_support",
     "source_clue": "During tea time all guests were sitting around the rose garden, sunning themselves.",
-    "template": "During {time} all guests were outside, sitting about the {location} and enjoying the weather."
+    "template": "At {time}, everyone was out at the {location}, enjoying the air.",
+    "solution_bind": {
+      "time": "non_solution",
+      "location": "non_solution"
+    }
   },
   "EveryoneIndoors": {
     "tag": "neutral_structure",
     "source_clue": "It's come to my attention that all of Mr. Boddy's items were indoors all day.",
-    "template": "It's come to my attention that all of Mr. Boddy's items were indoors all day."
+    "template": "All of Mr. Boddy’s possessions remained indoors for the day.",
+    "solution_bind": {}
   },
   "OneRoomOffLimits": {
     "tag": "non_solution_support",
     "source_clue": "No one was allowed in the kitchen during the party since Mrs. White was busy preparing meals and didn't want to be disturbed.",
-    "template": "No one was allowed in the {location} during the party since Mrs. White was busy preparing meals and didn't wish to be disturbed."
+    "template": "The {location} was kept off‑limits while {suspect} prepared meals.",
+    "solution_bind": {
+      "location": "non_solution",
+      "suspect": "non_solution"
+    }
   },
   "SecretPassagesOpen": {
     "tag": "neutral_structure",
     "source_clue": "It's come to my attention that the secret passages are locked... remove the padlocks from the board; you may travel freely through the secret passages now.",
-    "template": "The secret passages were opened; you may travel freely through them now."
+    "template": "The secret passages were unbarred and could be used freely.",
+    "solution_bind": {}
   },
   "SecretPassagesClosed": {
     "tag": "neutral_structure",
     "source_clue": "I'm afraid I'm going to have to ask the butler to close the secret passages... place the padlocks on the secret passages for the rest of the game.",
-    "template": "I'm afraid I must ask that the secret passages be closed for the remainder of the evening."
+    "template": "I had the secret passages sealed for the rest of the evening.",
+    "solution_bind": {}
   },
   "ItemsLockedAway": {
     "tag": "neutral_structure",
     "source_clue": "Mr. Boddy immediately locked both these items up just to get them to be quiet.",
-    "template": "Mr. Boddy immediately locked the items away to put an end to the commotion."
+    "template": "Mr. Boddy had the items put under lock and key to quiet the matter.",
+    "solution_bind": {}
   },
   "ItemsOnDisplay": {
     "tag": "solution_support",
     "source_clue": "Mrs. White told me that the key that opens the cases in which all the valuables were displayed was missing from its hook in the kitchen by the time she served breakfast.",
-    "template": "The valuables were displayed openly in their cases for the guests to admire."
+    "template": "The valuables were displayed openly in their cases for all to see. It was in the {location}. This was by {time}. {suspect} was named in connection.",
+    "solution_bind": {
+      "location": "solution",
+      "time": "solution",
+      "suspect": "non_solution"
+    }
   },
   "ItemsLentOut": {
     "tag": "neutral_structure",
     "source_clue": "The guests thought it would be clever to borrow items from Mr. Boddy to complete their costumes... Mr. Boddy agreed and lent out quite a few of his valuable items.",
-    "template": "The guests thought it clever to borrow items from Mr. Boddy to complete their costumes, and he obliged with several valuables."
+    "template": "Mr. Boddy allowed guests to borrow several valuables for their costumes.",
+    "solution_bind": {}
   },
   "TheEarlyArriver": {
     "tag": "non_solution_support",
     "source_clue": "Prince Azure was slightly embarrassed to find that he had arrived before any of the other guests and had to eat his Lunch alone.",
-    "template": "{suspect} was slightly embarrassed to find that he had arrived before any of the other guests and had to eat his {time} alone."
+    "template": "{suspect} arrived ahead of the others and took {time} alone.",
+    "solution_bind": {
+      "suspect": "non_solution",
+      "time": "non_solution"
+    }
   },
   "TheLateLeaver": {
     "tag": "non_solution_support",
     "source_clue": "Mrs. Meadowbrook came by just as tea was being served... Mrs. Meadowbrook was also the last guest to leave.",
-    "template": "{suspect} came by just as {time} was being served and was also the last guest to leave."
+    "template": "{suspect} arrived as {time} was served and was the final guest to depart.",
+    "solution_bind": {
+      "suspect": "non_solution",
+      "time": "non_solution"
+    }
   },
   "TheShortStayGuest": {
     "tag": "neutral_structure",
     "source_clue": "The thief did not stay for more than a few hours.",
-    "template": "The thief did not stay for more than a few hours."
+    "template": "The thief remained only a few hours.",
+    "solution_bind": {}
   },
   "TheOneWhoDoesntParticipate": {
     "tag": "neutral_structure",
     "source_clue": "The thief was too distracted to play any games.",
-    "template": "{suspect} was too distracted to participate in the games."
+    "template": "{suspect} took no part in the games, distracted throughout.",
+    "solution_bind": {
+      "suspect": "non_solution"
+    }
   },
   "TheOneWhoAvoidsARoom": {
     "tag": "non_solution_support",
     "source_clue": "No one was allowed in the kitchen during the party since Mrs. White was busy preparing meals and didn't want to be disturbed.",
-    "template": "{suspect} avoided the {location} during the party."
+    "template": "{suspect} kept away from the {location} all evening.",
+    "solution_bind": {
+      "suspect": "non_solution",
+      "location": "non_solution"
+    }
   },
   "TheOneWhoIsEverywhere": {
     "tag": "non_solution_support",
     "source_clue": "It's always so hectic when we have a party... I have to make sure to put out enough towels and get all of the guests their food...",
-    "template": "{suspect} seemed to be everywhere, moving from room to room throughout the day."
+    "template": "{suspect} was seen in nearly every room over the course of the day.",
+    "solution_bind": {
+      "suspect": "non_solution"
+    }
   },
   "TheOneWhoIsUpset": {
     "tag": "non_solution_support",
     "source_clue": "Lady Lavender is in a foul mood as she was stood up from some appointment she had made.",
-    "template": "{suspect} was in a foul mood after being stood up for an appointment."
+    "template": "{suspect} was upset after being left waiting for an appointment.",
+    "solution_bind": {
+      "suspect": "non_solution"
+    }
   },
   "TheOneWhoIsBoastful": {
     "tag": "non_solution_support",
     "source_clue": "For weeks Prince Azure has been going on and on about how good he is at Billiards...",
-    "template": "For weeks {suspect} has been going on and on about how good he is at {activity}."
+    "template": "{suspect} has been bragging about {activity} for weeks.",
+    "solution_bind": {
+      "suspect": "non_solution"
+    }
   },
   "TheOneWhoIsNervous": {
     "tag": "neutral_structure",
     "source_clue": "The guests were scared of the dark; they tried to stay with people who had candles...",
-    "template": "{suspect} seemed nervous and kept close to those carrying candles."
+    "template": "{suspect} appeared anxious and stayed near anyone with a candle.",
+    "solution_bind": {
+      "suspect": "non_solution"
+    }
   },
   "TheOneWhoIsDistracted": {
     "tag": "neutral_structure",
     "source_clue": "The thief was too distracted to play any games.",
-    "template": "{suspect} was too distracted to participate in the games."
+    "template": "{suspect} could not focus on the games at all.",
+    "solution_bind": {
+      "suspect": "non_solution"
+    }
   },
   "TheOneWhoIsHelpful": {
     "tag": "non_solution_support",
     "source_clue": "Rusty was assigned to help Mrs. White with the meals...",
-    "template": "{suspect} was assigned to help Mrs. White with the meals and remained by her side."
+    "template": "{suspect} was tasked with helping {suspect} and stayed with her.",
+    "solution_bind": {
+      "suspect": "non_solution"
+    }
   },
   "TheOneWhoIsEavesdropping": {
     "tag": "non_solution_support",
     "source_clue": "I've just learned something important: Mr. Boddy was meeting with guests yesterday to go over private issues concerning his impending inheritance. He met with them one by one outside at the fountain.",
-    "template": "{suspect} was seen lingering near Mr. Boddy's meetings, listening more than participating."
+    "template": "{suspect} lingered near Mr. Boddy’s meetings, listening in.",
+    "solution_bind": {
+      "suspect": "non_solution"
+    }
   },
   "NonParticipant": {
     "tag": "non_solution_support",
     "source_clue": "Prince Azure refused to wear a costume; he said it was beneath him.",
-    "template": "{suspect} refused to take part, saying it was beneath him."
+    "template": "{suspect} declined to participate, calling it beneath him.",
+    "solution_bind": {
+      "suspect": "non_solution"
+    }
   },
   "AvoidsGroupActivities": {
     "tag": "non_solution_support",
     "source_clue": "Prince Azure refused to wear a costume; he said it was beneath him.",
-    "template": "{suspect} avoided the group activities, claiming they were beneath him."
+    "template": "{suspect} stayed away from the group pastimes, insisting they were beneath him.",
+    "solution_bind": {
+      "suspect": "non_solution"
+    }
   },
   "ItemLockedAway": {
     "tag": "neutral_structure",
     "source_clue": "Mr. Boddy immediately locked both these items up just to get them to be quiet.",
-    "template": "Mr. Boddy immediately locked the items away just to put an end to the fuss."
+    "template": "Mr. Boddy had the items secured and out of reach to settle the matter.",
+    "solution_bind": {}
   },
   "ItemLentOut": {
     "tag": "neutral_structure",
     "source_clue": "The guests thought it clever to borrow items from Mr. Boddy to complete their costumes; he agreed and lent out valuable items.",
-    "template": "The guests thought it clever to borrow items from Mr. Boddy to complete their costumes, and he agreed to lend out several valuables."
+    "template": "Mr. Boddy agreed to lend a few valuables for costumes and amusement.",
+    "solution_bind": {}
   },
   "ItemOnDisplay": {
     "tag": "solution_support",
     "source_clue": "Mrs. White told me that the key that opens the cases in which all the valuables were displayed was missing from its hook in the kitchen by the time she served breakfast.",
-    "template": "The valuables were on display in their cases, and the key for them was kept in the {location}."
+    "template": "The valuables sat in their cases for guests to admire, with the key kept in the {location}. This was by {time}. {suspect} was named in connection.",
+    "solution_bind": {
+      "location": "solution",
+      "time": "solution",
+      "suspect": "non_solution"
+    }
   },
   "ItemBeingUsed": {
     "tag": "non_solution_support",
     "source_clue": "Mr. Boddy used the spy glass to watch the croquet match in the rose garden, then returned it to its case and locked it up.",
-    "template": "Mr. Boddy used the {item} to watch the match in the {location}, then returned it to its case and locked it up."
+    "template": "Mr. Boddy made use of the {item} in the {location} and returned it to its case afterward.",
+    "solution_bind": {
+      "item": "non_solution",
+      "location": "non_solution"
+    }
   },
   "ItemBeingPolished": {
     "tag": "non_solution_support",
     "source_clue": "Mr. Boddy asked me to polish some of his items--namely the letter opener, crystal paperweight, and the pocket watch--as the guests were eating dinner.",
-    "template": "Mr. Boddy asked me to polish some of his items, namely the {item1}, {item2}, and the {item3}."
+    "template": "Mr. Boddy asked me to shine the {item1}, {item2}, and the {item3}.",
+    "solution_bind": {
+      "item1": "non_solution",
+      "item2": "non_solution",
+      "item3": "non_solution"
+    }
   },
   "ItemBeingRepaired": {
     "tag": "non_solution_support",
     "source_clue": "Unfortunately the pocket watch was damaged during Mr. Boddy's vacation and was being fixed by a local repair shop. It was never in the mansion yesterday; it was returned this morning.",
-    "template": "The {item} was damaged during Mr. Boddy's vacation and was being repaired by a local shop."
+    "template": "The {item} was away for repair after being damaged on Mr. Boddy’s travels.",
+    "solution_bind": {
+      "item": "non_solution"
+    }
   },
   "ItemMentionedButSafe": {
     "tag": "non_solution_support",
     "source_clue": "Professor Plum recalls seeing all of the Antiques during the time he was alone.",
-    "template": "{suspect} recalls seeing all of the {item_category} during the time he was alone."
+    "template": "{suspect} recalls seeing every {item_category} while he was alone.",
+    "solution_bind": {
+      "suspect": "non_solution"
+    }
   },
   "ItemNeverMentioned": {
     "tag": "neutral_structure",
     "source_clue": "Mr. Boddy had his Jewelry locked up all day.",
-    "template": "Mr. Boddy had his {item_category} locked up all day."
+    "template": "Mr. Boddy kept his {item_category} locked away throughout the day.",
+    "solution_bind": {}
   },
   "ItemMovedButReturned": {
     "tag": "non_solution_support",
     "source_clue": "After dinner I entered the study and noticed someone had used the letter opener and spy glass... I put them back on the shelf.",
-    "template": "After {time} I entered the {location} and noticed someone had used the {item1} and {item2}; I put them back on the shelf."
+    "template": "After {time} I found the {item1} and {item2} out of place in the {location} and returned them to the shelf.",
+    "solution_bind": {
+      "time": "non_solution",
+      "item1": "non_solution",
+      "item2": "non_solution",
+      "location": "non_solution"
+    }
   },
   "ItemDamaged": {
     "tag": "solution_support",
     "source_clue": "This morning I found Mr. Boddy's expensive spy glass in the secret passage; it had been damaged with a large dent.",
-    "template": "This morning I found Mr. Boddy's {item} damaged, with a large dent."
+    "template": "I discovered Mr. Boddy’s {item} marked and dented.",
+    "solution_bind": {
+      "item": "non_solution"
+    }
   },
   "ItemMisplaced": {
     "tag": "neutral_structure",
     "source_clue": "Mr. Boddy wanted to take care of some financial affairs but part of his Desk Set was missing.",
-    "template": "Mr. Boddy wanted to take care of some affairs but part of his {item_category} set was missing."
+    "template": "A piece from Mr. Boddy’s {item_category} set was missing when he went to use it.",
+    "solution_bind": {}
   },
   "ItemInWrongRoom": {
     "tag": "solution_support",
     "source_clue": "This morning I found Mr. Boddy's expensive spy glass in the secret passage; it had been damaged with a large dent.",
-    "template": "This morning I found Mr. Boddy's {item} in the {location}, which is not where it belongs."
+    "template": "This morning I found Mr. Boddy’s {item} in the {location}, where it ought not be.",
+    "solution_bind": {
+      "item": "non_solution",
+      "location": "solution"
+    }
   },
   "InstrumentalTheft": {
     "tag": "non_solution_support",
     "source_clue": "Mrs. Meadowbrook stole the revolver to stop the hunt from happening.",
-    "template": "{suspect} stole the {item} to prevent the event from happening."
+    "template": "{suspect} took the {item} to prevent the event from proceeding.",
+    "solution_bind": {
+      "suspect": "non_solution",
+      "item": "non_solution"
+    }
   },
   "UtilityDrivenTarget": {
     "tag": "non_solution_support",
     "source_clue": "She thought her only way out was to steal the revolver and stop the hunt from happening.",
-    "template": "{suspect} thought the only way out was to steal the {item} and stop the event from happening."
+    "template": "{suspect} believed taking the {item} was the only way to stop the event.",
+    "solution_bind": {
+      "suspect": "non_solution",
+      "item": "non_solution"
+    }
   },
   "CostumePropItem": {
     "tag": "non_solution_support",
     "source_clue": "Mr. Green went in costume as a Decorated Soldier. Miss Scarlet went as an Armed Burglar.",
-    "template": "{suspect1} went in costume as a {role1}. {suspect2} went as a {role2}."
+    "template": "{suspect1} appeared as a {role1}, and {suspect2} as a {role2}.",
+    "solution_bind": {
+      "suspect1": "non_solution",
+      "suspect2": "non_solution"
+    }
   },
   "TemporaryCustody": {
     "tag": "non_solution_support",
     "source_clue": "I had complimented Lady Lavender on the jewelry on her jacket when she arrived. She told me Mr. Boddy had let her borrow it for the weekend.",
-    "template": "{suspect} told me that Mr. Boddy had let her borrow the {item} for the weekend."
+    "template": "{suspect} told me Mr. Boddy had allowed her to borrow the {item} for the weekend.",
+    "solution_bind": {
+      "suspect": "non_solution",
+      "item": "non_solution"
+    }
   },
   "ItemSubstituted": {
     "tag": "non_solution_support",
     "source_clue": "Plum was found unconscious, and the spyglass was found in the secret passage with him... but it was the brooch that had been taken.",
-    "template": "{suspect} was found unconscious, and the {item1} was found with him... but it was the {item2} that had been taken."
+    "template": "{suspect} was found unconscious, the {item1} was recovered, yet the {item2} had vanished.",
+    "solution_bind": {
+      "suspect": "non_solution",
+      "item1": "non_solution",
+      "item2": "non_solution"
+    }
   },
   "ItemRecoveredFromWrongPerson": {
     "tag": "non_solution_support",
     "source_clue": "Plum was found unconscious and the spyglass was found with him.",
-    "template": "{suspect} was found unconscious and the {item} was found with him."
-  },
-  "ItemWornByGuest": {
-    "tag": "non_solution_support",
-    "source_clue": "I had complimented Lady Lavender on the jewelry on her jacket when she arrived. She told me Mr. Boddy had let her borrow it for the weekend.",
-    "template": "{suspect} was wearing the {item} on her jacket when she arrived."
+    "template": "{suspect} was discovered unconscious with the {item} in his possession.",
+    "solution_bind": {
+      "suspect": "non_solution",
+      "item": "non_solution"
+    }
   },
   "WearableValuable": {
     "tag": "non_solution_support",
     "source_clue": "I had complimented Lady Lavender on the jewelry on her jacket when she arrived. She told me Mr. Boddy had let her borrow it for the weekend.",
-    "template": "I had complimented {suspect} on the {item} she wore upon her jacket when she arrived."
+    "template": "I complimented {suspect} on the {item} she wore upon arriving.",
+    "solution_bind": {
+      "suspect": "non_solution",
+      "item": "non_solution"
+    }
   },
   "SociallyDisplayedItem": {
     "tag": "non_solution_support",
     "source_clue": "The guests that arrived with Lady Lavender seemed especially impressed by the jewelry--almost overly interested.",
-    "template": "The guests that arrived with {suspect} seemed especially impressed by the {item}."
+    "template": "The guests accompanying {suspect} lingered over the {item} with keen interest.",
+    "solution_bind": {
+      "suspect": "non_solution",
+      "item": "non_solution"
+    }
   },
   "SeenEnteringRoom": {
     "tag": "solution_support",
     "source_clue": "Mr. Boddy did have breakfast with Mr. Green; Mr. Boddy asked that I bring his morning paper while they dined. Lady Lavender showed up just as the meal finished and just had tea.",
-    "template": "{suspect} showed up just as the meal had finished and just had tea."
+    "template": "{suspect} arrived as the meal ended and only took tea. This was by {time}.",
+    "solution_bind": {
+      "suspect": "solution",
+      "time": "non_solution"
+    }
   },
   "SeenLeavingRoom": {
     "tag": "solution_support",
     "source_clue": "Mr. Green and Mrs. Peacock left during dinner even before dessert was served.",
-    "template": "{suspect1} and {suspect2} left during {time} even before dessert was served."
+    "template": "{suspect1} and {suspect2} slipped out during {time}, before dessert. {suspect} was named in connection.",
+    "solution_bind": {
+      "suspect1": "non_solution",
+      "suspect2": "non_solution",
+      "time": "solution",
+      "suspect": "non_solution"
+    }
   },
   "ShadowThroughWindow": {
     "tag": "non_solution_support",
     "source_clue": "After lunch I was looking out from the ballroom window when I saw a shadow move in a nearby room; it was probably just the cat.",
-    "template": "After {time} I was looking out from the {location} when I saw a shadow move in a nearby room."
+    "template": "From the {location} after {time}, I noticed a shadow shift in a nearby room.",
+    "solution_bind": {
+      "location": "non_solution",
+      "time": "non_solution"
+    }
   },
   "SomeoneHeardButNotSeen": {
     "tag": "non_solution_support",
     "source_clue": "As I went to summon the gentlemen for lunch I heard someone speaking very softly; it was only Mr. Boddy reading a passage from an old book to his guests.",
-    "template": "As I went to summon the gentlemen for {time} I heard someone speaking very softly, almost whispering."
+    "template": "When I went to summon the gentlemen for {time}, I heard soft voices but saw no one.",
+    "solution_bind": {
+      "time": "non_solution"
+    }
   },
   "SomeoneSeenLurking": {
     "tag": "non_solution_support",
     "source_clue": "As Mrs. White prepared for dinner she noted that someone was lurking about in the west wing; it distressed her awfully.",
-    "template": "Mrs. White noted that someone was lurking about in the {location}; it distressed her awfully."
+    "template": "{suspect} remarked on someone lingering in the {location}, which unsettled her.",
+    "solution_bind": {
+      "suspect": "non_solution",
+      "location": "non_solution"
+    }
   },
   "SomeoneSeenWithItem": {
     "tag": "solution_support",
     "source_clue": "I overheard the violinist saying he saw Miss Scarlet when she was last on stage; he even asked her for an autograph.",
-    "template": "A visitor said he saw {suspect} when she was last on stage and even asked her for an autograph."
+    "template": "A visitor reported seeing {suspect} on stage and approached for an autograph.",
+    "solution_bind": {
+      "suspect": "solution"
+    }
   },
   "SomeoneSeenNearLocation": {
     "tag": "non_solution_support",
     "source_clue": "Colonel Mustard told me he saw someone lurking around in one of the north rooms today, acting suspiciously.",
-    "template": "{suspect} told me that he saw someone lurking around in the {location} today."
+    "template": "{suspect} said he noticed someone hanging about the {location}.",
+    "solution_bind": {
+      "suspect": "non_solution",
+      "location": "non_solution"
+    }
   },
   "TwoPeopleSeenTogether": {
     "tag": "non_solution_support",
     "source_clue": "Mrs. Peacock was with Professor Plum in the early afternoon; Plum was explaining theories on ancient Egypt, no doubt.",
-    "template": "{suspect1} was with {suspect2} in the {time}; {suspect2} was explaining one of his theories."
+    "template": "{suspect1} and {suspect2} were together in the {time}, deep in conversation.",
+    "solution_bind": {
+      "suspect1": "non_solution",
+      "suspect2": "non_solution",
+      "time": "non_solution"
+    }
   },
   "SomeoneAlwaysInPublicRooms": {
     "tag": "non_solution_support",
     "source_clue": "After tea, all the men decided to play poker in the lounge and kept at it until very late.",
-    "template": "After {time}, the men decided to play poker in the {location} and stayed there for the rest of the night."
+    "template": "After {time}, the men stayed in the {location} for the rest of the night.",
+    "solution_bind": {
+      "time": "non_solution",
+      "location": "non_solution"
+    }
   },
   "SomeoneNeverInPublicRooms": {
     "tag": "neutral_structure",
     "source_clue": "No one was in the North wing during the event.",
-    "template": "No one was in the {location} during the event."
+    "template": "No one ventured into the {location} during the event.",
+    "solution_bind": {
+      "location": "non_solution"
+    }
   },
   "SomeoneOnlySeenOnce": {
     "tag": "solution_support",
     "source_clue": "Prince Azure stopped by during lunch, hoping to talk to Lady Lavender, but was too late; he grabbed an apple and left.",
-    "template": "{suspect} stopped by during {time}, grabbed an apple, and left shortly thereafter."
+    "template": "{suspect} appeared briefly at {time}, took an apple, and departed.",
+    "solution_bind": {
+      "suspect": "solution",
+      "time": "solution"
+    }
   },
   "EmotionalExit": {
     "tag": "solution_support",
     "source_clue": "It's not my place to judge, but the men ate like pigs at breakfast; Mrs. Meadowbrook asked only for fruit juice before excusing herself and suddenly leaving.",
-    "template": "{suspect} asked only for fruit juice before excusing herself and suddenly leaving."
+    "template": "{suspect} asked only for juice, then excused herself and left at once. This was by {time}.",
+    "solution_bind": {
+      "suspect": "solution",
+      "time": "solution"
+    }
   },
   "UnidentifiableRunner": {
     "tag": "neutral_structure",
     "source_clue": "As I was retiring I saw someone running through the corridors; he or she was in costume and I have no idea who it was.",
-    "template": "As I was retiring I saw someone running through the corridors; he or she was in costume and I have no idea who it was."
+    "template": "As I retired, an unidentifiable runner in costume dashed through the corridors.",
+    "solution_bind": {}
   },
   "MaskedFigureSeen": {
     "tag": "neutral_structure",
     "source_clue": "As I was retiring I saw someone running through the corridors; he or she was in costume and I have no idea who it was.",
-    "template": "As I was retiring I saw someone running through the corridors; he or she was in costume."
+    "template": "While retiring, I caught sight of a masked figure in the corridors.",
+    "solution_bind": {}
   },
   "DisguisedMovement": {
     "tag": "neutral_structure",
     "source_clue": "The guests thought it clever to borrow items from Mr. Boddy to complete their costumes; he agreed and lent out valuable items.",
-    "template": "The guests thought it clever to borrow items from Mr. Boddy to complete their costumes."
+    "template": "Costumes and borrowed items made it difficult to tell who was who.",
+    "solution_bind": {}
   },
   "IdentityHiddenByCostume": {
     "tag": "neutral_structure",
     "source_clue": "As I was retiring I saw someone running through the corridors; he or she was in costume and I have no idea who it was.",
-    "template": "He or she was in costume and I have no idea who it was."
+    "template": "The person was in costume, so I could not identify them.",
+    "solution_bind": {}
   },
   "SharedTimeBlock": {
     "tag": "non_solution_support",
     "source_clue": "The suspects were all together for Breakfast and Dinner, but Lunch was informal and people came and went as they pleased.",
-    "template": "The suspects were all together for {time1} and {time2}."
+    "template": "The suspects were together during {time1} and {time2}.",
+    "solution_bind": {
+      "time1": "solution",
+      "time2": "non_solution"
+    }
   },
   "ExclusiveTimeWindow": {
     "tag": "non_solution_support",
     "source_clue": "The last time the lights went out was midnight, but by this point everyone but Miss Scarlet had gone to bed.",
-    "template": "The last time the lights went out was {time}, but by this point everyone but {suspect} had gone to bed."
+    "template": "The final blackout occurred at {time}; by then all but {suspect} were abed.",
+    "solution_bind": {
+      "time": "non_solution",
+      "suspect": "non_solution"
+    }
   },
   "RoomCategoryExclusion": {
     "tag": "neutral_structure",
     "source_clue": "The theft did not occur in a Location that a game was played at.",
-    "template": "The theft did not occur in a location where a game was played."
+    "template": "The theft did not occur in any room used for games.",
+    "solution_bind": {}
   },
   "ItemCategoryExclusion": {
     "tag": "neutral_structure",
     "source_clue": "Mr. Boddy bought his Desk Items in London.",
-    "template": "Mr. Boddy bought his {item_category} items in {place}."
+    "template": "Mr. Boddy purchased his {item_category} items in {place}.",
+    "solution_bind": {}
   },
   "BehavioralOutlier": {
     "tag": "solution_support",
     "source_clue": "It's not my place to judge, but the men ate like pigs at breakfast; Mrs. Meadowbrook asked only for fruit juice before excusing herself and suddenly leaving.",
-    "template": "{suspect} asked only for fruit juice before excusing herself and suddenly leaving."
+    "template": "{suspect} asked only for juice, then excused herself and left abruptly. This was by {time}.",
+    "solution_bind": {
+      "suspect": "solution",
+      "time": "solution"
+    }
   },
   "InventoryAccounting": {
     "tag": "neutral_structure",
     "source_clue": "Mr. Boddy wanted to take care of some financial affairs but part of his Desk Set was missing.",
-    "template": "Mr. Boddy wanted to take care of some affairs but part of his {item_category} set was missing."
+    "template": "When Mr. Boddy checked his {item_category} set, a piece was missing.",
+    "solution_bind": {}
   },
   "ObjectElimination": {
     "tag": "non_solution_support",
     "source_clue": "The pocket watch was being repaired and was not in the mansion yesterday.",
-    "template": "The {item} was being repaired and was not in the mansion yesterday."
+    "template": "The {item} was away for repair and could not have been taken.",
+    "solution_bind": {
+      "item": "non_solution"
+    }
   },
   "SurvivorByElimination": {
     "tag": "non_solution_support",
     "source_clue": "You could eliminate the medal, the pocket watch, all of the desk items, and the revolver...",
-    "template": "You could eliminate {item1}, {item2}, all of the {item_category} items, and the {item3}."
+    "template": "We can rule out {item1}, {item2}, all {item_category} items, and the {item3}.",
+    "solution_bind": {
+      "item1": "non_solution",
+      "item2": "non_solution",
+      "item3": "non_solution"
+    }
   },
   "ContradictoryTestimony": {
     "tag": "non_solution_support",
     "source_clue": "Colonel Mustard told me he saw someone lurking around in one of the north rooms today, acting suspiciously.",
-    "template": "{suspect} said he saw someone lurking in the {location}, but no one was there."
+    "template": "{suspect} claimed to see someone in the {location}, but that area was empty.",
+    "solution_bind": {
+      "suspect": "non_solution",
+      "location": "non_solution"
+    }
   },
   "Misinterpretation": {
     "tag": "non_solution_support",
     "source_clue": "Mrs. White is quite upset. She says she overheard someone saying that he wants Mr. Boddy's new rare cook and is afraid she's being replaced.",
-    "template": "Mrs. White said she overheard someone saying he wanted Mr. Boddy's {phrase}, though it may have been misheard."
+    "template": "{suspect} overheard a request for the {phrase}, though it may have been misheard.",
+    "solution_bind": {
+      "suspect": "non_solution"
+    }
   },
   "SequenceReconstruction": {
     "tag": "solution_support",
     "source_clue": "Miss Scarlet met with Mr. Boddy in the Early Afternoon, while Professor Plum met with him at Dusk.",
-    "template": "{suspect1} met with Mr. Boddy in the {time}, while {suspect2} met with him at {time2}."
+    "template": "{suspect1} met Mr. Boddy in the {time}, while {suspect2} saw him at {time2}. {suspect} was named in connection.",
+    "solution_bind": {
+      "suspect1": "solution",
+      "time": "non_solution",
+      "suspect2": "non_solution",
+      "time2": "non_solution",
+      "suspect": "non_solution"
+    }
   },
   "DurationConstraint": {
     "tag": "neutral_structure",
     "source_clue": "The thief did not stay for more than a few hours.",
-    "template": "The thief did not stay for more than a few hours."
+    "template": "The thief remained only a short while—no more than a few hours.",
+    "solution_bind": {}
   },
   "PresenceConstraint": {
     "tag": "neutral_structure",
     "source_clue": "One of you was with the thief today.",
-    "template": "One of you was with the thief today."
+    "template": "One of you was in the thief’s company at some point today.",
+    "solution_bind": {}
   },
   "AbsenceConstraint": {
     "tag": "neutral_structure",
     "source_clue": "No one was in the North wing during the event.",
-    "template": "No one was in the {location} during the event."
+    "template": "No one was in the {location} during the event.",
+    "solution_bind": {
+      "location": "non_solution"
+    }
   },
   "AudioOnlyEvent": {
     "tag": "non_solution_support",
     "source_clue": "Mr. Green said he heard the sound of breaking glass as he was rushing to Breakfast. He was afraid of missing the meal so he didn't stop to check it out.",
-    "template": "{suspect} said he heard the sound of breaking glass as he was rushing to {time}."
+    "template": "{suspect} heard breaking glass while hurrying to {time}.",
+    "solution_bind": {
+      "suspect": "non_solution",
+      "time": "solution"
+    }
   },
   "UnverifiedDisturbance": {
     "tag": "non_solution_support",
     "source_clue": "After lunch I was looking out from the ballroom window when I saw a shadow move in a nearby room; it was probably just the cat.",
-    "template": "I saw a shadow move in a nearby room... it was probably just the cat."
+    "template": "I noticed a shadow in a nearby room; it may have been only the cat.",
+    "solution_bind": {}
   },
   "RoleItemMapping": {
     "tag": "non_solution_support",
     "source_clue": "Mr. Green went in costume as a Decorated Soldier. Miss Scarlet went as an Armed Burglar.",
-    "template": "{suspect1} went in costume as a {role1}. {suspect2} went as a {role2}."
+    "template": "{suspect1} wore a {role1} costume; {suspect2} appeared as a {role2}.",
+    "solution_bind": {
+      "suspect1": "non_solution",
+      "suspect2": "non_solution"
+    }
   },
   "CostumeImpliesItem": {
     "tag": "solution_support",
     "source_clue": "Colonel Mustard went in costume as an old Sea Captain. Mrs. Meadow-Brook went as a Librarian.",
-    "template": "{suspect1} went in costume as a {role1}. {suspect2} went as a {role2}."
+    "template": "{suspect1} dressed as a {role1}, and {suspect2} as a {role2}. {suspect} was named in connection.",
+    "solution_bind": {
+      "suspect1": "solution",
+      "suspect2": "non_solution",
+      "suspect": "non_solution"
+    }
   },
   "AfterMeetingConstraint": {
     "tag": "non_solution_support",
     "source_clue": "The thief arrived after the book reading.",
-    "template": "The thief arrived after the {event}."
+    "template": "The thief arrived only after the {event}.",
+    "solution_bind": {}
   },
   "RelativeEventTiming": {
     "tag": "non_solution_support",
     "source_clue": "The party didn't start until after lunch.",
-    "template": "The party didn't start until after {time}."
+    "template": "The gathering did not begin until after {time}.",
+    "solution_bind": {
+      "time": "solution"
+    }
   },
   "ScheduleIntersection": {
     "tag": "non_solution_support",
     "source_clue": "The men were tied up playing poker from teatime until midnight.",
-    "template": "The men were tied up playing poker from {time1} until {time2}."
+    "template": "The men were occupied with cards from {time1} until {time2}.",
+    "solution_bind": {
+      "time1": "solution",
+      "time2": "non_solution"
+    }
   },
   "DerivedTimeWindow": {
     "tag": "neutral_structure",
     "source_clue": "If the theft happened after teatime it had to be a woman who did it.",
-    "template": "If the theft happened after {time}, it had to be a {group} who did it."
-  },
-  "TemporaryNeglectWindow": {
-    "tag": "solution_support",
-    "source_clue": "Lady Lavender was slightly uncomfortable during dinner and took her jacket off. I believe she put it on the back of her chair.",
-    "template": "{suspect} took her jacket off and put it on the back of her chair."
-  },
-  "OwnerSeparatedFromItem": {
-    "tag": "non_solution_support",
-    "source_clue": "Lady Lavender left her jacket on the back of her chair in the dining room.",
-    "template": "{suspect} left her jacket on the back of her chair in the {location}."
+    "template": "If the theft happened after {time}, it could only have been a {group}.",
+    "solution_bind": {
+      "time": "non_solution"
+    }
   },
   "ProximityOpportunity": {
     "tag": "non_solution_support",
     "source_clue": "The guests that arrived with Lady Lavender seemed especially impressed by the jewelry--almost overly interested.",
-    "template": "The two guests who arrived with {suspect} took a keen interest in the {item}."
+    "template": "Those who arrived with {suspect} took keen interest in the {item}.",
+    "solution_bind": {
+      "suspect": "non_solution",
+      "item": "non_solution"
+    }
   },
   "NearestSuspectWindow": {
     "tag": "non_solution_support",
     "source_clue": "When Lavender left her jacket, Mustard seized the opportunity.",
-    "template": "When {suspect1} left her jacket, {suspect2} seized the opportunity."
+    "template": "When {suspect1} stepped away, {suspect2} seized the moment.",
+    "solution_bind": {
+      "suspect1": "non_solution",
+      "suspect2": "non_solution"
+    }
   },
   "ItemOriginFilter": {
     "tag": "non_solution_support",
     "source_clue": "The Item displayed in the Hall had been given to Mr. Boddy by his uncle.",
-    "template": "The {item} displayed in the {location} had been given to Mr. Boddy by his uncle."
+    "template": "The {item} in the {location} was a gift from Mr. Boddy’s uncle.",
+    "solution_bind": {
+      "item": "non_solution",
+      "location": "non_solution"
+    }
   },
   "LatestPossibleTime": {
     "tag": "neutral_structure",
     "source_clue": "He discovered the theft before sundown.",
-    "template": "He discovered the theft before {time}."
+    "template": "The loss was discovered before {time}.",
+    "solution_bind": {
+      "time": "solution"
+    }
   },
   "AccessTrail": {
     "tag": "non_solution_support",
     "source_clue": "There is a trail of footprints in the snow from a kitchen window to here.",
-    "template": "There is a trail of footprints in the snow from the {location} to here."
+    "template": "Footprints in the snow led from the {location} to here.",
+    "solution_bind": {
+      "location": "non_solution"
+    }
   },
   "KeyMovementInference": {
     "tag": "solution_support",
     "source_clue": "Mrs. White told me that the key that opens the cases in which all the valuables were displayed was missing from its hook in the kitchen by the time she served breakfast.",
-    "template": "The key that opens the cases was missing from its hook in the {location}."
+    "template": "The key for the display cases was missing from its hook in the {location}. This was by {time}. {suspect} was named in connection.",
+    "solution_bind": {
+      "location": "solution",
+      "time": "solution",
+      "suspect": "non_solution"
+    }
   },
   "Greed": {
     "tag": "non_solution_support",
     "source_clue": "The guests that arrived with Lady Lavender seemed especially impressed by the jewelry--almost overly interested.",
-    "template": "The guests seemed especially impressed by the {item}, lingering over it with interest."
+    "template": "The guests seemed especially impressed by the {item}, lingering over it with interest.",
+    "solution_bind": {
+      "item": "non_solution"
+    }
   },
   "Impulse": {
     "tag": "non_solution_support",
     "source_clue": "Such a criminal impulse — Scarlet used the spyglass to eavesdrop and then nicked it on the spot.",
-    "template": "Such a criminal impulse—{suspect} used the {item} and then nicked it on the spot."
+    "template": "Such a criminal impulse—{suspect} used the {item} and then nicked it on the spot.",
+    "solution_bind": {
+      "suspect": "non_solution",
+      "item": "solution"
+    }
   },
   "Curiosity": {
     "tag": "non_solution_support",
     "source_clue": "Miss Scarlet had picked up some limited lip-reading skills and used the spyglass to look in on the meeting.",
-    "template": "{suspect} had picked up some lip-reading skills and used the {item} to look in on the meeting."
+    "template": "{suspect} had picked up some lip-reading skills and used the {item} to look in on the meeting.",
+    "solution_bind": {
+      "suspect": "non_solution",
+      "item": "non_solution"
+    }
   },
   "Revenge": {
     "tag": "non_solution_support",
     "source_clue": "There was a little spat over breakfast; apparently one guest did not appreciate hearing details of the last hunt.",
-    "template": "There was a little spat over {time}; one guest did not appreciate the remarks."
+    "template": "There was a little spat over {time}; one guest did not appreciate the remarks.",
+    "solution_bind": {
+      "time": "solution"
+    }
   },
   "PreventAnEvent": {
     "tag": "non_solution_support",
     "source_clue": "She thought her only way out was to steal the revolver and stop the hunt from happening.",
-    "template": "{suspect} thought the only way out was to steal the {item} and stop the event from happening."
+    "template": "{suspect} thought the only way out was to steal the {item} and stop the event from happening.",
+    "solution_bind": {
+      "suspect": "non_solution",
+      "item": "non_solution"
+    }
   },
   "FearDrivenTheft": {
     "tag": "non_solution_support",
     "source_clue": "Poor Mrs. White was terrified by the storm... driven by her fears to steal the revolver for protection.",
-    "template": "{suspect} was terrified by the storm, driven by fear to steal the {item} for protection."
+    "template": "{suspect} was terrified by the storm, driven by fear to steal the {item} for protection.",
+    "solution_bind": {
+      "suspect": "non_solution",
+      "item": "non_solution"
+    }
   },
   "ProtectiveTheft": {
     "tag": "non_solution_support",
     "source_clue": "Mrs. White was afraid of what Mr. Boddy would say when she told him she dropped his crystal paperweight on his medal...",
-    "template": "{suspect} was afraid of what Mr. Boddy would say and tried to conceal the mishap by taking the {item}."
+    "template": "{suspect} was afraid of what Mr. Boddy would say and tried to conceal the mishap by taking the {item}.",
+    "solution_bind": {
+      "suspect": "non_solution",
+      "item": "non_solution"
+    }
   },
   "CoverUp": {
     "tag": "non_solution_support",
     "source_clue": "Someone tried to pick the lock on the study... then caused a terrible mess in the dining room as a distraction.",
-    "template": "Someone tried to pick the lock on the {location}, then caused a terrible mess in the {location2} as a distraction."
+    "template": "Someone tried to pick the lock on the {location}, then caused a terrible mess in the {location2} as a distraction.",
+    "solution_bind": {
+      "location": "non_solution",
+      "location2": "non_solution"
+    }
   },
   "Desperation": {
     "tag": "non_solution_support",
     "source_clue": "Professor Plum was so desperate he stole the letter opener to try to pick the study door's lock.",
-    "template": "{suspect} was so desperate he stole the {item} to try to pick the {location} door's lock."
+    "template": "{suspect} was so desperate he stole the {item} to try to pick the {location} door's lock.",
+    "solution_bind": {
+      "suspect": "non_solution",
+      "item": "non_solution",
+      "location": "non_solution"
+    }
   },
   "InformationShock": {
     "tag": "non_solution_support",
     "source_clue": "Whatever was said in the meeting upset Scarlet so much she nicked the spyglass there and then.",
-    "template": "Whatever was said in the meeting upset {suspect} so much she nicked the {item} there and then."
+    "template": "Whatever was said in the meeting upset {suspect} so much she nicked the {item} there and then.",
+    "solution_bind": {
+      "suspect": "non_solution",
+      "item": "solution"
+    }
   },
   "EmotionalReactionTheft": {
     "tag": "non_solution_support",
     "source_clue": "Mrs. Meadowbrook became so upset listening to the men discuss the hunt that she stole the revolver.",
-    "template": "{suspect} became so upset listening to the discussion that she stole the {item}."
+    "template": "{suspect} became so upset listening to the discussion that she stole the {item}.",
+    "solution_bind": {
+      "suspect": "non_solution",
+      "item": "non_solution"
+    }
   },
   "ImpulsiveAfterRevelation": {
     "tag": "non_solution_support",
     "source_clue": "Such a criminal impulse — Scarlet had just learned something and stole the spyglass immediately.",
-    "template": "Such a criminal impulse—{suspect} had just learned something and stole the {item} immediately."
+    "template": "Such a criminal impulse—{suspect} had just learned something and stole the {item} immediately.",
+    "solution_bind": {
+      "suspect": "non_solution",
+      "item": "solution"
+    }
   },
   "GeneralInventoryCheck": {
     "tag": "non_solution_support",
     "source_clue": "I can assure you all of Mr. Boddy's belongings were accounted for by late morning; I always take an inventory.",
-    "template": "I can assure you all of Mr. Boddy's belongings were accounted for by {time}."
+    "template": "I can confirm all of Mr. Boddy’s belongings were accounted for by {time}.",
+    "solution_bind": {
+      "time": "non_solution"
+    }
   },
   "FunctionalSetMissingItem": {
     "tag": "neutral_structure",
     "source_clue": "Mr. Boddy wanted to take care of some financial affairs but part of his Desk Set was missing.",
-    "template": "Mr. Boddy wanted to take care of some affairs but part of his {item_category} set was missing."
+    "template": "When Mr. Boddy went to use his {item_category} set, one piece was absent.",
+    "solution_bind": {}
   },
   "KitCompletionCheck": {
     "tag": "non_solution_support",
     "source_clue": "As I prepared Mr. Boddy's hunting kit, I found the spy glass and pocket watch, but I could not find the last item I needed to complete his outfit.",
-    "template": "As I prepared Mr. Boddy's {kit}, I found the {item1} and {item2}, but could not find the last item needed to complete his outfit."
+    "template": "While preparing Mr. Boddy’s {kit}, I found the {item1} and {item2} but could not locate the final piece.",
+    "solution_bind": {
+      "item1": "non_solution",
+      "item2": "non_solution"
+    }
   },
   "ItemReturnedLater": {
     "tag": "non_solution_support",
     "source_clue": "Unfortunately the pocket watch was damaged during Mr. Boddy's vacation and was being fixed by a local repair shop. It was never in the mansion yesterday; it was returned this morning.",
-    "template": "The {item} was never in the mansion yesterday; it was returned this morning."
+    "template": "The {item} was not in the house yesterday; it was returned this morning.",
+    "solution_bind": {
+      "item": "non_solution"
+    }
   },
   "ItemMovedBetweenRooms": {
     "tag": "non_solution_support",
     "source_clue": "Someone had used the letter opener and spy glass because they were not in their usual place; I put them back on the shelf.",
-    "template": "Someone had used the {item1} and {item2}; they were not in their usual place, so I put them back on the shelf."
+    "template": "Someone had used the {item1} and {item2}; I found them out of place and put them back.",
+    "solution_bind": {
+      "item1": "non_solution",
+      "item2": "non_solution"
+    }
   },
   "ItemUnderRepair": {
     "tag": "non_solution_support",
     "source_clue": "Unfortunately the pocket watch was damaged during Mr. Boddy's vacation and was being fixed by a local repair shop. It was never in the mansion yesterday; it was returned this morning.",
-    "template": "The {item} was damaged during Mr. Boddy's vacation and was being fixed by a local repair shop."
+    "template": "The {item} was away at a repair shop after being damaged on Mr. Boddy’s trip.",
+    "solution_bind": {
+      "item": "non_solution"
+    }
   },
   "BrokenObjectIndicator": {
     "tag": "solution_support",
     "source_clue": "Mrs. White told me something rather interesting: she was cleaning some room in the north wing yesterday afternoon and found broken glass.",
-    "template": "Mrs. White told me something rather interesting: she was cleaning the {location} yesterday afternoon and found broken glass."
+    "template": "{suspect} mentioned broken glass found while cleaning the {location}.",
+    "solution_bind": {
+      "suspect": "non_solution",
+      "location": "solution"
+    }
   },
   "PhysicalDisturbanceTrace": {
     "tag": "non_solution_support",
     "source_clue": "After dinner I entered the study and noticed that someone had used the letter opener and spy glass because they were not in their usual place.",
-    "template": "After {time} I entered the {location} and noticed that the {item1} and {item2} were not in their usual place."
+    "template": "After {time}, I entered the {location} and noticed the {item1} and {item2} displaced.",
+    "solution_bind": {
+      "time": "non_solution",
+      "location": "non_solution",
+      "item1": "non_solution",
+      "item2": "non_solution"
+    }
   },
   "Footprints": {
     "tag": "non_solution_support",
     "source_clue": "There is a trail of footprints in the snow from a kitchen window to here...",
-    "template": "There is a trail of footprints in the snow from the {location} to here."
+    "template": "There was a trail of footprints in the snow from the {location}.",
+    "solution_bind": {
+      "location": "non_solution"
+    }
   },
   "WaterStains": {
     "tag": "non_solution_support",
     "source_clue": "I found this clue that might lead to the location of the crime: the paper is water-stained, but the name of the room ends in the letter Y.",
-    "template": "I found this clue; the paper is water-stained."
+    "template": "The paper clue was damp and marked with water stains.",
+    "solution_bind": {}
   },
   "DamagedContainer": {
     "tag": "solution_support",
     "source_clue": "Mrs. White told me that the key that opens the cases in which all the valuables were displayed was missing from its hook in the kitchen by the time she served breakfast.",
-    "template": "The display case showed signs of tampering, as if it had been forced or pried."
+    "template": "The display case showed signs of tampering, as if pried or forced. It was in the {location}. This was by {time}. {suspect} was named in connection.",
+    "solution_bind": {
+      "location": "solution",
+      "time": "solution",
+      "suspect": "non_solution"
+    }
   },
   "ForcedLock": {
     "tag": "neutral_structure",
     "source_clue": "Strangely the door to the secret passage has been forced open from the inside... rather violently in fact.",
-    "template": "Strangely the door to the {location} has been forced open from the inside."
+    "template": "The {location} door bore signs of being forced open from within.",
+    "solution_bind": {
+      "location": "non_solution"
+    }
   },
   "MisplacedDebris": {
     "tag": "non_solution_support",
     "source_clue": "Professor Plum spilt soup in his lap...",
-    "template": "{suspect} spilt soup in his lap, leaving a most untidy mess."
+    "template": "{suspect} spilt soup and left a notable mess.",
+    "solution_bind": {
+      "suspect": "non_solution"
+    }
   },
   "BluntForceDamage": {
     "tag": "solution_support",
     "source_clue": "This morning I found Mr. Boddy's expensive spy glass in the secret passage; it had been damaged with a large dent in the metal on one end.",
-    "template": "This morning I found Mr. Boddy's {item} with a large dent in the metal on one end."
+    "template": "Mr. Boddy’s {item} bore a heavy dent at one end.",
+    "solution_bind": {
+      "item": "non_solution"
+    }
   },
   "StruggleEvidence": {
     "tag": "non_solution_support",
     "source_clue": "Poor misguided Professor Plum... he had gone missing... then the spy glass was found dented in the secret passage.",
-    "template": "There were signs of a struggle, and soon after the {item} was found dented in the {location}."
+    "template": "There were signs of a struggle, and later the {item} was found dented in the {location}.",
+    "solution_bind": {
+      "item": "non_solution",
+      "location": "non_solution"
+    }
   },
   "EventWithRules": {
     "tag": "non_solution_support",
     "source_clue": "The musicians stored their instruments in the conservatory and rested there during their breaks; guests were asked not to use the room.",
-    "template": "The musicians stored their instruments in the {location} and guests were asked not to use the room."
+    "template": "The performers stored their instruments in the {location}, and guests were asked not to enter.",
+    "solution_bind": {
+      "location": "non_solution"
+    }
   },
   "EventThatReassignsObjects": {
     "tag": "neutral_structure",
     "source_clue": "The guests thought it clever to borrow items from Mr. Boddy to complete their costumes; he agreed and lent out valuable items.",
-    "template": "The guests thought it clever to borrow items from Mr. Boddy to complete their costumes, and he agreed to lend out valuables."
+    "template": "Guests borrowed items from Mr. Boddy for costumes, with his consent.",
+    "solution_bind": {}
   },
   "EventThatHidesIdentity": {
     "tag": "neutral_structure",
     "source_clue": "As I was retiring I saw someone running through the corridors; he or she was in costume and I have no idea who it was.",
-    "template": "As I was retiring I saw someone running through the corridors; he or she was in costume and I have no idea who it was."
+    "template": "A costumed figure ran through the corridors, identity unclear.",
+    "solution_bind": {}
   },
   "EventThatMovesEveryone": {
     "tag": "non_solution_support",
     "source_clue": "During tea time all guests were sitting around the rose garden, sunning themselves.",
-    "template": "After {time} all guests were sitting around the {location}, sunning themselves."
+    "template": "After {time}, all guests gathered at the {location} together.",
+    "solution_bind": {
+      "time": "non_solution",
+      "location": "non_solution"
+    }
   },
   "EventThatSplitsGroup": {
     "tag": "solution_support",
     "source_clue": "After the night time ball, Professor Plum, Colonel Mustard, Mrs. Peacock, and Mr. Green went outside to stargaze. Professor Plum is an avid astronomer and was asked to explain what the different constellations were.",
-    "template": "After {time}, {suspect1}, {suspect2}, {suspect3}, and {suspect4} went outside together."
+    "template": "After {time}, {suspect1}, {suspect2}, {suspect3}, and {suspect4} went outside together. {suspect} was named in connection.",
+    "solution_bind": {
+      "time": "non_solution",
+      "suspect1": "solution",
+      "suspect2": "non_solution",
+      "suspect3": "non_solution",
+      "suspect4": "non_solution",
+      "suspect": "non_solution"
+    }
   },
   "EventThatLocksRooms": {
     "tag": "non_solution_support",
     "source_clue": "No one was allowed in the kitchen during the party since Mrs. White was busy preparing meals and didn't want to be disturbed.",
-    "template": "No one was allowed in the {location} during the party since Mrs. White was busy preparing meals."
+    "template": "The {location} was kept off-limits while {suspect} prepared meals.",
+    "solution_bind": {
+      "location": "non_solution",
+      "suspect": "non_solution"
+    }
   },
   "EventThatCreatesDistraction": {
     "tag": "non_solution_support",
     "source_clue": "Plum had to cause a distraction and what a mess he made of the dining room...",
-    "template": "{suspect} had to cause a distraction and what a mess he made of the {location}."
+    "template": "{suspect} created a distraction and left the {location} in a mess.",
+    "solution_bind": {
+      "suspect": "non_solution",
+      "location": "non_solution"
+    }
   },
   "EventThatCreatesVictim": {
     "tag": "non_solution_support",
     "source_clue": "Most disturbing of all: the good Professor Plum has gone missing.",
-    "template": "Most disturbing of all: {suspect} has gone missing."
+    "template": "Most troubling: {suspect} went missing.",
+    "solution_bind": {
+      "suspect": "non_solution"
+    }
   },
   "EventThatForcesSchedule": {
     "tag": "non_solution_support",
     "source_clue": "I've just learned something important: Mr. Boddy was meeting with guests yesterday to go over private issues concerning his impending inheritance. He met with them one by one outside at the fountain.",
-    "template": "Mr. Boddy was meeting with guests one by one outside at the {location}."
+    "template": "Mr. Boddy met guests one by one outside at the {location}.",
+    "solution_bind": {
+      "location": "non_solution"
+    }
   },
   "EventThatCreatesCrowds": {
     "tag": "non_solution_support",
     "source_clue": "Dinner was a very informal affair with no assigned seats, but I do remember that everybody was present.",
-    "template": "Dinner was a very informal affair with no assigned seats, but everybody was present."
+    "template": "{time} was informal, yet everyone was present.",
+    "solution_bind": {
+      "time": "non_solution"
+    }
   },
   "EventThatCreatesIsolation": {
     "tag": "non_solution_support",
     "source_clue": "Prince Azure was slightly embarrassed to find that he had arrived before any of the other guests and had to eat his Lunch alone.",
-    "template": "{suspect} was slightly embarrassed to find that he had arrived before any of the other guests and had to eat his {time} alone."
+    "template": "{suspect} arrived early and took {time} alone.",
+    "solution_bind": {
+      "suspect": "non_solution",
+      "time": "non_solution"
+    }
   },
   "EavesdroppingEvent": {
     "tag": "non_solution_support",
     "source_clue": "Scarlet used the spyglass to look in on the meeting.",
-    "template": "{suspect} used the {item} to look in on the meeting."
+    "template": "{suspect} used the {item} to peer into the meeting.",
+    "solution_bind": {
+      "suspect": "non_solution",
+      "item": "solution"
+    }
   },
   "OverheardSecret": {
     "tag": "non_solution_support",
     "source_clue": "Mrs. White is quite upset. She says she overheard someone saying that he wants Mr. Boddy's new rare cook and is afraid she's being replaced.",
-    "template": "Mrs. White says she overheard someone saying he wants Mr. Boddy's {phrase}."
+    "template": "{suspect} overheard talk of Mr. Boddy’s {phrase}.",
+    "solution_bind": {
+      "suspect": "non_solution"
+    }
   },
   "HiddenObservation": {
     "tag": "non_solution_support",
     "source_clue": "After lunch I was looking out from the ballroom window when I saw a shadow move in a nearby room; it was probably just the cat.",
-    "template": "After {time} I was looking out of the window when I saw a shadow move in a nearby room."
+    "template": "After {time}, I noticed a shadow move in a nearby room.",
+    "solution_bind": {
+      "time": "non_solution"
+    }
   },
   "SingleLocationForKeyEvents": {
     "tag": "non_solution_support",
     "source_clue": "I've just learned something important: Mr. Boddy was meeting with guests yesterday to go over private issues concerning his impending inheritance. He met with them one by one outside at the fountain.",
-    "template": "Mr. Boddy was meeting with guests one by one outside at the {location}."
+    "template": "Mr. Boddy conducted his private meetings at the {location}.",
+    "solution_bind": {
+      "location": "non_solution"
+    }
   },
   "HubLocation": {
     "tag": "non_solution_support",
     "source_clue": "During meal times all guests gathered in the dining room to play charades; some complained when Mr. Boddy stumped them with The Great Gatsby.",
-    "template": "During meal times all guests gathered in the {location} to play charades."
+    "template": "During meals, guests gathered in the {location} to play charades.",
+    "solution_bind": {
+      "location": "non_solution"
+    }
   },
   "InformalSocialMixing": {
     "tag": "non_solution_support",
     "source_clue": "The suspects were all together for Breakfast and Dinner, but Lunch was informal and people came and went as they pleased.",
-    "template": "Lunch was informal and people came and went as they pleased."
+    "template": "{time} was informal and guests came and went as they pleased.",
+    "solution_bind": {
+      "time": "solution"
+    }
   },
   "LooselyStructuredEvent": {
     "tag": "non_solution_support",
     "source_clue": "It was a relaxed late-autumn weekend.",
-    "template": "It was a relaxed late-autumn weekend."
+    "template": "It was a relaxed weekend with no strict schedule.",
+    "solution_bind": {}
   },
   "CrowdedButUnfocused": {
     "tag": "non_solution_support",
     "source_clue": "It's always so hectic when we have a party; I have to keep towels and food sorted as the guests lounge about outside.",
-    "template": "Guests lounged about while the staff kept towels and food sorted."
+    "template": "Guests lounged about while the staff kept towels and food sorted.",
+    "solution_bind": {}
   },
   "CrowdDistractionWindow": {
     "tag": "non_solution_support",
     "source_clue": "When Lavender left her jacket on the back of her chair during dinner, Mustard seized the opportunity.",
-    "template": "When {suspect1} left her jacket on the back of her chair during {time}, {suspect2} seized the opportunity."
+    "template": "When {suspect1} stepped away during {time}, {suspect2} took the chance.",
+    "solution_bind": {
+      "suspect1": "non_solution",
+      "time": "non_solution",
+      "suspect2": "non_solution"
+    }
   },
   "KeyMisplaced": {
     "tag": "solution_support",
     "source_clue": "Mrs. White told me that the key that opens the cases in which all the valuables were displayed was missing from its hook in the kitchen by the time she served breakfast.",
-    "template": "Mrs. White told me that the key that opens the cases in which all the valuables were displayed was missing from its hook in the {location} by the time she served {time}."
+    "template": "The display‑case key was missing from its hook in the {location} by {time}. {suspect} was named in connection.",
+    "solution_bind": {
+      "location": "solution",
+      "time": "solution",
+      "suspect": "non_solution"
+    }
   },
   "KeyStolen": {
     "tag": "solution_support",
     "source_clue": "Mrs. White told me that the key that opens the cases in which all the valuables were displayed was missing from its hook in the kitchen by the time she served breakfast.",
-    "template": "The key that opens the cases in which all the valuables were displayed was missing from its hook in the {location}."
+    "template": "The display‑case key vanished from its hook in the {location}. This was by {time}. {suspect} was named in connection.",
+    "solution_bind": {
+      "location": "solution",
+      "time": "solution",
+      "suspect": "non_solution"
+    }
   },
   "WhoHadTheKey": {
     "tag": "solution_support",
     "source_clue": "Mrs. White told me that the key that opens the cases in which all the valuables were displayed was missing from its hook in the kitchen by the time she served breakfast.",
-    "template": "Mrs. White reported that the key to the display cases was missing from the {location} and {suspect1}, {suspect2}, {suspect3}, and {suspect4} were all seen leaving there before {time}."
+    "template": "{suspect} noted the key missing from the {location}, and {suspect1}, {suspect2}, {suspect3}, and {suspect4} were seen leaving before {time}.",
+    "solution_bind": {
+      "suspect": "non_solution",
+      "location": "solution",
+      "suspect1": "non_solution",
+      "suspect2": "non_solution",
+      "suspect3": "non_solution",
+      "suspect4": "non_solution",
+      "time": "solution"
+    }
   },
   "UnauthorizedAccess": {
     "tag": "neutral_structure",
     "source_clue": "Strangely the door to the secret passage has been forced open from the inside... rather violently in fact.",
-    "template": "Strangely the door to the {location} has been forced open from the inside, rather violently in fact."
+    "template": "The {location} door showed signs of being forced from within.",
+    "solution_bind": {
+      "location": "non_solution"
+    }
   },
   "PrivateAudienceSequence": {
     "tag": "non_solution_support",
     "source_clue": "I've just learned something important: Mr. Boddy was meeting with guests yesterday to go over private issues concerning his impending inheritance. He met with them one by one outside at the fountain.",
-    "template": "Mr. Boddy was meeting with guests to go over private issues, one by one outside at the {location}."
+    "template": "Mr. Boddy was meeting with guests to go over private issues, one by one outside at the {location}.",
+    "solution_bind": {
+      "location": "non_solution"
+    }
   },
   "OneByOneInterviews": {
     "tag": "non_solution_support",
     "source_clue": "He met with them one by one outside at the fountain.",
-    "template": "He met with them one by one outside at the {location}."
+    "template": "He met with them one by one outside at the {location}.",
+    "solution_bind": {
+      "location": "non_solution"
+    }
   },
   "RotatingMeetings": {
     "tag": "non_solution_support",
     "source_clue": "Mrs. Peacock met with Boddy just after Mr. Green did.",
-    "template": "{suspect1} met with Mr. Boddy just after {suspect2} did."
+    "template": "{suspect1} met with Mr. Boddy just after {suspect2} did.",
+    "solution_bind": {
+      "suspect1": "non_solution",
+      "suspect2": "non_solution"
+    }
   },
   "StaggeredConsultations": {
     "tag": "solution_support",
     "source_clue": "Miss Scarlet met with Mr. Boddy in the Early Afternoon, while Professor Plum met with him at Dusk. Mr. Green met with him in the Late Morning. Colonel Mustard met with him at Tea Time.",
-    "template": "{suspect1} met with Mr. Boddy in the {time1}, while {suspect2} met with him at {time2}. {suspect3} met with him in the {time3}. {suspect4} met with him at {time4}."
+    "template": "{suspect1} met with Mr. Boddy in the {time1}, while {suspect2} met with him at {time2}. {suspect3} met with him in the {time3}. {suspect4} met with him at {time4}. This was by {time}. {suspect} was named in connection.",
+    "solution_bind": {
+      "suspect1": "solution",
+      "time1": "non_solution",
+      "suspect2": "non_solution",
+      "time2": "non_solution",
+      "suspect3": "non_solution",
+      "time3": "non_solution",
+      "suspect4": "non_solution",
+      "time4": "non_solution",
+      "time": "non_solution",
+      "suspect": "non_solution"
+    }
   },
   "MisheardPhrase": {
     "tag": "non_solution_support",
     "source_clue": "Mrs. White is quite upset. She says she overheard someone saying that he wants Mr. Boddy's new rare cook and is afraid she's being replaced.",
-    "template": "Mrs. White says she overheard someone saying he wants Mr. Boddy's new {phrase}... though it may have been misheard."
+    "template": "{suspect} heard mention of Mr. Boddy’s {phrase}, though it may have been misheard.",
+    "solution_bind": {
+      "suspect": "non_solution"
+    }
   },
   "SocialExcuse": {
     "tag": "non_solution_support",
     "source_clue": "Mr. Green and Mrs. Peacock left during dinner, even before dessert was served. Hardly said goodbye.",
-    "template": "{suspect1} and {suspect2} left during {time} even before dessert was served, offering only a brief excuse."
+    "template": "{suspect1} and {suspect2} left during {time} with only a brief excuse.",
+    "solution_bind": {
+      "suspect1": "non_solution",
+      "suspect2": "non_solution",
+      "time": "non_solution"
+    }
   },
   "WeatherDisruption": {
     "tag": "non_solution_support",
     "source_clue": "A storm has been raging all day and night, playing havoc with the lights and the nerves...",
-    "template": "A storm raged all day and night, playing havoc with the lights and the nerves."
+    "template": "A storm raged through the day, unsettling lights and nerves.",
+    "solution_bind": {}
   },
   "StaffRoutine": {
     "tag": "non_solution_support",
     "source_clue": "It's always so hectic when we have a party; I have to keep towels and food sorted as the guests lounge about outside.",
-    "template": "It's always so hectic when we have a party; I must keep towels and food sorted as the guests lounge about."
+    "template": "The staff were run off their feet keeping towels and food sorted.",
+    "solution_bind": {}
   },
   "EventSchedule": {
     "tag": "non_solution_support",
     "source_clue": "The grand ball started after dinner; all the guests were there; the music was magnificent.",
-    "template": "The grand affair started after dinner; all the guests were there; the music was magnificent."
+    "template": "The grand affair began after dinner, music at its height.",
+    "solution_bind": {}
   },
   "PersonalHabit": {
     "tag": "non_solution_support",
     "source_clue": "Prince Azure is an early to bed, early to rise type of gentleman and retired immediately after dinner.",
-    "template": "{suspect} is an early-to-bed, early-to-rise type and retired immediately after {time}."
+    "template": "{suspect} is an early‑to‑bed sort and retired immediately after {time}.",
+    "solution_bind": {
+      "suspect": "non_solution",
+      "time": "non_solution"
+    }
   },
   "Coincidence": {
     "tag": "non_solution_support",
     "source_clue": "After lunch I was looking out from the ballroom window when I saw a shadow move in a nearby room; it was probably just the cat.",
-    "template": "After {time} I saw a shadow move in a nearby room; it was probably just the cat."
+    "template": "After {time}, I saw a shadow in a nearby room; perhaps it was only the cat.",
+    "solution_bind": {
+      "time": "non_solution"
+    }
   },
   "Assumption": {
     "tag": "neutral_structure",
     "source_clue": "It was probably just the cat.",
-    "template": "It was probably just the cat."
+    "template": "It was likely only the cat.",
+    "solution_bind": {}
   },
   "Politeness": {
     "tag": "non_solution_support",
     "source_clue": "It's always so hectic when we have a party... but the guests did make it easier by arriving right on time, just as lunch was being served.",
-    "template": "The guests did make it easier by arriving right on time, just as {time} was being served."
+    "template": "The guests kindly arrived right on time as {time} was served.",
+    "solution_bind": {
+      "time": "non_solution"
+    }
   },
   "Distraction": {
     "tag": "non_solution_support",
     "source_clue": "Plum had to cause a distraction and what a mess he made of the dining room.",
-    "template": "{suspect} had to cause a distraction and what a mess he made of the {location}."
+    "template": "{suspect} made a mess in the {location} to draw attention away.",
+    "solution_bind": {
+      "suspect": "non_solution",
+      "location": "non_solution"
+    }
   },
   "Tradition": {
     "tag": "neutral_structure",
     "source_clue": "The Hunt is an annual fall tradition at Mr. Boddy's mansion.",
-    "template": "The event is an annual tradition at Mr. Boddy's mansion."
+    "template": "The gathering is a long‑standing tradition at Mr. Boddy’s mansion.",
+    "solution_bind": {}
   },
   "LingeringInterest": {
     "tag": "non_solution_support",
     "source_clue": "The guests that arrived with Lady Lavender seemed especially impressed by the jewelry--almost overly interested.",
-    "template": "The guests that arrived with {suspect} seemed especially impressed by the {item}."
+    "template": "Those who arrived with {suspect} took a keen interest in the {item}.",
+    "solution_bind": {
+      "suspect": "non_solution",
+      "item": "non_solution"
+    }
   },
   "AdmiringTheTarget": {
     "tag": "non_solution_support",
     "source_clue": "The guests that arrived with Lady Lavender seemed especially impressed by the jewelry--almost overly interested.",
-    "template": "They seemed especially impressed by the {item}—almost overly interested."
+    "template": "They lingered over the {item}, almost too interested.",
+    "solution_bind": {
+      "item": "non_solution"
+    }
   },
   "EliminationLattice": {
     "tag": "non_solution_support",
     "source_clue": "The theft did not occur in any room where a game was played... the gold pen, spyglass, medal, and billfold were all locked away.",
-    "template": "The theft did not occur in any room where a game was played, and the {item1}, {item2}, {item3}, and {item4} were all locked away."
+    "template": "Theft avoided every game room, and several valuables were confirmed secure, narrowing the field.",
+    "solution_bind": {}
   },
   "TimelineSqueeze": {
     "tag": "non_solution_support",
     "source_clue": "The party didn't start until after lunch... the men were tied up playing poker from teatime until midnight...",
-    "template": "The party didn't start until after {time1}, and the men were tied up playing poker from {time2} until {time3}."
+    "template": "The event began after {time1} and the card game occupied the men from {time2} to {time3}.",
+    "solution_bind": {
+      "time1": "solution",
+      "time2": "non_solution",
+      "time3": "non_solution"
+    }
   },
   "MovementTrace": {
     "tag": "non_solution_support",
     "source_clue": "As Mrs. White prepared for dinner she noted that someone was lurking about in the west wing; it distressed her awfully.",
-    "template": "Mrs. White noted that someone was lurking about in the {location}."
+    "template": "Someone was seen loitering in the {location}, suggesting a path through the house.",
+    "solution_bind": {
+      "location": "non_solution"
+    }
   },
   "ShortVisitTheft": {
     "tag": "neutral_structure",
     "source_clue": "The thief did not stay for more than a few hours.",
-    "template": "The thief did not stay for more than a few hours."
+    "template": "The culprit stayed only a short time before departing.",
+    "solution_bind": {}
   },
   "LockedItemSwitch": {
     "tag": "neutral_structure",
     "source_clue": "The guests thought it clever to borrow items from Mr. Boddy to complete their costumes; he agreed and lent out valuable items.",
-    "template": "The guests thought it clever to borrow items from Mr. Boddy to complete their costumes."
+    "template": "Items were borrowed for costumes, enabling a swap among valuables.",
+    "solution_bind": {}
   },
   "MisdirectionCase": {
     "tag": "non_solution_support",
     "source_clue": "Mrs. White misheard 'rare book' as 'rare cook.'",
-    "template": "Mrs. White misheard {phrase1} as {phrase2}."
+    "template": "A misheard phrase sent attention the wrong way.",
+    "solution_bind": {}
   },
   "SingleWindowCrime": {
     "tag": "neutral_structure",
     "source_clue": "I'm sure that the thief stole the Item just before meeting with Mr. Boddy.",
-    "template": "The theft happened just before meeting with Mr. Boddy."
+    "template": "The theft occurred within a narrow window just before Mr. Boddy’s meeting.",
+    "solution_bind": {}
   },
   "EveryoneTogetherExceptOne": {
     "tag": "solution_support",
     "source_clue": "Dinner was a very informal affair, but I do remember that everybody was present.",
-    "template": "Dinner was informal, but everybody was present... except {suspect}, who had eaten earlier."
+    "template": "Everyone gathered at dinner, save {suspect}, who had eaten earlier. This was by {time}.",
+    "solution_bind": {
+      "suspect": "non_solution",
+      "time": "solution"
+    }
   },
   "OneObjectUnaccountedFor": {
     "tag": "non_solution_support",
     "source_clue": "As I prepared Mr. Boddy's hunting kit, I found the spy glass and pocket watch, but I could not find the last item I needed to complete his outfit.",
-    "template": "As I prepared Mr. Boddy's {kit}, I could not find the last item I needed."
+    "template": "While assembling Mr. Boddy’s {kit}, one item was missing.",
+    "solution_bind": {}
   },
   "BeforeAfterPivot": {
     "tag": "non_solution_support",
     "source_clue": "The theft was discovered before sundown, eliminating dinner, night, and midnight.",
-    "template": "The theft was discovered before {time}, eliminating the later hours."
+    "template": "The loss was discovered before {time}, ruling out the later hours.",
+    "solution_bind": {
+      "time": "solution"
+    }
   },
   "RoomSurvivor": {
     "tag": "non_solution_support",
     "source_clue": "The theft did not occur in the billiard room, kitchen, lounge, rose garden, or dining room.",
-    "template": "The theft did not occur in the {location1}, {location2}, {location3}, {location4}, or {location5}."
+    "template": "The theft did not occur in {location1}, {location2}, {location3}, {location4}, or {location5}.",
+    "solution_bind": {
+      "location1": "non_solution",
+      "location2": "non_solution",
+      "location3": "non_solution",
+      "location4": "non_solution",
+      "location5": "non_solution"
+    }
   },
   "BehaviorFingerprint": {
     "tag": "non_solution_support",
     "source_clue": "Lady Lavender is in a foul mood as she was stood up from some appointment she had made.",
-    "template": "{suspect} was in a foul mood after being stood up."
+    "template": "{suspect}’s sour mood stood out after being stood up.",
+    "solution_bind": {
+      "suspect": "non_solution"
+    }
   },
   "PreventativeTheft": {
     "tag": "non_solution_support",
     "source_clue": "She thought her only way out was to steal the revolver and stop the hunt from happening.",
-    "template": "{suspect} thought the only way out was to steal the {item} and stop the event from happening."
+    "template": "{suspect} took the {item} to prevent the event from proceeding.",
+    "solution_bind": {
+      "suspect": "non_solution",
+      "item": "non_solution"
+    }
   },
   "ImpulseIntervention": {
     "tag": "non_solution_support",
     "source_clue": "Such a criminal impulse — Scarlet stole the spyglass there and then.",
-    "template": "Such a criminal impulse—{suspect} stole the {item} there and then."
+    "template": "In a sudden impulse, {suspect} took the {item} on the spot.",
+    "solution_bind": {
+      "suspect": "non_solution",
+      "item": "solution"
+    }
   },
   "DisguisedAction": {
     "tag": "neutral_structure",
     "source_clue": "As I was retiring I saw someone running through the corridors; he or she was in costume and I have no idea who it was.",
-    "template": "He or she was in costume and I have no idea who it was."
+    "template": "A costumed figure moved through the corridors without being identified.",
+    "solution_bind": {}
   },
   "CostumeSubstitution": {
     "tag": "non_solution_support",
     "source_clue": "Mustard went as a sea captain, Plum as a pharaoh — the brooch and spyglass were swapped.",
-    "template": "{suspect1} went as a {role1}, {suspect2} as a {role2}—the {item1} and {item2} were swapped."
+    "template": "{suspect1} dressed as a {role1} and {suspect2} as a {role2}; the {item1} and {item2} were swapped.",
+    "solution_bind": {
+      "suspect1": "non_solution",
+      "suspect2": "non_solution",
+      "item1": "non_solution",
+      "item2": "non_solution"
+    }
   },
   "AssaultAndTheft": {
     "tag": "non_solution_support",
     "source_clue": "Plum was found unconscious and the spyglass was dented.",
-    "template": "{suspect} was found unconscious and the {item} was dented."
+    "template": "{suspect} was found unconscious, and the {item} bore a dent.",
+    "solution_bind": {
+      "suspect": "non_solution",
+      "item": "non_solution"
+    }
   },
   "HiddenIdentityMovement": {
     "tag": "neutral_structure",
     "source_clue": "As I was retiring I saw someone running through the corridors; he or she was in costume and I have no idea who it was.",
-    "template": "Someone was seen running through the corridors in costume."
+    "template": "A runner in costume was seen in the corridors, identity concealed.",
+    "solution_bind": {}
   },
   "PreMeetingTheft": {
     "tag": "neutral_structure",
     "source_clue": "I'm sure that the thief stole the Item just before meeting with Mr. Boddy.",
-    "template": "I'm sure the thief stole the {item} just before meeting with Mr. Boddy."
+    "template": "The item was taken immediately before Mr. Boddy’s meeting.",
+    "solution_bind": {}
   },
   "ScheduleLockedTimeline": {
     "tag": "solution_support",
     "source_clue": "Miss Scarlet met him in the Early Afternoon, Plum at Dusk, Green in Late Morning, Mustard at Tea Time.",
-    "template": "{suspect1} met him in the {time1}, {suspect2} at {time2}, {suspect3} in {time3}, {suspect4} at {time4}."
+    "template": "{suspect1} met him at {time1}, {suspect2} at {time2}, {suspect3} at {time3}, {suspect4} at {time4}. This was by {time}. {suspect} was named in connection.",
+    "solution_bind": {
+      "suspect1": "solution",
+      "time1": "non_solution",
+      "suspect2": "non_solution",
+      "time2": "non_solution",
+      "suspect3": "non_solution",
+      "time3": "non_solution",
+      "suspect4": "non_solution",
+      "time4": "non_solution",
+      "time": "non_solution",
+      "suspect": "non_solution"
+    }
   },
   "EavesdroppingTheft": {
     "tag": "non_solution_support",
     "source_clue": "Scarlet used the spyglass to look in on the meeting.",
-    "template": "{suspect} used the {item} to look in on the meeting."
-  },
-  "OpportunisticTheft": {
-    "tag": "non_solution_support",
-    "source_clue": "When Lavender left her jacket on the back of her chair, Mustard seized the moment.",
-    "template": "When {suspect1} left her jacket on the back of her chair, {suspect2} seized the moment."
-  },
-  "SetDownAndStolen": {
-    "tag": "non_solution_support",
-    "source_clue": "Rusty told me that Lady Lavender left her jacket at the mansion yesterday during the party.",
-    "template": "{suspect} left her jacket on the back of her chair."
+    "template": "{suspect} used the {item} to observe the meeting and then took it.",
+    "solution_bind": {
+      "suspect": "non_solution",
+      "item": "solution"
+    }
   },
   "SecuredDisplayTheft": {
     "tag": "non_solution_support",
     "source_clue": "The key to the display cases was missing from the kitchen.",
-    "template": "The key to the display cases was missing from the {location}."
+    "template": "The key to the display cases vanished from the {location}.",
+    "solution_bind": {
+      "location": "solution"
+    }
   },
   "ContainerBreach": {
     "tag": "neutral_structure",
     "source_clue": "The key to the display cases was missing from its hook.",
-    "template": "The key to the display cases was missing from its hook."
-  },
-  "OwnerStepsAway": {
-    "tag": "non_solution_support",
-    "source_clue": "When Lady Lavender left her jacket on the back of her chair in the dining room...",
-    "template": "When {suspect} stepped away from her jacket in the {location}..."
-  },
-  "ChairBackPlacement": {
-    "tag": "non_solution_support",
-    "source_clue": "Lady Lavender left her jacket on the back of her chair in the dining room.",
-    "template": "{suspect} left her jacket on the back of her chair in the {location}."
+    "template": "The display case key went missing from its hook.",
+    "solution_bind": {}
   },
   "TabletopPlacement": {
     "tag": "non_solution_support",
     "source_clue": "One guest had the audacity to use Mr. Boddy's prized gold pen to keep score during cribbage; I made sure it was returned and kept safely in his vest pocket.",
-    "template": "One guest used Mr. Boddy's {item} to keep score; I made sure it was returned afterward."
+    "template": "A guest used Mr. Boddy’s {item} at the table; I made certain it was returned.",
+    "solution_bind": {
+      "item": "non_solution"
+    }
   },
   "DistractionWindow": {
     "tag": "non_solution_support",
     "source_clue": "Plum had to cause a distraction and what a mess he made of the dining room.",
-    "template": "{suspect} had to cause a distraction and what a mess he made of the {location}."
+    "template": "{suspect} caused a distraction and left the {location} in disarray.",
+    "solution_bind": {
+      "suspect": "non_solution",
+      "location": "non_solution"
+    }
   },
   "DisplayCaseContainer": {
     "tag": "solution_support",
     "source_clue": "Mrs. White told me that the key that opens the cases in which all the valuables were displayed was missing from its hook in the kitchen by the time she served breakfast.",
-    "template": "Mrs. White told me that the key that opens the display cases was missing from its hook in the {location}."
+    "template": "{suspect} told me that the key that opens the display cases was missing from its hook in the {location}. This was by {time}.",
+    "solution_bind": {
+      "suspect": "non_solution",
+      "location": "solution",
+      "time": "solution"
+    }
   },
   "LockedExhibit": {
     "tag": "solution_support",
     "source_clue": "Mrs. White told me that the key that opens the cases in which all the valuables were displayed was missing from its hook in the kitchen by the time she served breakfast.",
-    "template": "The cases where the valuables were displayed were left locked, yet the key was missing."
+    "template": "The cases where the valuables were displayed were left locked, yet the key was missing. It was in the {location}. This was by {time}. {suspect} was named in connection.",
+    "solution_bind": {
+      "location": "solution",
+      "time": "solution",
+      "suspect": "non_solution"
+    }
   },
   "SecuredStorage": {
     "tag": "neutral_structure",
     "source_clue": "Mr. Boddy had his Jewelry locked up all day.",
-    "template": "Mr. Boddy had his {item_category} locked up all day."
+    "template": "Mr. Boddy had his {item_category} locked up all day.",
+    "solution_bind": {}
   },
   "ItemUsedAsWeapon": {
     "tag": "solution_support",
     "source_clue": "This morning I found Mr. Boddy's expensive spy glass in the secret passage; it had been damaged with a large dent in the metal on one end.",
-    "template": "This morning I found Mr. Boddy's {item} in the {location}, with a heavy dent as if it had been used to strike something."
+    "template": "Mr. Boddy’s {item} was found in the {location} with a heavy dent, as though used to strike.",
+    "solution_bind": {
+      "item": "non_solution",
+      "location": "solution"
+    }
   }
 }

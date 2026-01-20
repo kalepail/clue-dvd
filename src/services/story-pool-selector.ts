@@ -3,7 +3,7 @@ import templates from "../../data/pool-templates.json";
 import { SeededRandom } from "./seeded-random";
 import type { CampaignPlan } from "../types/campaign";
 
-type PoolMap = Record<string, string[]>;
+type PoolMap = Record<string, string[] | Record<string, string>>;
 
 export type StorySpec = {
   theme: string;
@@ -14,7 +14,10 @@ export type StorySpec = {
     tag: string;
     template: string;
     sourceClue: string;
+    solutionBind: Record<string, string>;
   }>;
+  cluePlan: string[][];
+  inspectorPlan: string[][];
 };
 
 const DEFAULT_POOL_COUNTS: Record<string, number> = {
@@ -45,7 +48,7 @@ export function buildStorySpec(plan: CampaignPlan): StorySpec {
   const components: Record<string, string[]> = {};
 
   Object.keys(poolMap).forEach((key) => {
-    const values = poolMap[key] ?? [];
+    const values = normalizePoolValues(poolMap[key]);
     if (values.length === 0) return;
     const count = Math.min(DEFAULT_POOL_COUNTS[key] ?? 1, values.length);
     components[key] = pickUnique(rng, values, count);
@@ -54,7 +57,10 @@ export function buildStorySpec(plan: CampaignPlan): StorySpec {
   const theme = components.StoryThemes?.[0] ?? "HouseFullOfGuests";
   const archetype = components.CaseArchetypes?.[0] ?? "EliminationLattice";
 
-  const templateMap = templates as Record<string, { tag: string; source_clue: string; template: string }>;
+  const templateMap = templates as Record<
+    string,
+    { tag: string; source_clue: string; template: string; solution_bind?: Record<string, string> }
+  >;
   const selectedTemplates = Object.values(components)
     .flat()
     .filter((id) => Boolean(templateMap[id]))
@@ -63,9 +69,14 @@ export function buildStorySpec(plan: CampaignPlan): StorySpec {
       tag: templateMap[id].tag,
       template: templateMap[id].template,
       sourceClue: templateMap[id].source_clue,
+      solutionBind: templateMap[id].solution_bind ?? {},
     }));
 
-  return { theme, archetype, components, templates: selectedTemplates };
+  const templateIds = selectedTemplates.map((entry) => entry.id);
+  const cluePlan = buildPlan(rng, templateIds, 8, 1);
+  const inspectorPlan = buildPlan(rng, templateIds, 2, 1);
+
+  return { theme, archetype, components, templates: selectedTemplates, cluePlan, inspectorPlan };
 }
 
 function pickUnique(rng: SeededRandom, values: string[], count: number): string[] {
@@ -78,4 +89,28 @@ function pickUnique(rng: SeededRandom, values: string[], count: number): string[
     if (index >= 0) remaining.splice(index, 1);
   }
   return picked;
+}
+
+function normalizePoolValues(value: string[] | Record<string, string> | undefined): string[] {
+  if (!value) return [];
+  if (Array.isArray(value)) return value;
+  return Object.keys(value);
+}
+
+function buildPlan(
+  rng: SeededRandom,
+  values: string[],
+  rows: number,
+  columns: number
+): string[][] {
+  const plan: string[][] = [];
+  const pool = values.length ? values : ["Fallback"];
+  for (let row = 0; row < rows; row += 1) {
+    const entry: string[] = [];
+    for (let col = 0; col < columns; col += 1) {
+      entry.push(rng.pick(pool));
+    }
+    plan.push(entry);
+  }
+  return plan;
 }

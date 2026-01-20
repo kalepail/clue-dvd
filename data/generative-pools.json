@@ -104,7 +104,6 @@
     "TemporaryCustody": "non_solution_support",
     "ItemSubstituted": "non_solution_support",
     "ItemRecoveredFromWrongPerson": "non_solution_support",
-    "ItemWornByGuest": "non_solution_support",
     "WearableValuable": "non_solution_support",
     "SociallyDisplayedItem": "non_solution_support"
   },
@@ -150,8 +149,6 @@
     "RelativeEventTiming": "non_solution_support",
     "ScheduleIntersection": "non_solution_support",
     "DerivedTimeWindow": "neutral_structure",
-    "TemporaryNeglectWindow": "solution_support",
-    "OwnerSeparatedFromItem": "non_solution_support",
     "ProximityOpportunity": "non_solution_support",
     "NearestSuspectWindow": "non_solution_support",
     "ArrivalGroupCluster": "solution_support",
@@ -267,11 +264,7 @@
   },
   "OpportunityMechanics": {
     "ItemSetDown": "solution_support",
-    "OwnerStepsAway": "non_solution_support",
-    "GarmentRemoved": "solution_support",
-    "ChairBackPlacement": "non_solution_support",
     "TabletopPlacement": "non_solution_support",
-    "UnattendedMoment": "non_solution_support",
     "DistractionWindow": "non_solution_support"
   },
   "CaseArchetypes": {
@@ -297,9 +290,7 @@
     "PreMeetingTheft": "neutral_structure",
     "ScheduleLockedTimeline": "solution_support",
     "EavesdroppingTheft": "non_solution_support",
-    "OpportunisticTheft": "non_solution_support",
     "BorrowedItemLift": "neutral_structure",
-    "SetDownAndStolen": "non_solution_support",
     "SecuredDisplayTheft": "non_solution_support",
     "KeyAccessCrime": "solution_support",
     "EarlyMorningTheft": "solution_support",
