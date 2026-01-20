@@ -4,7 +4,7 @@ import {
   generatePlanOnly,
   validateScenario,
 } from "../services/scenario-generator";
-import { generateButlerClues, getLastButlerAiDebug } from "../services/ai-butler-clues";
+import { generateStoryPackage, getLastStoryAiDebug } from "../services/ai-story-generator";
 import type { GenerateCampaignRequest } from "../types/campaign";
 
 const scenarios = new Hono<{ Bindings: CloudflareBindings }>();
@@ -37,11 +37,8 @@ const handleGenerateScenario = async (c: Context<{ Bindings: CloudflareBindings 
       if (!apiKey) {
         throw new Error("OPENAI_API_KEY is not configured.");
       }
-      const aiClues = await generateButlerClues(apiKey, {
-        clueCount: 8,
-        solution: plan.solution,
-      });
-      scenario = applyButlerClues(baseScenario, aiClues);
+      const story = await generateStoryPackage(apiKey, { plan });
+      scenario = applyStoryPackage(baseScenario, story);
     }
     const validation = validateScenario(scenario);
 
@@ -138,7 +135,7 @@ scenarios.post("/validate", async (c) => {
 // AI-enhanced scenario endpoints removed
 
 scenarios.get("/last-ai.json", (c) => {
-  const output = getLastButlerAiDebug();
+  const output = getLastStoryAiDebug();
   if (!output) {
     return c.text("No AI scenario has been generated yet.", 404);
   }
@@ -149,6 +146,7 @@ scenarios.get("/last-ai.json", (c) => {
     parsed: output.parsed ?? null,
     answerKey: output.answerKey ?? null,
     formattedClues: output.formattedClues ?? null,
+    storySpec: output.storySpec,
   }, null, 2), {
     headers: {
       "Content-Type": "application/json; charset=utf-8",
@@ -158,7 +156,7 @@ scenarios.get("/last-ai.json", (c) => {
 });
 
 scenarios.get("/last-ai-stages.json", (c) => {
-  const output = getLastButlerAiDebug();
+  const output = getLastStoryAiDebug();
   if (!output) {
     return c.text("No AI scenario has been generated yet.", 404);
   }
@@ -171,6 +169,7 @@ scenarios.get("/last-ai-stages.json", (c) => {
     },
     answerKey: output.answerKey ?? null,
     formattedClues: output.formattedClues ?? null,
+    storySpec: output.storySpec,
   }, null, 2), {
     headers: {
       "Content-Type": "application/json; charset=utf-8",
@@ -179,21 +178,39 @@ scenarios.get("/last-ai-stages.json", (c) => {
   });
 });
 
-function applyButlerClues(
+function applyStoryPackage(
   scenario: ReturnType<typeof generateScenarioWithPlan>["scenario"],
-  aiClues: string[]
+  story: {
+    opening: string;
+    butlerClues: string[];
+    inspectorNotes: string[];
+    closing: string;
+  }
 ) {
   const butlerClues = scenario.clues.filter((clue) => clue.type === "butler");
-  if (butlerClues.length !== aiClues.length) {
-    throw new Error(`Expected ${butlerClues.length} butler clues, received ${aiClues.length}.`);
+  if (butlerClues.length !== story.butlerClues.length) {
+    throw new Error(`Expected ${butlerClues.length} butler clues, received ${story.butlerClues.length}.`);
   }
   let index = 0;
   const clues = scenario.clues.map((clue) => {
     if (clue.type !== "butler") return clue;
-    const text = aiClues[index++];
+    const text = story.butlerClues[index++];
     return { ...clue, text };
   });
-  return { ...scenario, clues };
+  const inspectorNotes = story.inspectorNotes.map((text, noteIndex) => ({
+    id: `N${noteIndex + 1}`,
+    text,
+  }));
+  return {
+    ...scenario,
+    clues,
+    inspectorNotes,
+    narrative: {
+      ...scenario.narrative,
+      opening: story.opening,
+      closing: story.closing,
+    },
+  };
 }
 
 export default scenarios;
