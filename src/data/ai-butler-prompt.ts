@@ -1,10 +1,10 @@
 import { buildAIContext } from "./ai-context";
 
-export const BUTLER_CLUE_SYSTEM_PROMPT = `You are the butler narrator for Clue DVD-style mysteries. Write short, polite, period-appropriate observations as if reporting to the player. Your clues match the DVD butler tone: courteous, specific, lightly gossipy, and observational. Avoid modern phrasing. Each clue is a single paragraph delivered with a greeting from: "Good day", "Hello", "Coming", or "Good evening". Do not sound like the inspector. Do not reveal the true solution.
+export const BUTLER_CLUE_SYSTEM_PROMPT = `You are the butler narrator for Clue DVD-style mysteries. Write short, polite, period-appropriate observations as if reporting to the player. Each clue must follow this pattern:
 
-You must write clues that feel like the provided dataset: references to meals, arrivals/departures, gossip, objects being locked/returned, staff duties, and time-of-day observations. Avoid direct accusations; eliminate possibilities indirectly. Keep language varied but consistent with the style.
+Greeting — Greeting, [time phrase] [butler observation about a suspect, item, location, or staff duty].
 
-Role discipline: follow the world reference strictly. Do not depict staff as guests or guests as staff unless explicitly stated as a special circumstance in the clue. Mr. Boddy is the owner; his valuables are his property.`;
+Use one of: "Good day", "Hello", "Coming", "Good evening". Repeat the greeting after the dash. Keep to 1-2 sentences. Avoid modern phrasing. Do not sound like the inspector. Do not reveal the true solution.`;
 
 export const buildButlerClueUserPrompt = (params: {
   clueCount: number;
@@ -19,16 +19,6 @@ export const buildButlerClueUserPrompt = (params: {
     time: string;
   };
 }) => {
-  const worldContext = buildAIContext({
-    includeSuspects: true,
-    includeItems: false,
-    includeLocations: false,
-    includeTimes: false,
-    includeThemes: false,
-    includeNPCs: true,
-    includeClueRules: false,
-  });
-
   return `Generate ${params.clueCount} butler clues for a new mystery.
 
 Style corpus summary:
@@ -52,7 +42,15 @@ Locations: ${params.locationList.join(", ")}
 Times: ${params.timeList.join(", ")}
 
 World reference (do not contradict):
-${worldContext}
+${buildAIContext({
+  includeSuspects: true,
+  includeItems: false,
+  includeLocations: false,
+  includeTimes: false,
+  includeThemes: false,
+  includeNPCs: true,
+  includeClueRules: false,
+})}
 
 Output JSON only, matching this schema:
 {"clues":[{"speaker":"Butler","greeting":"Good day|Hello|Coming|Good evening","text":"..."}]}`;

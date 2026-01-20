@@ -1,0 +1,254 @@
+[
+  {
+    "opening": "All of Mr. Boddy's friends have gathered to welcome him back from his vacation after the tragic death of his attorney, Miles Meadowbrook. Mr. Boddy took several weeks off in the Mediterranean--blew in Monte Carlo, sailed the wine-dark seas, promenaded in Paris, and saw ancient ruins in Greece. He returned just in time to be robbed in his own mansion by one of his own guests. Not the ideal homecoming.",
+    "butler_clues": [
+      "Good day -- If I recall correctly, Mr. Boddy was given the medal by his uncle, the late Dr. Black. Mr. Boddy is quite fond of it.",
+      "Coming -- Mrs. White told me that the key that opens the cases in which all the valuables were displayed was missing from its hook in the kitchen by the time she served breakfast.",
+      "Hello -- Unfortunately the pocket watch was damaged during Mr. Boddy's vacation and was being fixed by a local repair shop. It was never in the mansion yesterday; it was returned this morning.",
+      "Coming -- It's always so hectic when we have a party... but the guests did make it easier by arriving right on time, just as lunch was being served.",
+      "Hello -- During tea time all guests were sitting around the rose garden, sunning themselves. Even Rusty and Mrs. White took a break to enjoy the sun.",
+      "Coming -- Dinner was a very informal affair with no assigned seats, but I do remember that everybody was present.",
+      "Good day -- Mr. Green and Mrs. Peacock left during dinner, even before dessert was served. Hardly said goodbye.",
+      "Hello -- Rusty told me that Lady Lavender left her jacket at the mansion yesterday during the party."
+    ],
+    "inspector_notes": [
+      "Mr. Boddy bought his Desk Items in London.",
+      "The smell of bacon brought all the men to the Kitchen at Dawn.",
+      "The Item displayed in the Hall had been given to Mr. Boddy by his uncle."
+    ],
+    "solution": {
+      "thief": "Prince Azure",
+      "item": "Medal",
+      "location": "Kitchen",
+      "time": "Before breakfast"
+    },
+    "closing": "A good detective knows how to keep track of his evidence, and you've shown tracking skills in spades. Mr. Boddy had one of his souvenirs from Monte Carlo stolen. The theft was discovered before sundown, eliminating later times, and the missing display-case key from the kitchen--along with guests seen leaving before breakfast--pointed the finger. Only a matter of time before your expertise solved the case."
+  },
+  {
+    "opening": "Mr. Boddy gathered all of his friends together at his mansion for an end-of-summer garden party. \"Come enjoy the last of the summer sun,\" the invitation read. But someone in the house had something else on his or her mind other than the weather.",
+    "butler_clues": [
+      "Coming -- I had complimented Lady Lavender on the jewelry on her jacket when she arrived. She told me Mr. Boddy had let her borrow it for the weekend.",
+      "Hello -- Rusty told me that Lady Lavender left her jacket at the mansion yesterday during the party.",
+      "Good day -- Lady Lavender was slightly uncomfortable during dinner and took her jacket off. I believe she put it on the back of her chair.",
+      "Hello -- The guests that arrived with Lady Lavender seemed especially impressed by the jewelry--almost overly interested.",
+      "Coming -- Dinner was a very informal affair, but I do remember that everybody was present.",
+      "Hello -- During tea time all guests were sitting around the rose garden, sunning themselves.",
+      "Good day -- Mr. Green and Mrs. Peacock left during dinner even before dessert was served.",
+      "Coming -- It's always so hectic when we have a party; I have to keep towels and food sorted as the guests lounge about outside."
+    ],
+    "inspector_notes": [
+      "Mrs. Meadow-Brook, Colonel Mustard and Lady Lavender all arrived together."
+    ],
+    "solution": {
+      "thief": "Colonel Mustard",
+      "item": "Scarab Brooch",
+      "location": "Dining Room",
+      "time": "Dinner"
+    },
+    "closing": "Mr. Boddy lent Lady Lavender a valuable piece of jewelry--the scarab brooch. The two guests who arrived with her took a keen interest. When Lavender left her jacket on the back of her chair in the dining room, Mustard seized the moment and stole the brooch. Bravo."
+  },
+  {
+    "opening": "As you all know, Mr. Boddy threw a party yesterday--a day of sport, he called it--something to stir the circulation and challenge the mind. He had the staff line up all the usual games: chess, croquet, billiards, darts... you know the idea. Unfortunately, sometime during the day there was a theft. To make matters worse, the thief was one of the guests. From all Mr. Boddy's goodwill, someone was a very bad sport indeed.",
+    "butler_clues": [
+      "Coming -- For weeks Prince Azure boasted about how good he is at billiards; everyone delighted in watching Miss Scarlet beat him four games to one.",
+      "Hello -- Lady Lavender refused to play any games with Mrs. Peacock, accusing her of being a cheat; it caused quite a stir.",
+      "Good day -- One guest had the audacity to use Mr. Boddy's prized gold pen to keep score during cribbage; I made sure it was returned and kept safely in his vest pocket.",
+      "Coming -- During meal times all guests gathered in the dining room to play charades; some complained when Mr. Boddy stumped them with The Great Gatsby.",
+      "Hello -- Mr. Boddy used the spy glass to watch the croquet match in the rose garden, then returned it to its case and locked it up.",
+      "Good day -- After tea, all the men decided to play poker in the lounge and kept at it until very late.",
+      "Coming -- I overheard Mrs. Peacock ask if anyone would play chess with her at night before bed; one person eventually relented.",
+      "Hello -- During the poker game I overheard Colonel Mustard and Mr. Green trying to get Mr. Boddy to put the medal and billfold into the pot; he locked both away."
+    ],
+    "inspector_notes": [
+      "The theft did not occur in a Location that a game was played at.",
+      "The thief was too distracted to play any games.",
+      "The suspects were all together for Breakfast and Dinner, but Lunch was informal and people came and went as they pleased."
+    ],
+    "solution": {
+      "thief": "Lady Lavender",
+      "item": "Crystal Paperweight",
+      "location": "Hall",
+      "time": "After lunch"
+    },
+    "closing": "The party didn't start until after lunch, and the men were tied up at poker from tea time until midnight. The theft did not occur in any room where a game was played, and the gold pen, spyglass, medal, and billfold were all locked up and accounted for. That left a desk item--and Lady Lavender was the culprit."
+  },
+  {
+    "opening": "The Hunt is an annual fall tradition at Mr. Boddy's mansion, or so the butler tells me. All of Boddy's friends gather for a day of dining, socializing, and of course the main event itself--the hunt. But someone disrupted those plans. A thief decided they had other ideas about what was to be hunted at the mansion.",
+    "butler_clues": [
+      "Hello -- Colonel Mustard was the first to come downstairs just as breakfast was being served; he's always excited about the first hunt of the season.",
+      "Coming -- There was a little spat over breakfast; apparently one guest did not appreciate hearing details of the last hunt.",
+      "Hello -- Mr. Green must have been up late; he almost missed breakfast and slipped in at the very end with apologies.",
+      "Good day -- Mrs. White told me something interesting: she was cleaning a room in the north wing and found broken glass.",
+      "Hello -- It's not my place to judge, but the men ate like pigs at breakfast; Mrs. Meadowbrook asked only for fruit juice before excusing herself and suddenly leaving.",
+      "Coming -- At dinner time last night everyone sat down together, but I sensed uneasiness--perhaps due to the hunt going poorly.",
+      "Good day -- As I prepared Mr. Boddy's hunting kit, I found the spy glass and pocket watch, but I could not find the last item I needed to complete his outfit.",
+      "Coming -- Right before midnight I headed to bed exhausted; I'm sure I was the last one to retire."
+    ],
+    "inspector_notes": [
+      "Mr. Green said he heard the sound of breaking glass as he was rushing to Breakfast. He was afraid of missing the meal so he didn't stop to check it out."
+    ],
+    "solution": {
+      "thief": "Mrs. Meadowbrook",
+      "item": "Revolver",
+      "location": "North Wing",
+      "time": "Morning / breakfast"
+    },
+    "closing": "Someone was unhappy at breakfast. Meadowbrook left with only juice, broken glass was later found in the north wing, and the theft was aimed at stopping the hunt. Meadowbrook stole the revolver--yet you pieced it together and caught her. Well done."
+  },
+  {
+    "opening": "I've been called to Mr. Boddy's mansion once again. A theft has taken place this time during a relaxed late-autumn weekend. There is a chill in the air, winter is on the way, and a thief roams the halls of the mansion.",
+    "butler_clues": [
+      "Coming -- After breakfast I heard the gentlemen in the conservatory talking about books they had read.",
+      "Hello -- I was happy to see that all guests and staff arrived on time for afternoon tea.",
+      "Coming -- As I went to summon the gentlemen for lunch I heard someone speaking very softly; it was only Mr. Boddy reading a passage from an old book to his guests.",
+      "Hello -- I know you all think this is terribly nosy, but I overheard Professor Plum and Lady Lavender making plans to take a walk in the grounds during the afternoon.",
+      "Good day -- After lunch I was looking out from the ballroom window when I saw a shadow move in a nearby room; it was probably just the cat.",
+      "Hello -- During lunch I also overheard Mr. Green and the prince making plans to play billiards after lunch.",
+      "Good day -- I served dinner and everyone was seated almost at the same time; Mr. Boddy asked that I put on the gramophone so they could listen to Mozart.",
+      "Hello -- It was just before midnight when Mr. Boddy went up for the night; the guests followed his lead and retired at the same time."
+    ],
+    "inspector_notes": [
+      "Mrs. White is quite upset. She says she overheard someone saying that he wants Mr. Boddy's new rare cook and is afraid she's being replaced.",
+      "Lady Lavender is in a foul mood as she was stood up from some appointment she had made.",
+      "The thief arrived after the book reading."
+    ],
+    "solution": {
+      "thief": "Professor Plum",
+      "item": "Rare Book",
+      "location": "Near the Conservatory",
+      "time": "Afternoon"
+    },
+    "closing": "Plum was enamored with Mr. Boddy's rare book, stood Lavender up, and took the book instead. The shadowy movement near the conservatory and Mrs. White's misheard 'rare book / rare cook' sealed it. A job well done."
+  },
+  {
+    "opening": "As you know, Mr. Boddy threw a costume party yesterday. He thought it would be a wonderful way to celebrate midwinter--but something went wrong. Someone among the masked revelers and loyal staff is a thief, and most disturbing of all: the good Professor Plum has gone missing.",
+    "butler_clues": [
+      "Coming -- Mr. Boddy asked that none of the staff dress in costume; Rusty was quite disappointed.",
+      "Hello -- The guests thought it clever to borrow items from Mr. Boddy to complete their costumes; he agreed and lent out valuable items.",
+      "Good day -- Prince Azure refused to wear a costume; he said it was beneath him.",
+      "Coming -- No one was allowed in the kitchen during the party since Mrs. White was busy preparing meals and didn't want to be disturbed.",
+      "Hello -- The guests didn't put on their costumes until after breakfast; they headed upstairs to change.",
+      "Good day -- Mrs. Peacock wanted to go as Napoleon but couldn't find the proper hat, so wore no costume.",
+      "Good day -- This morning I found Mr. Boddy's expensive spy glass in the secret passage; it had been damaged with a large dent.",
+      "Hello -- As I was retiring I saw someone running through the corridors; he or she was in costume and I have no idea who it was."
+    ],
+    "inspector_notes": [
+      "Colonel Mustard went in costume as an old Sea Captain. Mrs. Meadow-Brook went as a Librarian.",
+      "Mr. Green went in costume as a Decorated Soldier. Miss Scarlet went as an Armed Burglar.",
+      "After the night time ball, Professor Plum, Colonel Mustard, Mrs. Peacock, and Mr. Green went outside to stargaze. Professor Plum is an avid astronomer and was asked to explain what the different constellations were.",
+      "The Butler saw someone in the secret passages just before Midnight."
+    ],
+    "solution": {
+      "thief": "Colonel Mustard",
+      "item": "Scarab Brooch",
+      "location": "Secret Passage",
+      "time": "Midnight"
+    },
+    "closing": "Mr. Boddy's valuables were lent out for costumes. Plum was found unconscious, and the dented spyglass in the secret passage pointed directly to Mustard's attack and theft. Mustard struck at midnight after the group went out to stargaze. Well done."
+  },
+  {
+    "opening": "Oh dear--spring is in the air and the mansion has thrown open its windows for spring cleaning, or so the butler tells me. But I haven't come to assist in the sweeping. A theft has taken place. Someone in this very house has committed the vile act, and I'm here to make sure the thief amongst us is swept up with the dust.",
+    "butler_clues": [
+      "Hello -- Mr. Boddy did have breakfast with Mr. Green; Mr. Boddy asked that I bring his morning paper while they dined. Lady Lavender showed up just as the meal finished and just had tea.",
+      "Coming -- Professor Plum arrived just in time for lunch and stayed for dinner as well; he apologized for being late.",
+      "Good day -- I saw Rusty help Mr. Green out to his car after midnight; Rusty remembers seeing the letter opener in the hall at this time.",
+      "Hello -- Prince Azure stopped by during lunch, hoping to talk to Lady Lavender, but was too late; he grabbed an apple and left.",
+      "Coming -- Miss Scarlet showed up in the early afternoon and stayed through into the night.",
+      "Good day -- Lady Lavender says she remembers seeing the letter opener and some other desk item on a table this morning.",
+      "Hello -- Colonel Mustard told me he saw someone lurking around in one of the north rooms today, acting suspiciously.",
+      "Coming -- Mrs. Meadowbrook came by just as tea was being served and was the last guest to leave."
+    ],
+    "inspector_notes": [
+      "The theft did not occur any place that was cleaned today.",
+      "Mr. Boddy bought his Desk Items in London.",
+      "No one was in the North wing during the event.",
+      "No one was in the East wing during the event.",
+      "The thief did not stay for more than a few hours.",
+      "The theft was in a room that was only one word."
+    ],
+    "solution": {
+      "thief": "Lady Lavender",
+      "item": "Crystal Paperweight",
+      "location": "Hall",
+      "time": "After lunch"
+    },
+    "closing": "This case depended on narrow timing (a guest present only briefly), and the shift of desk items' placement from morning to midnight. With the north and east wings effectively out and the target narrowed to a desk item, the Hall became the focus--where Lavender walked off with the crystal paperweight after lunch."
+  },
+  {
+    "opening": "Mr. Boddy invited all of his friends to be with him to commemorate the birth of the first grandchild of the king--the Princess Elizabeth--who arrived in England on April the 21st, 1926. It was meant to be a festive occasion: a day of conversation and shared company. Unfortunately, someone decided to mark the arrival of royalty by acting despicably.",
+    "butler_clues": [
+      "Good day -- I'm happy to say that all of your alibis hold up; none of you are the thief.",
+      "Hello -- I found this clue that might lead to the location of the crime: the paper is water-stained, but the name of the room ends in the letter Y.",
+      "Good day -- Mr. Boddy asked me to polish some of his items--namely the letter opener, crystal paperweight, and the pocket watch--as the guests were eating dinner.",
+      "Coming -- I can assure you all of Mr. Boddy's belongings were accounted for by late morning; I always take an inventory.",
+      "Hello -- Mrs. Peacock was with Professor Plum in the early afternoon; Plum was explaining theories on ancient Egypt, no doubt.",
+      "Good day -- Despite trouble Mrs. White set the dinner table; Mr. Green and Prince Azure decided to have dinner in the lounge.",
+      "Coming -- The study and billiard room were being cleaned from before dawn until dinner and were off-limits to the guests.",
+      "Hello -- At dusk I passed Rusty and Mrs. White unpacking patio furniture and preparing the house for the warmer weather."
+    ],
+    "inspector_notes": [
+      "Mr. Boddy still had all his Items during Late Morning.",
+      "One of you was with the thief today.",
+      "The theft was in a room that was only one word."
+    ],
+    "solution": {
+      "thief": "Prince Azure",
+      "item": "Medal",
+      "location": "Library",
+      "time": "Lunch or later"
+    },
+    "closing": "The critical clue was the room name ending in 'Y,' narrowing the location to the library, plus the fact all items were accounted for by late morning--pushing the theft to lunch or later. With the suspect set constrained to those with the thief, Azure was exposed as the one who stole the medal. Scotland Yard owes you their deepest thanks."
+  },
+  {
+    "opening": "Mr. Boddy and his staff had been preparing for weeks for a grand ball. The butler sent out the invitations, hired the musicians, and arranged a full day of food and drink for all of Boddy's close friends. It was to be an all-day music event with a quartet--and then the ball at night. No one realized until it was too late that someone in the house had added burglary to the agenda.",
+    "butler_clues": [
+      "Hello -- Mr. Boddy kept the party running smoothly using his pocket watch to keep both guests and musicians on schedule.",
+      "Good day -- Mr. Green and the professor left the party before the quartet's tea-time performance and did not return.",
+      "Good day -- As Mrs. White prepared for dinner she noted that someone was lurking about in the west wing; it distressed her awfully.",
+      "Coming -- The musicians stored their instruments in the conservatory and rested there during their breaks; guests were asked not to use the room.",
+      "Coming -- I overheard the violinist saying he saw Miss Scarlet when she was last on stage; he even asked her for an autograph.",
+      "Good day -- The grand ball started after dinner; all the guests were there; the music was magnificent.",
+      "Good day -- Mr. Boddy was busy writing letters in the library before the guests arrived.",
+      "Coming -- At midnight after all the guests had left, Mr. Boddy asked me to get his billfold to pay the musicians."
+    ],
+    "inspector_notes": [
+      "Prince Azure was slightly embarrassed to find that he had arrived before any of the other guests and had to eat his Lunch alone.",
+      "Mr. Boddy had his Jewelry locked up all day.",
+      "Professor Plum recalls seeing all of the Antiques during the time he was alone."
+    ],
+    "solution": {
+      "thief": "Miss Scarlet",
+      "item": "Gold Pen",
+      "location": "Library",
+      "time": "Evening / during the ball"
+    },
+    "closing": "With the conservatory off-limits, valuables kept indoors, and the west wing activity pointing toward the library, the final piece was Scarlet being flattered by attention and using the expensive gold pen in the library--then failing to return it. You closed the curtain on that act. Well done."
+  },
+  {
+    "opening": "One week shy of Mr. Boddy's 30th birthday--the day he comes into his full inheritance--Boddy arranged to meet with some of his friends to discuss private business matters. Mr. Boddy has had to put up with a lot of bad behavior lately, but according to his butler the last 24 hours has been almost unbearable. The guests have been avoiding each other all day, creating quite a circus, and to make matters worse amidst this melodrama there was a theft. Boddy's nerves--afraid this theft might just be the last straw.",
+    "butler_clues": [
+      "Coming -- I've just learned something important: Mr. Boddy was meeting with guests yesterday to go over private issues concerning his impending inheritance. He met with them one by one outside at the fountain.",
+      "Coming -- Mrs. Peacock met with Boddy just after Mr. Green did.",
+      "Hello -- Mrs. Peacock and her daughter were clearly upset with Colonel Mustard and stayed as far away from him as possible.",
+      "Coming -- Miss Scarlet and Mrs. Peacock were the first to arrive at breakfast; Scarlet kept asking her mother about her business with Mr. Boddy.",
+      "Good day -- Mr. Green seemed angry with everyone and stayed as far away from Professor Plum as possible.",
+      "Hello -- Professor Plum spent all day in the west wing muttering to himself and clearly agitated.",
+      "Coming -- After his last appointment, I was surprised to find Mr. Boddy in a foul mood; he sent the guests home and dismissed the staff.",
+      "Coming -- After dismissing everyone, Mr. Boddy asked me to prepare his desk items so he could work; he seemed to have quite a weight on his shoulders."
+    ],
+    "inspector_notes": [
+      "I'm sure that the thief stole the Item just before meeting with Mr. Boddy.",
+      "Mr. Boddy wanted to take care of some financial affairs but part of his Desk Set was missing.",
+      "Miss Scarlet met with Mr. Boddy in the Early Afternoon, while Professor Plum met with him at Dusk.",
+      "Mr. Green met with Mr. Boddy in the Late Morning. Colonel Mustard met with Mr. Boddy at Tea Time.",
+      "The thief never helped with any of the events."
+    ],
+    "solution": {
+      "thief": "Miss Scarlet",
+      "item": "Spyglass",
+      "location": "Fountain / grounds",
+      "time": "Late morning"
+    },
+    "closing": "Knowing the thief struck just before meeting with Mr. Boddy was the key. The meeting schedule pinned down the time window, and Scarlet--upset by what she learned--used the spyglass to eavesdrop and then nicked it on the spot. Such a criminal impulse--but you flushed her out. Bravo."
+  }
+]
