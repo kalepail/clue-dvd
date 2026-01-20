@@ -4,12 +4,12 @@ import {
   generatePlanOnly,
   validateScenario,
 } from "../services/scenario-generator";
-import { applyAiScenarioText, generateAiScenarioText, getLastAiScenarioOutput, getLastAiStageOutputs } from "../services/ai-scenario";
+import { generateButlerClues, getLastButlerAiDebug } from "../services/ai-butler-clues";
 import type { GenerateCampaignRequest } from "../types/campaign";
 
 const scenarios = new Hono<{ Bindings: CloudflareBindings }>();
 const DEFAULT_THEME_ID = "AI01";
-const DEV_THEME_ID = "DEV01";
+const AI_THEME_ID = "AI01";
 
 const handleGenerateScenario = async (c: Context<{ Bindings: CloudflareBindings }>) => {
   try {
@@ -32,13 +32,16 @@ const handleGenerateScenario = async (c: Context<{ Bindings: CloudflareBindings 
 
     const { scenario: baseScenario, plan } = generateScenarioWithPlan(request);
     let scenario = baseScenario;
-    if (plan.themeId !== DEV_THEME_ID) {
+    if (plan.themeId === AI_THEME_ID) {
       const apiKey = c.env.OPENAI_API_KEY;
       if (!apiKey) {
         throw new Error("OPENAI_API_KEY is not configured.");
       }
-      const aiText = await generateAiScenarioText(apiKey, plan);
-      scenario = applyAiScenarioText(baseScenario, aiText);
+      const aiClues = await generateButlerClues(apiKey, {
+        clueCount: 8,
+        solution: plan.solution,
+      });
+      scenario = applyButlerClues(baseScenario, aiClues);
     }
     const validation = validateScenario(scenario);
 
@@ -132,90 +135,21 @@ scenarios.post("/validate", async (c) => {
   }
 });
 
-// AI-enhanced scenario generation
-scenarios.post("/generate-enhanced", handleGenerateScenario);
-
-const escapeHtml = (value: string) =>
-  value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
-
-scenarios.get("/last-ai", (c) => {
-  const output = getLastAiScenarioOutput();
-  if (!output) {
-    return c.text("No AI scenario has been generated yet.", 404);
-  }
-
-  const clueLines = output.clues
-    .map((clue, index) => `<li><strong>${index + 1}.</strong> ${escapeHtml(clue)}</li>`)
-    .join("");
-
-  const noteLines = output.inspectorNotes
-    .map((note, index) => `<li><strong>N${index + 1}.</strong> ${escapeHtml(note)}</li>`)
-    .join("");
-
-  const solutionHtml = `<ul>
-      <li><strong>Suspect:</strong> ${escapeHtml(output.solution.suspect)}</li>
-      <li><strong>Item:</strong> ${escapeHtml(output.solution.item)}</li>
-      <li><strong>Location:</strong> ${escapeHtml(output.solution.location)}</li>
-      <li><strong>Time:</strong> ${escapeHtml(output.solution.time)}</li>
-    </ul>`;
-
-  const html = `<!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <title>Latest AI Clues</title>
-    <style>
-      body { font-family: Georgia, "Times New Roman", serif; padding: 24px; color: #111; }
-      h1 { font-size: 24px; margin-bottom: 12px; }
-      h2 { font-size: 18px; margin-top: 20px; }
-      ul { padding-left: 20px; }
-      li { margin: 8px 0; line-height: 1.5; }
-      .narrative p { margin: 8px 0; }
-    </style>
-  </head>
-  <body>
-    <h1>Latest AI Mystery Output</h1>
-    <section>
-      <h2>Event</h2>
-      <p><strong>${escapeHtml(output.event.name)}</strong></p>
-      <p>${escapeHtml(output.event.purpose)}</p>
-    </section>
-    <section class="narrative">
-      <h2>Intro</h2>
-      <p>${escapeHtml(output.intro)}</p>
-      <h2>Opening</h2>
-      ${output.narrative.opening.split("\n").filter(Boolean).map((line) => `<p>${escapeHtml(line)}</p>`).join("")}
-      <h2>Setting</h2>
-      <p>${escapeHtml(output.narrative.setting)}</p>
-      <h2>Atmosphere</h2>
-      <p>${escapeHtml(output.narrative.atmosphere)}</p>
-      <h2>Closing</h2>
-      ${output.narrative.closing.split("\n").filter(Boolean).map((line) => `<p>${escapeHtml(line)}</p>`).join("")}
-    </section>
-    <h2>Solution (Debug)</h2>
-    ${solutionHtml}
-    <h2>Clues</h2>
-    <ul>${clueLines}</ul>
-    <h2>Inspector Notes</h2>
-    <ul>${noteLines}</ul>
-  </body>
-</html>`;
-
-  return c.html(html);
-});
+// AI-enhanced scenario endpoints removed
 
 scenarios.get("/last-ai.json", (c) => {
-  const output = getLastAiScenarioOutput();
+  const output = getLastButlerAiDebug();
   if (!output) {
     return c.text("No AI scenario has been generated yet.", 404);
   }
-
-  return new Response(JSON.stringify(output, null, 2), {
+  return new Response(JSON.stringify({
+    systemPrompt: output.systemPrompt,
+    userPrompt: output.userPrompt,
+    rawResponse: output.rawResponse,
+    parsed: output.parsed ?? null,
+    answerKey: output.answerKey ?? null,
+    formattedClues: output.formattedClues ?? null,
+  }, null, 2), {
     headers: {
       "Content-Type": "application/json; charset=utf-8",
       "Content-Disposition": "attachment; filename=\"ai-last.json\"",
@@ -224,17 +158,42 @@ scenarios.get("/last-ai.json", (c) => {
 });
 
 scenarios.get("/last-ai-stages.json", (c) => {
-  const output = getLastAiStageOutputs();
-  if (!output.stage4.parsed) {
+  const output = getLastButlerAiDebug();
+  if (!output) {
     return c.text("No AI scenario has been generated yet.", 404);
   }
-
-  return new Response(JSON.stringify(output, null, 2), {
+  return new Response(JSON.stringify({
+    stages: {
+      system: output.systemPrompt,
+      user: output.userPrompt,
+      raw: output.rawResponse,
+      parsed: output.parsed ?? null,
+    },
+    answerKey: output.answerKey ?? null,
+    formattedClues: output.formattedClues ?? null,
+  }, null, 2), {
     headers: {
       "Content-Type": "application/json; charset=utf-8",
       "Content-Disposition": "attachment; filename=\"ai-last-stages.json\"",
     },
   });
 });
+
+function applyButlerClues(
+  scenario: ReturnType<typeof generateScenarioWithPlan>["scenario"],
+  aiClues: string[]
+) {
+  const butlerClues = scenario.clues.filter((clue) => clue.type === "butler");
+  if (butlerClues.length !== aiClues.length) {
+    throw new Error(`Expected ${butlerClues.length} butler clues, received ${aiClues.length}.`);
+  }
+  let index = 0;
+  const clues = scenario.clues.map((clue) => {
+    if (clue.type !== "butler") return clue;
+    const text = aiClues[index++];
+    return { ...clue, text };
+  });
+  return { ...scenario, clues };
+}
 
 export default scenarios;

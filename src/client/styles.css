@@ -381,10 +381,7 @@ h3 {
 }
 
 .clue-display-text {
-  display: -webkit-box;
-  -webkit-line-clamp: 3;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
+  overflow: visible;
 }
 
 .latest-clue-card {

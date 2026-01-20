@@ -67,15 +67,4 @@ export const api = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(options),
     }).then((r) => r.json()),
-
-  generateEnhancedScenario: (options: {
-    themeId?: string;
-    difficulty?: string;
-    seed?: number;
-  }) =>
-    fetch("/api/scenarios/generate-enhanced", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(options),
-    }).then((r) => r.json()),
 };

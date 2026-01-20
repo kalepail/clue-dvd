@@ -58,8 +58,8 @@ export const DIFFICULTY_SETTINGS: Record<Difficulty, DifficultySettings> = {
     minGroupSize: 1,
   },
   expert: {
-    clueCount: 7,
-    actDistribution: { act1: 2, act2: 3, act3: 2 },
+    clueCount: 8,
+    actDistribution: { act1: 3, act2: 3, act3: 2 },
     redHerrings: { count: 3, mustResolve: false },
     dramaticEventCount: 3,
     maxGroupSize: { suspects: 2, items: 2, locations: 2, times: 2 },
