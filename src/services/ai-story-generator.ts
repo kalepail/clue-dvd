@@ -120,8 +120,8 @@ export async function generateStoryPackage(apiKey: string, params: {
   if (!parsed.opening || !parsed.closing) {
     throw new Error("OpenAI response missing opening or closing.");
   }
-  if (!Array.isArray(parsed.butler_clues) || parsed.butler_clues.length !== 8) {
-    throw new Error(`Expected 8 butler clues, received ${parsed.butler_clues?.length ?? 0}.`);
+  if (!Array.isArray(parsed.butler_clues) || parsed.butler_clues.length !== 10) {
+    throw new Error(`Expected 10 butler clues, received ${parsed.butler_clues?.length ?? 0}.`);
   }
   if (!Array.isArray(parsed.inspector_notes) || parsed.inspector_notes.length !== 2) {
     throw new Error(`Expected 2 inspector notes, received ${parsed.inspector_notes?.length ?? 0}.`);
@@ -202,6 +202,10 @@ function findName<T extends Suspect | Item | Location | TimePeriod>(list: T[], i
 
 function stripCodeFences(value: string): string {
   const trimmed = value.trim();
+  const fenceMatch = trimmed.match(/```[a-zA-Z]*\\n([\\s\\S]*?)```/);
+  if (fenceMatch) {
+    return fenceMatch[1].trim();
+  }
   if (!trimmed.startsWith("```")) return value;
   return trimmed.replace(/^```[a-zA-Z]*\\n?/, "").replace(/```$/, "");
 }

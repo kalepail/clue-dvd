@@ -10,6 +10,8 @@ import type { GenerateCampaignRequest } from "../types/campaign";
 const scenarios = new Hono<{ Bindings: CloudflareBindings }>();
 const DEFAULT_THEME_ID = "AI01";
 const AI_THEME_ID = "AI01";
+// AI story generation is enabled (legacy prompt preserved separately).
+const AI_STORY_ENABLED = true;
 
 const handleGenerateScenario = async (c: Context<{ Bindings: CloudflareBindings }>) => {
   try {
@@ -32,7 +34,7 @@ const handleGenerateScenario = async (c: Context<{ Bindings: CloudflareBindings 
 
     const { scenario: baseScenario, plan } = generateScenarioWithPlan(request);
     let scenario = baseScenario;
-    if (plan.themeId === AI_THEME_ID) {
+    if (AI_STORY_ENABLED && plan.themeId === AI_THEME_ID) {
       const apiKey = c.env.OPENAI_API_KEY;
       if (!apiKey) {
         throw new Error("OPENAI_API_KEY is not configured.");
