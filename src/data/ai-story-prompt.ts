@@ -1,6 +1,7 @@
 import type { StorySpec } from "../services/story-pool-selector";
 
 export const STORY_SYSTEM_PROMPT = `You are the narrator for Clue DVD-style mysteries. Write in a 1920s British tone. The crime is always THEFT of a collectible.
+
 You will produce:
 - an opening that sets the scene and mentions a theft,
 - 10 investigative statements (scene observations, witness interviews, or evidence notes),
@@ -11,7 +12,9 @@ Constraints:
 - Use ONLY the provided suspects, items, locations, and times.
 - Keep the investigation coherent and non-contradictory.
 - Your clues should leave 2–3 plausible suspects, 2–3 plausible times, 1–3 plausible locations, and 1–2 plausible items.
-- Do not reveal the answer until the closing.`;
+- Do not reveal the answer until the closing.
+
+You are writing a small, human mystery story first, and a logic puzzle second.`;
 
 export const buildStoryUserPrompt = (params: {
   storySpec: StorySpec;
@@ -32,25 +35,85 @@ export const buildStoryUserPrompt = (params: {
     "Mrs. White and Rusty are staff; all others are guests.",
   ].join("\n");
 
-  return `Write a coherent investigation narrative that fits the answer key. Use scene observations, witness statements, interviews, or evidence notes for the 10 clue lines. Inspector notes should be formal deductions.
-Keep the clues realistic and non-contradictory. Keep 2–4 suspects plausibly in question. Mix eliminations with positive possibilities—some clues should suggest what it *could* be, not only what it *isn't*. Let times, locations, and items be suggested naturally (not all must be explicit), but ensure at least two plausible options remain for each category overall.
-Include at least one red herring that points toward a plausible (but incorrect) suspect, location, or item without contradicting the true solution.
-Avoid a formulaic structure; vary between witness statements, staff observations, and evidence notes without a fixed sequence.
-Do not state the exact stolen item or exact location in the first 3 clues, and do not state the exact time in the first 2 clues.
-Include a subtle inconsistency or omission tied to the true culprit’s story that the player can catch; do not call it out explicitly or label it a contradiction.
-Include at least one similar “normal” statement of the same type so the inconsistent clue blends in, and place the inconsistent clue at a random-seeming position (not necessarily late).
-Inspector notes should be useful and narrowing, but must not directly name the exact item, location, or time.
-Avoid overly direct denials like “nowhere near the [location]”; keep statements subtle and realistic.
-Do not declare that only the true item/location is missing; avoid “only” or “sole” language in clues.
-Limit mentions of the true location to at most two clues to keep multiple locations plausible.
-If you include a room‑specific evidence observation (e.g., disturbed chair/table, smudge, open door), include at least one similar observation about another room so no single room stands out.
-Ensure at least three suspects have concrete alibi-style statements (where they were / what they were doing).
-If the true time is a boundary period (Dawn or Midnight), keep adjacent times in play (e.g., Midnight vs Dawn vs Breakfast) by including at least one plausible clue for each.
-Do not explicitly flag the inconsistency with phrases like “yet,” “but,” or “however”; keep it subtle and indirect.
-If the inconsistency concerns the true culprit, do not place it in that suspect’s own statement; instead hide it in a separate observation (room detail, staff note, or another witness remark) so it blends in.
-Avoid vague phrases like “little treasures.” Prefer item categories or characteristics that map to the provided item list (e.g., desk item, jewelry, antique).
-Keep room mentions cohesive: if you highlight 2–3 plausible rooms, stick to those and avoid scattering to unrelated rooms.
-Inspector notes must be careful not to “give it away” by pointing too narrowly to a single person or room; they should summarize uncertainty rather than resolve it.
+  return `Assume the role of a classic British mystery novelist in the style of Agatha Christie.
+
+Before thinking about puzzles or clues, imagine you are writing a short chapter of a country-house mystery:
+
+- The house, the guests, and the servants are your cast.
+- The evening is defined by small social tensions, quiet motives, mild embarrassments, polite rivalries, and unspoken intentions.
+- People wait for one another, avoid one another, misinterpret one another, or use small social moments as excuses.
+- Ordinary routines (tea, lamps, staff duties) continue while something subtle and improper occurs.
+
+Think like a novelist:
+- What does each person want?
+- Who is irritated, curious, jealous, embarrassed, or impatient?
+- What small, human moment creates the opportunity?
+- What is seen, what is half-seen, and what is merely assumed?
+
+You may draw inspiration from the style and narrative thinking of classic Christie-era mysteries (without copying any specific story).
+
+Write this scene fully in your head. Do NOT output it.
+
+Now imagine you are also the editor adapting that chapter into a fair-play mystery puzzle.
+
+Guiding principle:
+This is not a puzzle about floorplans. It is a story about people. The puzzle must emerge from the social drama, not the other way around.
+
+Tone:
+Polite, restrained, civilized — with quiet tensions, small vanities, and unspoken motives underneath.
+
+How to choose what each clue is about:
+Prefer:
+- overheard or reported conversations
+- awkward encounters
+- social avoidance or social pursuit
+- small favors, borrowings, or obligations
+- someone waiting for a moment, or for a room to clear
+- someone being flustered, annoyed, embarrassed, or too curious
+
+Use rooms and times only when they naturally arise from these human situations, not as the main point of the clue.
+
+Structure:
+Do not try to account for everyone’s entire evening. Most of it was dull.
+Focus only on the handful of moments that created:
+- misunderstandings
+- cover stories
+- mistaken assumptions
+- or quiet opportunities
+
+One or two early clues may clear away a large group of suspects at once (a shared event, staff routine, or public moment).
+After that, the narrative should naturally narrow to 3–4 plausible people.
+
+Item handling:
+Do not explicitly state in any clue that a specific item is missing or stolen.
+Clues may describe disturbed displays, absences, or unease, but the exact stolen item should only be confirmed in the opening or the closing.
+
+Subtle inconsistency:
+Include one quiet, easy-to-miss inconsistency or mistaken assumption that points to the truth.
+Prefer a social or conversational inconsistency over a purely physical one.
+Hide it in someone else’s remark or a staff observation, not in the culprit’s own statement.
+When a character tells an important lie, do not reveal the contradiction in the same clue. Let the lie stand on its own. The conflicting fact must appear in a different, later clue, in a different voice, without explicitly referencing the lie.
+
+Inspector notes:
+The inspector is not explaining the genre.
+The inspector is summarizing patterns of behavior, social friction, or timeline oddities specific to this household and this night.
+
+They must never talk about:
+- “no forced entry”
+- “no tools”
+- “someone familiar with the house”
+or any other generic mystery-novel assumptions.
+
+They should talk only about what is peculiar in THIS case.
+
+Anti-mechanical principle:
+No single clue should, by itself, identify the culprit, the item, or the room. The truth should only become clear when several human details are considered together.
+Imagine these statements were written down before anyone knew what detail would prove important. People are not defending places or objects; they are simply recounting their own small, human concerns of the evening. Any importance a room or object has should only become clear in hindsight.
+
+After writing, do a silent editor’s pass to ensure:
+- No clue explicitly states which item is missing.
+- only reference a room,item,suspect,or time that is relevant - not considered only because its the answer
+- The solution is not given away by any single line.
 
 Available elements:
 Suspects: ${params.suspectList.join(", ")}
@@ -59,7 +122,11 @@ Locations: ${params.locationList.join(", ")}
 Times: ${params.timeList.join(", ")}
 
 World reference (do not contradict):
-${worldContext}
+- Theft only.
+- 1920s British setting.
+- Mr. Boddy owns all valuables.
+- Use only the provided suspect/item/location/time names.
+- Mrs. White and Rusty are staff; all others are guests.
 
 Answer key (do not reveal until the closing):
 - suspect: ${params.answerKey.suspect}

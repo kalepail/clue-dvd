@@ -1,5 +1,5 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { DIFFICULTIES, ITEMS, LOCATIONS, SUSPECTS, THEMES, TIMES } from "../../shared/game-elements";
+import { ITEMS, LOCATIONS, SUSPECTS, THEMES, TIMES } from "../../shared/game-elements";
 import type { EliminationState } from "../../shared/api-types";
 import type { PhonePlayer, PhoneSessionSummary } from "../../phone/types";
 import { reconnectSession, sendPlayerAction, updatePlayer } from "./api";
@@ -12,6 +12,99 @@ import {
 } from "./assets";
 import { connectPhoneSessionSocket } from "./ws";
 import "./phone.css";
+
+function getSafeAreaInsets() {
+  const root = document.documentElement;
+  const styles = getComputedStyle(root);
+  const parse = (value: string) => {
+    const parsed = parseFloat(value);
+    return Number.isNaN(parsed) ? 0 : parsed;
+  };
+  return {
+    top: parse(styles.getPropertyValue("--safe-area-inset-top") || styles.getPropertyValue("env(safe-area-inset-top)")),
+    bottom: parse(styles.getPropertyValue("--safe-area-inset-bottom") || styles.getPropertyValue("env(safe-area-inset-bottom)")),
+  };
+}
+
+function useViewportDebug(enabled: boolean) {
+  const [stats, setStats] = useState({
+    innerHeight: 0,
+    visualHeight: 0,
+    visualWidth: 0,
+    visualScale: 1,
+    clientHeight: 0,
+    rootTop: 0,
+    rootBottom: 0,
+    rootHeight: 0,
+    viewportMeta: "",
+    scrollingElement: "",
+    htmlOverflow: "",
+    bodyOverflow: "",
+    rootOverflow: "",
+    bodyClass: "",
+    htmlClass: "",
+    safeTop: 0,
+    safeBottom: 0,
+    scrollY: 0,
+  });
+
+  useEffect(() => {
+    if (!enabled) return;
+    const update = () => {
+      const safe = getSafeAreaInsets();
+      const root = document.querySelector("#root") as HTMLElement | null;
+      const rect = root?.getBoundingClientRect();
+      const metaTags = Array.from(document.querySelectorAll('meta[name="viewport"]'))
+        .map((node) => node.getAttribute("content") || "")
+        .join(" | ");
+      const htmlStyles = getComputedStyle(document.documentElement);
+      const bodyStyles = getComputedStyle(document.body);
+      const rootStyles = root ? getComputedStyle(root) : null;
+      setStats({
+        innerHeight: window.innerHeight,
+        visualHeight: window.visualViewport?.height ?? 0,
+        visualWidth: window.visualViewport?.width ?? 0,
+        visualScale: window.visualViewport?.scale ?? 1,
+        clientHeight: document.documentElement.clientHeight,
+        rootTop: rect?.top ?? 0,
+        rootBottom: rect?.bottom ?? 0,
+        rootHeight: rect?.height ?? 0,
+        viewportMeta: metaTags,
+        scrollingElement: document.scrollingElement?.tagName || "",
+        htmlOverflow: htmlStyles.overflow,
+        bodyOverflow: bodyStyles.overflow,
+        rootOverflow: rootStyles?.overflow || "",
+        bodyClass: document.body.className,
+        htmlClass: document.documentElement.className,
+        safeTop: safe.top,
+        safeBottom: safe.bottom,
+        scrollY: window.scrollY,
+      });
+    };
+    update();
+    window.addEventListener("resize", update);
+    window.visualViewport?.addEventListener("resize", update);
+    window.addEventListener("scroll", update, { passive: true });
+    return () => {
+      window.removeEventListener("resize", update);
+      window.visualViewport?.removeEventListener("resize", update);
+      window.removeEventListener("scroll", update);
+    };
+  }, [enabled]);
+
+  return stats;
+}
+
+function hasDebugFlag(): boolean {
+  if (typeof window === "undefined") return false;
+  const searchParams = new URLSearchParams(window.location.search);
+  if (searchParams.has("debug")) return true;
+  const hash = window.location.hash || "";
+  const queryIndex = hash.indexOf("?");
+  if (queryIndex === -1) return false;
+  const hashQuery = hash.slice(queryIndex + 1);
+  return new URLSearchParams(hashQuery).has("debug");
+}
 
 // Structured notes types
 interface NoteEntry {
@@ -110,10 +203,17 @@ const DeductionCell = memo(function DeductionCell({
   const isDot = value.startsWith("dot:");
   const dotList = isDot ? value.replace("dot:", "").split(",").filter(Boolean) : [];
   return (
-    <button
-      type="button"
+    <div
       className={`phone-deduction-cell phone-deduction-cell-button ${value ? "marked" : ""}`}
       onPointerDown={() => onUpdate(rowKey, playerId)}
+      onKeyDown={(event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          onUpdate(rowKey, playerId);
+        }
+      }}
+      role="button"
+      tabIndex={0}
     >
       {isDot ? (
         dotList.map((dot) => (
@@ -137,7 +237,7 @@ const DeductionCell = memo(function DeductionCell({
           ))}
         </span>
       )}
-    </button>
+    </div>
   );
 });
 
@@ -208,6 +308,8 @@ type DeductionHistoryEntry =
   | { type: "row"; rowKey: string; prevEliminated: boolean; nextEliminated: boolean; prevFinal: boolean; nextFinal: boolean };
 
 export default function PhonePlayerPage({ code, onNavigate }: Props) {
+  const debugEnabled = hasDebugFlag();
+  const debugStats = useViewportDebug(debugEnabled);
   useEffect(() => {
     document.body.classList.add("phone-mode");
     document.documentElement.classList.add("phone-mode");
@@ -216,7 +318,6 @@ export default function PhonePlayerPage({ code, onNavigate }: Props) {
       document.documentElement.classList.remove("phone-mode");
     };
   }, []);
-
   const [session, setSession] = useState<PhoneSessionSummary | null>(null);
   const [player, setPlayer] = useState<PhonePlayer | null>(null);
   const [token, setToken] = useState("");
@@ -262,8 +363,7 @@ export default function PhonePlayerPage({ code, onNavigate }: Props) {
   const [twoAccusationMessage, setTwoAccusationMessage] = useState<string | null>(null);
   const [threeAccusationMessage, setThreeAccusationMessage] = useState<string | null>(null);
   const accusationMessageHistoryRef = useRef<AccusationMessageHistory | null>(null);
-  const [themeId, setThemeId] = useState("");
-  const [difficulty, setDifficulty] = useState("intermediate");
+  const [themeId, setThemeId] = useState("AI01");
   const [secretPassageUsedThisTurn, setSecretPassageUsedThisTurn] = useState(false);
   const lastTurnRef = useRef<string | null>(null);
   const [selectedInspectorNote, setSelectedInspectorNote] = useState<string | null>(null);
@@ -693,7 +793,11 @@ export default function PhonePlayerPage({ code, onNavigate }: Props) {
           const list = prev[category as keyof EliminationState];
           if (!Array.isArray(list)) return prev;
           const nextList = list.filter((value) => value !== id);
-          return { ...prev, [category]: nextList };
+          const next = { ...prev, [category]: nextList };
+          if (player && token) {
+            updatePlayer(player.id, token, { eliminations: next }).catch(() => undefined);
+          }
+          return next;
         });
       }
       suppressEliminationRef.current = true;
@@ -787,7 +891,7 @@ export default function PhonePlayerPage({ code, onNavigate }: Props) {
       await sendPlayerAction(player.id, token, "turn_action", {
         action: "start_game",
         themeId: themeId || null,
-        difficulty,
+        difficulty: "expert",
       });
       setActionStatus("Waiting for host to launch the game.");
     } catch (err) {
@@ -1169,14 +1273,14 @@ export default function PhonePlayerPage({ code, onNavigate }: Props) {
     return (
       <div
         className="phone-shell"
-      style={{
-        ["--phone-accent" as never]: accentColor,
-        ["--phone-accent-rgb" as never]: accentRgb,
-      }}
-    >
-      <div className="phone-card phone-stack">
-        <div>Reconnecting to session {code}...</div>
-        {actionStatus && <div className="phone-subtitle">{actionStatus}</div>}
+        style={{
+          ["--phone-accent" as never]: accentColor,
+          ["--phone-accent-rgb" as never]: accentRgb,
+        }}
+      >
+        <div className="phone-card phone-stack">
+          <div>Reconnecting to session {code}...</div>
+          {actionStatus && <div className="phone-subtitle">{actionStatus}</div>}
           <button
             type="button"
             className="phone-button secondary"
@@ -1191,18 +1295,12 @@ export default function PhonePlayerPage({ code, onNavigate }: Props) {
 
   return (
     <div
-      className="phone-shell phone-shell-player"
+      className="phone-shell"
       style={{
         ["--phone-accent" as never]: accentColor,
         ["--phone-accent-rgb" as never]: accentRgb,
       }}
     >
-      <div className="phone-top-deco" aria-hidden="true">
-        <span className="phone-top-deco-line" />
-        <span className="phone-top-deco-diamond" />
-        <span className="phone-top-deco-line" />
-      </div>
-      <div className="phone-top-flare" aria-hidden="true" />
       <div className="phone-header">
         <h1>Detective Notebook</h1>
         <div className="phone-subtitle">
@@ -1231,25 +1329,9 @@ export default function PhonePlayerPage({ code, onNavigate }: Props) {
                   value={themeId}
                   onChange={(event) => setThemeId(event.target.value)}
                 >
-                  <option value="">Random Theme</option>
                   {THEMES.map((theme) => (
                     <option key={theme.id} value={theme.id}>
                       {theme.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div className="phone-field">
-                <label htmlFor="difficulty">Difficulty</label>
-                <select
-                  id="difficulty"
-                  className="phone-input"
-                  value={difficulty}
-                  onChange={(event) => setDifficulty(event.target.value)}
-                >
-                  {DIFFICULTIES.map((level) => (
-                    <option key={level.id} value={level.id}>
-                      {level.name}
                     </option>
                   ))}
                 </select>
@@ -1288,6 +1370,27 @@ export default function PhonePlayerPage({ code, onNavigate }: Props) {
               <div className="phone-subtitle">{actionStatus}</div>
             </div>
           )}
+        </div>
+      )}
+
+      {debugEnabled && (
+        <div className="phone-debug-overlay">
+          <div>innerHeight: {Math.round(debugStats.innerHeight)}</div>
+          <div>visualViewport: {Math.round(debugStats.visualHeight)}</div>
+          <div>visualWidth: {Math.round(debugStats.visualWidth)}</div>
+          <div>visualScale: {debugStats.visualScale.toFixed(2)}</div>
+          <div>clientHeight: {Math.round(debugStats.clientHeight)}</div>
+          <div>root: {Math.round(debugStats.rootTop)} / {Math.round(debugStats.rootBottom)} / {Math.round(debugStats.rootHeight)}</div>
+          <div>safeTop: {Math.round(debugStats.safeTop)}</div>
+          <div>safeBottom: {Math.round(debugStats.safeBottom)}</div>
+          <div>scrollY: {Math.round(debugStats.scrollY)}</div>
+          <div>viewport: {debugStats.viewportMeta || "none"}</div>
+          <div>scrollEl: {debugStats.scrollingElement || "none"}</div>
+          <div>html overflow: {debugStats.htmlOverflow}</div>
+          <div>body overflow: {debugStats.bodyOverflow}</div>
+          <div>root overflow: {debugStats.rootOverflow}</div>
+          <div>body class: {debugStats.bodyClass || "none"}</div>
+          <div>html class: {debugStats.htmlClass || "none"}</div>
         </div>
       )}
 
@@ -2106,6 +2209,21 @@ export default function PhonePlayerPage({ code, onNavigate }: Props) {
                     <div className="phone-action-subtitle">Lock in your final guess.</div>
                   </button>
                 </div>
+                {showActionContinue && (
+                  <div className="phone-action-banner">
+                    <div className="phone-action-banner-text">
+                      {actionContinueMessage || "Action sent to the host."}
+                    </div>
+                    <button
+                      type="button"
+                      className="phone-button"
+                      onClick={handleContinueInvestigation}
+                      style={plumButtonStyle}
+                    >
+                      Continue Investigation
+                    </button>
+                  </div>
+                )}
               </div>
             )}
 
@@ -2331,25 +2449,23 @@ export default function PhonePlayerPage({ code, onNavigate }: Props) {
         </div>
       )}
 
-      {(showAccusationNotice || showActionContinue) && (
+      {showAccusationNotice && (
         <div className="phone-scrim">
           <div className="phone-scrim-card phone-scrim-card-stack">
             <div>
-              {showAccusationNotice
-                ? (accusationFeedback
-                    ? accusationFeedback.correct
-                      ? "Correct!"
-                      : accusationFeedback.correctCount === 0
-                        ? zeroAccusationMessage || "So close."
-                        : accusationFeedback.correctCount === 1
-                          ? oneAccusationMessage || "So close."
-                          : accusationFeedback.correctCount === 2
-                            ? twoAccusationMessage || "So close."
-                            : accusationFeedback.correctCount === 3
-                              ? threeAccusationMessage || "So close."
-                              : "So close."
-                    : "Accusation Submitted")
-                : actionContinueMessage || "Action sent to the host."}
+              {accusationFeedback
+                ? accusationFeedback.correct
+                  ? "Correct!"
+                  : accusationFeedback.correctCount === 0
+                    ? zeroAccusationMessage || "So close."
+                    : accusationFeedback.correctCount === 1
+                      ? oneAccusationMessage || "So close."
+                      : accusationFeedback.correctCount === 2
+                        ? twoAccusationMessage || "So close."
+                        : accusationFeedback.correctCount === 3
+                          ? threeAccusationMessage || "So close."
+                          : "So close."
+                : "Accusation Submitted"}
             </div>
             {showAccusationNotice && accusationFeedback && !accusationFeedback.correct && (
               <div className="phone-subtitle">

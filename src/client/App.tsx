@@ -34,7 +34,8 @@ function parseRoute(): Route {
     return { page: "phone", view: "host" };
   }
   if (hash.startsWith("/phone/session/")) {
-    return { page: "phone", view: "player", code: hash.slice(15) };
+    const code = hash.slice(15).split("?")[0];
+    return { page: "phone", view: "player", code };
   }
   if (hash.startsWith("/phone")) {
     return { page: "phone", view: "join" };

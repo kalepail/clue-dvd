@@ -349,6 +349,20 @@ phone.post("/players/:playerId/actions", async (c) => {
     return c.json({ error: "Unauthorized" }, 403);
   }
 
+  if (
+    body.type === "turn_action" &&
+    typeof body.payload?.action === "string" &&
+    body.payload.action === "start_game"
+  ) {
+    const lead = await c.env.DB
+      .prepare("SELECT id FROM phone_players WHERE session_id = ? ORDER BY created_at ASC LIMIT 1")
+      .bind(row.session_id as string)
+      .first();
+    if (lead && lead.id !== playerId) {
+      return c.json({ error: "Only the lead detective can start the game" }, 403);
+    }
+  }
+
   const event = await createEvent(
     c.env.DB,
     row.session_id as string,

@@ -20,6 +20,7 @@ export default function HostLobbyPage({ onNavigate }: Props) {
   const [session, setSession] = useState<PhoneSessionSummary | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [startingGame, setStartingGame] = useState(false);
   const [lastEventId, setLastEventId] = useState<number | null>(null);
   const sessionRef = useRef<PhoneSessionSummary | null>(null);
   const lastEventIdRef = useRef<number | null>(null);
@@ -63,6 +64,7 @@ export default function HostLobbyPage({ onNavigate }: Props) {
           if (event.type === "turn_action" && event.payload.action === "start_game") {
             const currentSession = sessionRef.current;
             if (!currentSession) return;
+            setStartingGame(true);
             const themeId = typeof event.payload.themeId === "string" && event.payload.themeId.length > 0
               ? event.payload.themeId
               : undefined;
@@ -228,6 +230,11 @@ export default function HostLobbyPage({ onNavigate }: Props) {
         ) : (
           /* Active Session */
           <div className="lobby-active">
+            {startingGame && (
+              <div className="lobby-starting">
+                Generating the mystery… this can take up to a minute.
+              </div>
+            )}
             {/* Join Code Section */}
             <section className="lobby-code-section">
               <div className="lobby-code-card">
