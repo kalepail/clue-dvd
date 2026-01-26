@@ -11,6 +11,15 @@ interface Props {
 }
 
 export default function PhoneHostPage({ onNavigate }: Props) {
+  useEffect(() => {
+    document.body.classList.add("phone-mode");
+    document.documentElement.classList.add("phone-mode");
+    return () => {
+      document.body.classList.remove("phone-mode");
+      document.documentElement.classList.remove("phone-mode");
+    };
+  }, []);
+
   const [session, setSession] = useState<PhoneSessionSummary | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -68,7 +77,7 @@ export default function PhoneHostPage({ onNavigate }: Props) {
               ? event.payload.themeId
               : undefined;
             const difficulty =
-              typeof event.payload.difficulty === "string" ? event.payload.difficulty : "expert";
+              typeof event.payload.difficulty === "string" ? event.payload.difficulty : "intermediate";
             const players = currentSession.players.map((player) => ({
               name: player.name,
               suspectId: player.suspectId,
@@ -129,6 +138,12 @@ export default function PhoneHostPage({ onNavigate }: Props) {
 
   return (
     <div className="phone-shell">
+      <div className="phone-top-deco" aria-hidden="true">
+        <span className="phone-top-deco-line" />
+        <span className="phone-top-deco-diamond" />
+        <span className="phone-top-deco-line" />
+      </div>
+      <div className="phone-top-flare" aria-hidden="true" />
       <div className="phone-header">
         <h1>Host Lobby</h1>
         <div className="phone-subtitle">

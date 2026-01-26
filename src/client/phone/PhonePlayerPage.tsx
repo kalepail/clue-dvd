@@ -1,5 +1,5 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ITEMS, LOCATIONS, SUSPECTS, THEMES, TIMES } from "../../shared/game-elements";
+import { DIFFICULTIES, ITEMS, LOCATIONS, SUSPECTS, THEMES, TIMES } from "../../shared/game-elements";
 import type { EliminationState } from "../../shared/api-types";
 import type { PhonePlayer, PhoneSessionSummary } from "../../phone/types";
 import { reconnectSession, sendPlayerAction, updatePlayer } from "./api";
@@ -19,6 +19,7 @@ interface NoteEntry {
   text: string;
   timestamp: number;
   turnNumber?: number;
+  tags?: NoteTags;
 }
 
 interface StructuredNotes {
@@ -26,9 +27,23 @@ interface StructuredNotes {
   entries: NoteEntry[];
 }
 
+type NoteTags = {
+  suspects: string[];
+  items: string[];
+  locations: string[];
+  times: string[];
+};
+
 const emptyStructuredNotes: StructuredNotes = {
   theory: "",
   entries: [],
+};
+
+const emptyNoteTags: NoteTags = {
+  suspects: [],
+  items: [],
+  locations: [],
+  times: [],
 };
 
 function parseStructuredNotes(raw: string): StructuredNotes {
@@ -39,7 +54,19 @@ function parseStructuredNotes(raw: string): StructuredNotes {
     if (parsed && typeof parsed === "object" && "theory" in parsed && "entries" in parsed) {
       return {
         theory: typeof parsed.theory === "string" ? parsed.theory : "",
-        entries: Array.isArray(parsed.entries) ? parsed.entries : [],
+        entries: Array.isArray(parsed.entries)
+          ? parsed.entries.map((entry: NoteEntry) => ({
+              ...entry,
+              tags: entry.tags && typeof entry.tags === "object"
+                ? {
+                    suspects: Array.isArray(entry.tags.suspects) ? entry.tags.suspects : [],
+                    items: Array.isArray(entry.tags.items) ? entry.tags.items : [],
+                    locations: Array.isArray(entry.tags.locations) ? entry.tags.locations : [],
+                    times: Array.isArray(entry.tags.times) ? entry.tags.times : [],
+                  }
+                : undefined,
+            }))
+          : [],
       };
     }
   } catch {
@@ -181,6 +208,15 @@ type DeductionHistoryEntry =
   | { type: "row"; rowKey: string; prevEliminated: boolean; nextEliminated: boolean; prevFinal: boolean; nextFinal: boolean };
 
 export default function PhonePlayerPage({ code, onNavigate }: Props) {
+  useEffect(() => {
+    document.body.classList.add("phone-mode");
+    document.documentElement.classList.add("phone-mode");
+    return () => {
+      document.body.classList.remove("phone-mode");
+      document.documentElement.classList.remove("phone-mode");
+    };
+  }, []);
+
   const [session, setSession] = useState<PhoneSessionSummary | null>(null);
   const [player, setPlayer] = useState<PhonePlayer | null>(null);
   const [token, setToken] = useState("");
@@ -188,6 +224,8 @@ export default function PhonePlayerPage({ code, onNavigate }: Props) {
   const [structuredNotes, setStructuredNotes] = useState<StructuredNotes>(emptyStructuredNotes);
   const [quickNoteInput, setQuickNoteInput] = useState("");
   const [quickInsertCategory, setQuickInsertCategory] = useState<QuickInsertCategory>(null);
+  const [filterCategory, setFilterCategory] = useState<QuickInsertCategory>(null);
+  const [noteFilters, setNoteFilters] = useState<NoteTags>(emptyNoteTags);
   const [eliminations, setEliminations] = useState<EliminationState>(emptyEliminations);
   const [saving, setSaving] = useState(false);
   const [actionStatus, setActionStatus] = useState<string | null>(null);
@@ -224,10 +262,15 @@ export default function PhonePlayerPage({ code, onNavigate }: Props) {
   const [twoAccusationMessage, setTwoAccusationMessage] = useState<string | null>(null);
   const [threeAccusationMessage, setThreeAccusationMessage] = useState<string | null>(null);
   const accusationMessageHistoryRef = useRef<AccusationMessageHistory | null>(null);
-  const [themeId, setThemeId] = useState("AI01");
+  const [themeId, setThemeId] = useState("");
+  const [difficulty, setDifficulty] = useState("intermediate");
   const [secretPassageUsedThisTurn, setSecretPassageUsedThisTurn] = useState(false);
   const lastTurnRef = useRef<string | null>(null);
   const [selectedInspectorNote, setSelectedInspectorNote] = useState<string | null>(null);
+  const quickNoteInputRef = useRef<HTMLTextAreaElement | null>(null);
+  const [pendingDeleteNoteId, setPendingDeleteNoteId] = useState<string | null>(null);
+  const [lastDeletedNote, setLastDeletedNote] = useState<NoteEntry | null>(null);
+  const undoDeleteTimeoutRef = useRef<number | null>(null);
   const [pendingInspectorNote, setPendingInspectorNote] = useState<string | null>(null);
   const [showInspectorNotes, setShowInspectorNotes] = useState(false);
   const suspectColorMap: Record<string, string> = {
@@ -744,7 +787,7 @@ export default function PhonePlayerPage({ code, onNavigate }: Props) {
       await sendPlayerAction(player.id, token, "turn_action", {
         action: "start_game",
         themeId: themeId || null,
-        difficulty: "expert",
+        difficulty,
       });
       setActionStatus("Waiting for host to launch the game.");
     } catch (err) {
@@ -762,31 +805,162 @@ export default function PhonePlayerPage({ code, onNavigate }: Props) {
     []
   );
 
-  // Note management functions
+  // Note management helpers
+  const normalizeNoteText = useCallback((value: string) => {
+    return value
+      .toLowerCase()
+      .replace(/[^a-z0-9\s]/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+  }, []);
+
+  const aliasMatchers = useMemo(() => {
+    const normalize = (value: string) => normalizeNoteText(value);
+    const pad = (value: string) => ` ${value} `;
+    const makeMatchers = (labels: { id: string; aliases: string[] }[]) =>
+      labels.map((entry) => ({
+        id: entry.id,
+        aliases: entry.aliases.map((alias) => pad(normalize(alias))),
+      }));
+
+    const suspectAliases = SUSPECTS.map((suspect) => {
+      const base = normalize(suspect.name);
+      const tokens = base.split(" ");
+      const title = tokens[0];
+      const surname = tokens.slice(1).join(" ");
+      const aliases = [base];
+      if (surname) {
+        aliases.push(`${title} ${surname}`);
+      }
+      if (suspect.name === "Miss Scarlet") {
+        aliases.push("mrs scarlet", "ms scarlet", "miss scarlett", "mrs scarlett", "ms scarlett");
+      }
+      if (suspect.name === "Mrs. Meadow-Brook") {
+        aliases.push("mrs meadow brook", "mrs meadow-brook");
+      }
+      if (suspect.name === "Colonel Mustard") {
+        aliases.push("col mustard");
+      }
+      if (suspect.name === "Professor Plum") {
+        aliases.push("prof plum", "professor plum");
+      }
+      if (suspect.name === "Mr. Green") {
+        aliases.push("mister green");
+      }
+      return { id: suspect.id, aliases };
+    });
+
+    const itemAliases = ITEMS.map((item) => ({
+      id: item.id,
+      aliases: [item.name],
+    }));
+
+    const locationAliases = LOCATIONS.map((location) => ({
+      id: location.id,
+      aliases: [location.name],
+    }));
+
+    const timeAliases = TIMES.map((time) => ({
+      id: time.id,
+      aliases: [time.name],
+    }));
+
+    return {
+      suspects: makeMatchers(suspectAliases),
+      items: makeMatchers(itemAliases),
+      locations: makeMatchers(locationAliases),
+      times: makeMatchers(timeAliases),
+    };
+  }, [normalizeNoteText]);
+
+  const deriveTagsFromText = useCallback(
+    (text: string): NoteTags => {
+      const normalized = ` ${normalizeNoteText(text)} `;
+      const matchTags = (category: keyof NoteTags) =>
+        aliasMatchers[category]
+          .filter((entry) => entry.aliases.some((alias) => normalized.includes(alias)))
+          .map((entry) => entry.id);
+
+      return {
+        suspects: matchTags("suspects"),
+        items: matchTags("items"),
+        locations: matchTags("locations"),
+        times: matchTags("times"),
+      };
+    },
+    [aliasMatchers, normalizeNoteText]
+  );
+
   const addQuickNote = useCallback(() => {
     const text = quickNoteInput.trim();
     if (!text) return;
+    const tags = deriveTagsFromText(text);
     const newEntry: NoteEntry = {
       id: `note-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
       text,
       timestamp: Date.now(),
+      tags,
     };
     setStructuredNotes((prev) => ({
       ...prev,
       entries: [newEntry, ...prev.entries],
     }));
     setQuickNoteInput("");
-  }, [quickNoteInput]);
+  }, [deriveTagsFromText, quickNoteInput]);
 
   const updateTheory = useCallback((theory: string) => {
     setStructuredNotes((prev) => ({ ...prev, theory }));
   }, []);
 
+  const autoGrowTextArea = useCallback((element: HTMLTextAreaElement | null) => {
+    if (!element) return;
+    element.style.height = "auto";
+    element.style.height = `${element.scrollHeight}px`;
+  }, []);
+
+  useEffect(() => {
+    autoGrowTextArea(quickNoteInputRef.current);
+  }, [autoGrowTextArea, quickNoteInput]);
+
   const deleteNote = useCallback((noteId: string) => {
+    setStructuredNotes((prev) => {
+      const deleted = prev.entries.find((entry) => entry.id === noteId) ?? null;
+      if (deleted) {
+        setLastDeletedNote(deleted);
+        if (undoDeleteTimeoutRef.current) {
+          window.clearTimeout(undoDeleteTimeoutRef.current);
+        }
+        undoDeleteTimeoutRef.current = window.setTimeout(() => {
+          setLastDeletedNote(null);
+          undoDeleteTimeoutRef.current = null;
+        }, 5000);
+      }
+      return {
+        ...prev,
+        entries: prev.entries.filter((entry) => entry.id !== noteId),
+      };
+    });
+    setPendingDeleteNoteId(null);
+  }, []);
+
+  const restoreLastDeletedNote = useCallback(() => {
+    if (!lastDeletedNote) return;
     setStructuredNotes((prev) => ({
       ...prev,
-      entries: prev.entries.filter((entry) => entry.id !== noteId),
+      entries: [lastDeletedNote, ...prev.entries],
     }));
+    setLastDeletedNote(null);
+    if (undoDeleteTimeoutRef.current) {
+      window.clearTimeout(undoDeleteTimeoutRef.current);
+      undoDeleteTimeoutRef.current = null;
+    }
+  }, [lastDeletedNote]);
+
+  const requestDeleteNote = useCallback((noteId: string) => {
+    setPendingDeleteNoteId(noteId);
+    window.setTimeout(() => {
+      setPendingDeleteNoteId((current) => (current === noteId ? null : current));
+    }, 4000);
   }, []);
 
   const insertGameElement = useCallback((name: string) => {
@@ -796,6 +970,97 @@ export default function PhonePlayerPage({ code, onNavigate }: Props) {
     });
     setQuickInsertCategory(null);
   }, []);
+
+  const toggleFilter = useCallback((category: keyof NoteTags, id: string) => {
+    setNoteFilters((prev) => {
+      const list = prev[category];
+      const next = list.includes(id) ? list.filter((item) => item !== id) : [...list, id];
+      return { ...prev, [category]: next };
+    });
+  }, []);
+
+  const clearFilters = useCallback(() => {
+    setNoteFilters(emptyNoteTags);
+    setFilterCategory(null);
+  }, []);
+
+  const hasActiveFilters = useMemo(
+    () => Object.values(noteFilters).some((list) => list.length > 0),
+    [noteFilters]
+  );
+
+  const filteredEntries = useMemo(() => {
+    if (!hasActiveFilters) return structuredNotes.entries;
+    const activeIds = [
+      ...noteFilters.suspects,
+      ...noteFilters.items,
+      ...noteFilters.locations,
+      ...noteFilters.times,
+    ];
+    return structuredNotes.entries.filter((entry) => {
+      const tags = entry.tags ?? deriveTagsFromText(entry.text);
+      const entryIds = new Set([
+        ...tags.suspects,
+        ...tags.items,
+        ...tags.locations,
+        ...tags.times,
+      ]);
+      return activeIds.every((id) => entryIds.has(id));
+    });
+  }, [deriveTagsFromText, hasActiveFilters, noteFilters, structuredNotes.entries]);
+
+  const formatTagLabels = useCallback((tags: NoteTags) => {
+    const names = new Map<string, string>();
+    SUSPECTS.forEach((suspect) => names.set(suspect.id, suspect.name));
+    ITEMS.forEach((item) => names.set(item.id, item.name));
+    LOCATIONS.forEach((location) => names.set(location.id, location.name));
+    TIMES.forEach((time) => names.set(time.id, time.name));
+    const list = [
+      ...tags.suspects,
+      ...tags.items,
+      ...tags.locations,
+      ...tags.times,
+    ].map((id) => names.get(id)).filter(Boolean) as string[];
+    return list;
+  }, []);
+
+  const noteTagCounts = useMemo(() => {
+    const counter = {
+      suspects: new Map<string, number>(),
+      items: new Map<string, number>(),
+      locations: new Map<string, number>(),
+      times: new Map<string, number>(),
+    };
+
+    const activeIds = [
+      ...noteFilters.suspects,
+      ...noteFilters.items,
+      ...noteFilters.locations,
+      ...noteFilters.times,
+    ];
+
+    structuredNotes.entries.forEach((entry) => {
+      const tags = entry.tags ?? deriveTagsFromText(entry.text);
+      const entryIds = new Set([
+        ...tags.suspects,
+        ...tags.items,
+        ...tags.locations,
+        ...tags.times,
+      ]);
+
+      (Object.keys(counter) as (keyof NoteTags)[]).forEach((category) => {
+        tags[category].forEach((id) => {
+          const effectiveFilter = activeIds.filter((activeId) => activeId !== id);
+          const matches = effectiveFilter.every((activeId) => entryIds.has(activeId));
+          if (matches) {
+            counter[category].set(id, (counter[category].get(id) ?? 0) + 1);
+          }
+        });
+      });
+    });
+
+    return counter;
+  }, [deriveTagsFromText, noteFilters, structuredNotes.entries]);
 
   const formatNoteTime = useCallback((timestamp: number) => {
     const date = new Date(timestamp);
@@ -908,14 +1173,14 @@ export default function PhonePlayerPage({ code, onNavigate }: Props) {
     return (
       <div
         className="phone-shell"
-        style={{
-          ["--phone-accent" as never]: accentColor,
-          ["--phone-accent-rgb" as never]: accentRgb,
-        }}
-      >
-        <div className="phone-card phone-stack">
-          <div>Reconnecting to session {code}...</div>
-          {actionStatus && <div className="phone-subtitle">{actionStatus}</div>}
+      style={{
+        ["--phone-accent" as never]: accentColor,
+        ["--phone-accent-rgb" as never]: accentRgb,
+      }}
+    >
+      <div className="phone-card phone-stack">
+        <div>Reconnecting to session {code}...</div>
+        {actionStatus && <div className="phone-subtitle">{actionStatus}</div>}
           <button
             type="button"
             className="phone-button secondary"
@@ -930,12 +1195,18 @@ export default function PhonePlayerPage({ code, onNavigate }: Props) {
 
   return (
     <div
-      className="phone-shell"
+      className="phone-shell phone-shell-player"
       style={{
         ["--phone-accent" as never]: accentColor,
         ["--phone-accent-rgb" as never]: accentRgb,
       }}
     >
+      <div className="phone-top-deco" aria-hidden="true">
+        <span className="phone-top-deco-line" />
+        <span className="phone-top-deco-diamond" />
+        <span className="phone-top-deco-line" />
+      </div>
+      <div className="phone-top-flare" aria-hidden="true" />
       <div className="phone-header">
         <h1>Detective Notebook</h1>
         <div className="phone-subtitle">
@@ -964,9 +1235,25 @@ export default function PhonePlayerPage({ code, onNavigate }: Props) {
                   value={themeId}
                   onChange={(event) => setThemeId(event.target.value)}
                 >
+                  <option value="">Random Theme</option>
                   {THEMES.map((theme) => (
                     <option key={theme.id} value={theme.id}>
                       {theme.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="phone-field">
+                <label htmlFor="difficulty">Difficulty</label>
+                <select
+                  id="difficulty"
+                  className="phone-input"
+                  value={difficulty}
+                  onChange={(event) => setDifficulty(event.target.value)}
+                >
+                  {DIFFICULTIES.map((level) => (
+                    <option key={level.id} value={level.id}>
+                      {level.name}
                     </option>
                   ))}
                 </select>
@@ -1058,6 +1345,78 @@ export default function PhonePlayerPage({ code, onNavigate }: Props) {
             <div className="phone-stack">
             {tab === "notes" && (
               <div className="phone-notes-container">
+                <div className="phone-card phone-notes-filter">
+                  <div className="phone-notes-filter-header">
+                    <div className="phone-section-title">Filter Notes</div>
+                    <button
+                      type="button"
+                      className="phone-notes-filter-clear"
+                      onClick={clearFilters}
+                      disabled={!hasActiveFilters}
+                    >
+                      Clear
+                    </button>
+                  </div>
+                  <div className="phone-notes-filter-actions">
+                    {(["suspects", "items", "locations", "times"] as const).map((category) => (
+                      <button
+                        key={category}
+                        type="button"
+                        className={`phone-notes-filter-btn ${filterCategory === category ? "active" : ""}`}
+                        onClick={() => setFilterCategory(category)}
+                      >
+                        {category === "suspects"
+                          ? "WHO"
+                          : category === "items"
+                            ? "WHAT"
+                            : category === "locations"
+                              ? "WHERE"
+                              : "WHEN"}
+                      </button>
+                    ))}
+                  </div>
+                  {filterCategory && (
+                    <div className="phone-notes-filter-options">
+                      {(filterCategory === "suspects"
+                        ? SUSPECTS
+                        : filterCategory === "items"
+                          ? ITEMS
+                          : filterCategory === "locations"
+                            ? LOCATIONS
+                            : TIMES
+                      ).slice().sort((a, b) => {
+                        const countA = noteTagCounts[filterCategory].get(a.id) ?? 0;
+                        const countB = noteTagCounts[filterCategory].get(b.id) ?? 0;
+                        if (countA !== countB) return countB - countA;
+                        return a.name.localeCompare(b.name);
+                      }).map((entry) => (
+                        <button
+                          key={entry.id}
+                          type="button"
+                          className={`phone-notes-filter-option ${noteFilters[filterCategory].includes(entry.id) ? "active" : ""}`}
+                          onClick={() => toggleFilter(filterCategory, entry.id)}
+                        >
+                          <span>{entry.name}</span>
+                          {(noteTagCounts[filterCategory].get(entry.id) ?? 0) > 0 && (
+                            <span className="phone-notes-filter-count">
+                              {noteTagCounts[filterCategory].get(entry.id)}
+                            </span>
+                          )}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  {hasActiveFilters && (
+                    <div className="phone-notes-filter-tags">
+                      {formatTagLabels(noteFilters).map((label) => (
+                        <span key={label} className="phone-notes-filter-tag">
+                          {label}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
                 {/* Theory Section */}
                 <div className="phone-card phone-notes-theory">
                   <div className="phone-notes-theory-header">
@@ -1078,9 +1437,9 @@ export default function PhonePlayerPage({ code, onNavigate }: Props) {
                 {/* Quick Add Section */}
                 <div className="phone-card phone-notes-quick-add">
                   <div className="phone-notes-input-row">
-                    <input
-                      type="text"
+                    <textarea
                       className="phone-input phone-notes-quick-input"
+                      ref={quickNoteInputRef}
                       value={quickNoteInput}
                       onChange={(event) => setQuickNoteInput(event.target.value)}
                       onKeyDown={(event) => {
@@ -1090,6 +1449,7 @@ export default function PhonePlayerPage({ code, onNavigate }: Props) {
                         }
                       }}
                       placeholder="Quick note..."
+                      rows={1}
                     />
                     <button
                       type="button"
@@ -1186,39 +1546,92 @@ export default function PhonePlayerPage({ code, onNavigate }: Props) {
 
                 {/* Notes List */}
                 <div className="phone-notes-list">
-                  {structuredNotes.entries.length === 0 ? (
+                  {filteredEntries.length === 0 ? (
                     <div className="phone-notes-empty">
                       <div className="phone-notes-empty-icon">*</div>
-                      <div>No notes yet</div>
-                      <div className="phone-subtitle">Add your first observation above</div>
+                      <div>{hasActiveFilters ? "No matching notes" : "No notes yet"}</div>
+                      <div className="phone-subtitle">
+                        {hasActiveFilters ? "No notes include all selected tags" : "Add your first observation above"}
+                      </div>
                     </div>
                   ) : (
-                    structuredNotes.entries.map((entry) => (
-                      <div key={entry.id} className="phone-notes-entry">
-                        <div className="phone-notes-entry-content">
-                          <div className="phone-notes-entry-text">{entry.text}</div>
-                          <div className="phone-notes-entry-meta">
-                            {formatNoteTime(entry.timestamp)}
+                    filteredEntries.map((entry) => {
+                      const tags = entry.tags ?? deriveTagsFromText(entry.text);
+                      const tagLabels = formatTagLabels(tags);
+                      return (
+                        <div key={entry.id} className="phone-notes-entry">
+                          <div className="phone-notes-entry-content">
+                            <div className="phone-notes-entry-text">{entry.text}</div>
+                            <div className="phone-notes-entry-meta">
+                              {formatNoteTime(entry.timestamp)}
+                            </div>
+                            {tagLabels.length > 0 && (
+                              <div className="phone-notes-entry-tags">
+                                {tagLabels.map((label) => (
+                                  <span key={label} className="phone-notes-entry-tag">
+                                    {label}
+                                  </span>
+                                ))}
+                              </div>
+                            )}
                           </div>
+                          {pendingDeleteNoteId === entry.id ? (
+                            <div className="phone-notes-entry-delete-confirm">
+                              <button
+                                type="button"
+                                className="phone-notes-entry-delete phone-notes-entry-delete-confirm-btn"
+                                onClick={() => deleteNote(entry.id)}
+                                aria-label="Confirm delete note"
+                              >
+                                Delete
+                              </button>
+                              <button
+                                type="button"
+                                className="phone-notes-entry-delete phone-notes-entry-delete-cancel-btn"
+                                onClick={() => setPendingDeleteNoteId(null)}
+                                aria-label="Cancel delete"
+                              >
+                                Cancel
+                              </button>
+                            </div>
+                          ) : (
+                            <button
+                              type="button"
+                              className="phone-notes-entry-delete"
+                              onClick={() => requestDeleteNote(entry.id)}
+                              aria-label="Delete note"
+                            >
+                              x
+                            </button>
+                          )}
                         </div>
-                        <button
-                          type="button"
-                          className="phone-notes-entry-delete"
-                          onClick={() => deleteNote(entry.id)}
-                          aria-label="Delete note"
-                        >
-                          x
-                        </button>
-                      </div>
-                    ))
+                      );
+                    })
                   )}
                 </div>
 
                 {/* Stats Footer */}
                 {structuredNotes.entries.length > 0 && (
                   <div className="phone-notes-stats">
-                    {structuredNotes.entries.length} note{structuredNotes.entries.length !== 1 ? "s" : ""} recorded
+                    {filteredEntries.length} note{filteredEntries.length !== 1 ? "s" : ""} shown
+                    {hasActiveFilters && (
+                      <span className="phone-notes-saving">
+                        {structuredNotes.entries.length} total
+                      </span>
+                    )}
                     {saving && <span className="phone-notes-saving">Saving...</span>}
+                  </div>
+                )}
+                {lastDeletedNote && (
+                  <div className="phone-notes-undo">
+                    <span>Note deleted.</span>
+                    <button
+                      type="button"
+                      className="phone-notes-undo-btn"
+                      onClick={restoreLastDeletedNote}
+                    >
+                      Undo
+                    </button>
                   </div>
                 )}
               </div>

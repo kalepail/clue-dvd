@@ -75,6 +75,24 @@
   --solution-card-height: clamp(120px, 18vh, 220px);
 }
 
+html,
+body {
+  height: 100%;
+  margin: 0;
+  background-color: #0b0e16;
+  background:
+    radial-gradient(circle at top, rgba(182, 139, 45, 0.22), transparent 55%),
+    linear-gradient(180deg, #0b0e16 0%, #111826 60%, #0b0e16 100%);
+  background-attachment: scroll;
+}
+
+@media (max-width: 768px) {
+  html,
+  body {
+    background: #0b0e16;
+  }
+}
+
 /* Base styles */
 * {
   @apply border-border;
@@ -98,6 +116,72 @@ body {
   display: flex;
   flex-direction: column;
 }
+
+body.phone-mode #root {
+  height: auto !important;
+  max-height: none !important;
+  overflow: visible !important;
+  display: block !important;
+}
+
+body.phone-mode,
+html.phone-mode {
+  height: auto !important;
+  overflow-y: auto !important;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-y: auto;
+  overscroll-behavior-y: contain;
+  background-color: #0f1218;
+  background-image: none;
+}
+
+body.phone-mode.phone-join-mode,
+html.phone-mode.phone-join-mode {
+  background-color: #1c1814;
+}
+
+body.phone-mode {
+  position: static !important;
+  padding-bottom: env(safe-area-inset-bottom);
+  background-image: none;
+}
+
+html.phone-mode {
+  background-color: #0b0e16 !important;
+  background-image: none !important;
+}
+
+
+
+@supports (-webkit-touch-callout: none) {
+  html.phone-mode,
+  body.phone-mode {
+    background-color: #0f1218 !important;
+    background-image: none !important;
+  }
+
+  html.phone-mode.phone-join-mode,
+  body.phone-mode.phone-join-mode {
+    background-color: #1c1814 !important;
+  }
+
+  html.phone-mode.phone-join-mode,
+  body.phone-mode.phone-join-mode {
+    background-image: none !important;
+  }
+}
+
+@supports (-webkit-touch-callout: none) {
+  html.phone-mode {
+    background-image: none !important;
+  }
+
+  html.phone-mode.phone-join-mode {
+    background-image: none !important;
+  }
+}
+
+
 
 /* Typography */
 h1, h2, h3, h4, h5, h6 {
@@ -1526,6 +1610,17 @@ h3 {
   margin: 0 auto;
   height: 100%;
   min-height: 0;
+}
+
+.lobby-starting {
+  grid-column: 1 / -1;
+  padding: 0.75rem 1rem;
+  border-radius: 0.75rem;
+  border: 1px solid rgba(212, 175, 55, 0.3);
+  background: rgba(28, 24, 20, 0.85);
+  color: var(--color-gold);
+  font-size: 0.95rem;
+  text-align: center;
 }
 
 /* Code Section */

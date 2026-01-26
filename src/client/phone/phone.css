@@ -16,26 +16,24 @@
   --phone-accent: #b68b2d;
   --phone-accent-rgb: 182, 139, 45;
   min-height: 100vh;
+  min-height: 100svh;
   min-height: 100dvh;
-  background:
-    radial-gradient(circle at top, rgba(var(--phone-accent-rgb), 0.22), transparent 55%),
-    linear-gradient(180deg, #0b0e16 0%, #111826 60%, #0b0e16 100%);
-  background-attachment: fixed;
+  position: relative;
+  z-index: 0;
   color: var(--color-cream);
-  padding: 20px 16px 32px;
+  padding: calc(20px + env(safe-area-inset-top)) 16px 32px;
   padding-bottom: calc(32px + env(safe-area-inset-bottom));
-  overflow-y: auto;
   overflow-x: hidden;
-  -webkit-overflow-scrolling: touch;
+}
+
+.phone-shell > :not(.phone-top-deco):not(.phone-top-flare) {
+  position: relative;
+  z-index: 1;
 }
 
 .phone-shell-join {
   --phone-accent: var(--color-gold);
   --phone-accent-rgb: 212, 175, 55;
-  background:
-    radial-gradient(circle at 18% -8%, color-mix(in oklab, var(--color-gold) 28%, transparent), transparent 45%),
-    radial-gradient(circle at 120% 12%, color-mix(in oklab, var(--color-background) 35%, transparent), transparent 42%),
-    linear-gradient(160deg, #120f0b 0%, #1b1510 55%, var(--color-background) 100%);
 }
 
 .phone-join-hero {
@@ -50,6 +48,72 @@
   box-shadow: var(--phone-shadow-lg);
   overflow: hidden;
   animation: joinFadeUp 0.4s ease-out;
+}
+
+.phone-top-deco {
+  position: absolute;
+  top: calc(env(safe-area-inset-top) + 6px);
+  left: 16px;
+  right: 16px;
+  z-index: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  pointer-events: none;
+}
+
+.phone-top-deco-line {
+  flex: 1;
+  height: 1px;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(var(--phone-accent-rgb), 0.6),
+    transparent
+  );
+  box-shadow: 0 0 10px rgba(var(--phone-accent-rgb), 0.25);
+}
+
+.phone-top-deco-diamond {
+  width: 8px;
+  height: 8px;
+  transform: rotate(45deg);
+  background: rgba(var(--phone-accent-rgb), 0.85);
+  box-shadow: 0 0 12px rgba(var(--phone-accent-rgb), 0.45);
+}
+
+.phone-top-flare {
+  position: absolute;
+  top: calc(env(safe-area-inset-top) + 12px);
+  left: -10%;
+  right: -10%;
+  z-index: 0;
+  height: 220px;
+  pointer-events: none;
+  background:
+    radial-gradient(
+      circle at 50% 0%,
+      rgba(var(--phone-accent-rgb), 0.32),
+      rgba(var(--phone-accent-rgb), 0.18) 35%,
+      transparent 78%
+    );
+  filter: blur(6px);
+}
+
+.phone-shell-player .phone-top-flare {
+  height: 320px;
+  top: calc(env(safe-area-inset-top) + 15px);
+  left: -18%;
+  right: -18%;
+  background:
+    radial-gradient(
+      circle at 50% 0%,
+      rgba(var(--phone-accent-rgb), 0.38),
+      rgba(var(--phone-accent-rgb), 0.2) 38%,
+      transparent 82%
+    );
+  filter: blur(8px);
 }
 
 .phone-join-hero::after {
@@ -1251,6 +1315,113 @@
   line-height: 1.4;
 }
 
+.phone-notes-filter {
+  display: grid;
+  gap: 12px;
+}
+
+.phone-notes-filter-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.phone-notes-filter-clear {
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 999px;
+  padding: 4px 12px;
+  font-size: 0.6rem;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: rgba(255, 255, 255, 0.7);
+  cursor: pointer;
+}
+
+.phone-notes-filter-clear:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.phone-notes-filter-actions {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
+}
+
+.phone-notes-filter-btn {
+  background: rgba(14, 19, 31, 0.7);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 10px;
+  padding: 8px 6px;
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 0.6rem;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  font-family: var(--font-display);
+  cursor: pointer;
+  transition: background var(--phone-transition), border-color var(--phone-transition);
+}
+
+.phone-notes-filter-btn.active {
+  background: rgba(var(--phone-accent-rgb), 0.2);
+  border-color: rgba(var(--phone-accent-rgb), 0.55);
+  color: var(--color-cream);
+}
+
+.phone-notes-filter-options {
+  display: grid;
+  gap: 6px;
+  max-height: 180px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.phone-notes-filter-option {
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(12, 18, 30, 0.7);
+  border-radius: 10px;
+  padding: 8px 10px;
+  text-align: left;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 0.85rem;
+  color: rgba(255, 255, 255, 0.82);
+  cursor: pointer;
+}
+
+.phone-notes-filter-option.active {
+  border-color: rgba(var(--phone-accent-rgb), 0.5);
+  background: rgba(var(--phone-accent-rgb), 0.16);
+  color: #fff;
+}
+
+.phone-notes-filter-count {
+  font-size: 0.7rem;
+  color: rgba(255, 255, 255, 0.55);
+}
+
+.phone-notes-filter-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.phone-notes-filter-tag {
+  background: rgba(var(--phone-accent-rgb), 0.18);
+  border: 1px solid rgba(var(--phone-accent-rgb), 0.35);
+  color: var(--color-cream);
+  border-radius: 999px;
+  padding: 4px 10px;
+  font-size: 0.6rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  font-family: var(--font-display);
+}
+
 .phone-notes-quick-add {
   display: grid;
   gap: 10px;
@@ -1402,6 +1573,23 @@
   letter-spacing: 0.1em;
 }
 
+.phone-notes-entry-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.phone-notes-entry-tag {
+  font-size: 0.55rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.68);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 999px;
+  padding: 2px 8px;
+}
+
 .phone-notes-entry-turn {
   background: rgba(var(--phone-accent-rgb), 0.15);
   color: var(--phone-accent);
@@ -1424,6 +1612,31 @@
   transition: color var(--phone-transition), border-color var(--phone-transition), background var(--phone-transition), transform var(--phone-transition-fast);
 }
 
+.phone-notes-entry-delete-confirm {
+  display: grid;
+  gap: 6px;
+}
+
+.phone-notes-entry-delete-confirm .phone-notes-entry-delete {
+  width: auto;
+  height: auto;
+  padding: 6px 10px;
+  font-size: 0.6rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.phone-notes-entry-delete-confirm-btn {
+  color: #f5efe6;
+  border-color: rgba(232, 84, 84, 0.5);
+  background: rgba(232, 84, 84, 0.18);
+}
+
+.phone-notes-entry-delete-cancel-btn {
+  color: rgba(255, 255, 255, 0.6);
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
 .phone-notes-entry-delete:hover {
   color: #e85454;
   border-color: rgba(232, 84, 84, 0.4);
@@ -1444,6 +1657,34 @@
   text-transform: uppercase;
   letter-spacing: 0.1em;
   padding: 8px 4px;
+}
+
+.phone-notes-undo {
+  margin-top: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: rgba(14, 19, 31, 0.7);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  font-size: 0.65rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.75);
+}
+
+.phone-notes-undo-btn {
+  border: 1px solid rgba(var(--phone-accent-rgb), 0.45);
+  background: rgba(var(--phone-accent-rgb), 0.18);
+  color: var(--color-cream);
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 0.6rem;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  cursor: pointer;
 }
 
 .phone-notes-saving {

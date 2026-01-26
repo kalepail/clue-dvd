@@ -12,6 +12,19 @@ interface Props {
 }
 
 export default function PhoneJoinPage({ onNavigate }: Props) {
+  useEffect(() => {
+    document.body.classList.add("phone-mode");
+    document.documentElement.classList.add("phone-mode");
+    document.body.classList.add("phone-join-mode");
+    document.documentElement.classList.add("phone-join-mode");
+    return () => {
+      document.body.classList.remove("phone-mode");
+      document.documentElement.classList.remove("phone-mode");
+      document.body.classList.remove("phone-join-mode");
+      document.documentElement.classList.remove("phone-join-mode");
+    };
+  }, []);
+
   const [code, setCode] = useState("");
   const [name, setName] = useState("");
   const [suspectId, setSuspectId] = useState("");
@@ -141,6 +154,12 @@ export default function PhoneJoinPage({ onNavigate }: Props) {
 
   return (
     <div className="phone-shell phone-shell-join">
+      <div className="phone-top-deco" aria-hidden="true">
+        <span className="phone-top-deco-line" />
+        <span className="phone-top-deco-diamond" />
+        <span className="phone-top-deco-line" />
+      </div>
+      <div className="phone-top-flare" aria-hidden="true" />
       <header className="phone-join-hero">
         <div className="phone-join-crest">
           <span>Clue</span>
