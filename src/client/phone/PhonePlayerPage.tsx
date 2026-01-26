@@ -2,7 +2,7 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { DIFFICULTIES, ITEMS, LOCATIONS, SUSPECTS, THEMES, TIMES } from "../../shared/game-elements";
 import type { EliminationState } from "../../shared/api-types";
 import type { PhonePlayer, PhoneSessionSummary } from "../../phone/types";
-import { reconnectSession, sendPlayerAction, updatePlayer } from "./api";
+import { getSession, reconnectSession, sendPlayerAction, updatePlayer } from "./api";
 import { clearStoredPlayer, loadStoredPlayer } from "./storage";
 import {
   itemImageById,
@@ -334,7 +334,8 @@ export default function PhonePlayerPage({ code, onNavigate }: Props) {
     const reconnect = async () => {
       try {
         const data = await reconnectSession(code, stored.reconnectToken);
-        setSession({ session: data.session, players: [] });
+        const summary = await getSession(code).catch(() => null);
+        setSession(summary ?? { session: data.session, players: [data.player] });
         setPlayer(data.player);
         setToken(data.reconnectToken);
         setStructuredNotes(parseStructuredNotes(data.player.notes || ""));
@@ -1063,6 +1064,26 @@ export default function PhonePlayerPage({ code, onNavigate }: Props) {
     return date.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
   }, []);
 
+  const actionNoticeText = showAccusationNotice
+    ? (accusationFeedback
+        ? accusationFeedback.correct
+          ? "Correct!"
+          : accusationFeedback.correctCount === 0
+            ? zeroAccusationMessage || "So close."
+            : accusationFeedback.correctCount === 1
+              ? oneAccusationMessage || "So close."
+              : accusationFeedback.correctCount === 2
+                ? twoAccusationMessage || "So close."
+                : accusationFeedback.correctCount === 3
+                  ? threeAccusationMessage || "So close."
+                  : "So close."
+        : "Accusation Submitted")
+    : actionContinueMessage || "Action sent to the host.";
+  const actionNoticeSub =
+    showAccusationNotice && accusationFeedback && !accusationFeedback.correct
+      ? `${accusationFeedback.correctCount}/4 correct`
+      : null;
+
   const roster = session?.players ?? [];
   const sortedRoster = [...roster].sort(
     (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
@@ -1205,8 +1226,32 @@ export default function PhonePlayerPage({ code, onNavigate }: Props) {
       <div className="phone-top-flare" aria-hidden="true" />
       <div className="phone-header">
         <h1>Detective Notebook</h1>
-        <div className="phone-subtitle">
-          {player.name} · {player.suspectName} · Code {session?.session.code}
+        <div className="phone-header-row">
+          <div className="phone-subtitle">
+            {player.name} · {player.suspectName} · Code {session?.session.code}
+          </div>
+          <div className="phone-header-actions">
+            {isLead && interruptionActive && (
+              <button
+                type="button"
+                className="phone-end-turn phone-interruption-pill"
+                onClick={confirmInterruption}
+                disabled={interruptionConfirming}
+              >
+                {interruptionConfirming ? "Sending..." : "Inspector Interruption"}
+              </button>
+            )}
+            {(showAccusationNotice || showActionContinue) && (
+              <button
+                type="button"
+                className="phone-end-turn"
+                onClick={handleContinueInvestigation}
+                style={plumButtonStyle}
+              >
+                End Turn
+              </button>
+            )}
+          </div>
         </div>
         {isActive && !isSetupPhase && currentTurnSuspectId && (
           <div className="phone-turn-indicator-wrap">
@@ -1217,6 +1262,7 @@ export default function PhonePlayerPage({ code, onNavigate }: Props) {
           </div>
         )}
       </div>
+
 
       {!isActive && (
         <div className="phone-stack">
@@ -1336,6 +1382,8 @@ export default function PhonePlayerPage({ code, onNavigate }: Props) {
               ))}
             </div>
           )}
+
+          
 
           {!isSetupPhase && (
             <div className="phone-stack">
@@ -2050,7 +2098,49 @@ export default function PhonePlayerPage({ code, onNavigate }: Props) {
             )}
 
             {tab === "turn" && (
-              <div className="phone-card phone-stack">
+              <div className="phone-card phone-stack phone-action-card">
+                {(pendingRevealConfirm || pendingSuggestionConfirm) && (
+                  <>
+                    <div className="phone-action-card-dim" aria-hidden="true" />
+                    <div className="phone-action-toast phone-action-toast-card phone-action-confirm phone-action-toast-large">
+                      <div>
+                        {pendingRevealConfirm ? "Reveal the next clue?" : "Make a suggestion?"}
+                      </div>
+                      <div className="phone-button-row">
+                        <button
+                          type="button"
+                          className="phone-button ghost"
+                          onClick={() =>
+                            pendingRevealConfirm
+                              ? setPendingRevealConfirm(false)
+                              : setPendingSuggestionConfirm(false)
+                          }
+                          style={plumButtonStyle}
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          type="button"
+                          className="phone-button"
+                          onClick={pendingRevealConfirm ? confirmRevealClue : confirmSuggestion}
+                          style={plumButtonStyle}
+                        >
+                          Confirm
+                        </button>
+                      </div>
+                    </div>
+                  </>
+                )}
+                
+                {(showAccusationNotice || showActionContinue) && (
+                  <>
+                    <div className="phone-action-card-dim" aria-hidden="true" />
+                    <div className="phone-action-toast phone-action-toast-card">
+                      <div>{actionNoticeText}</div>
+                      {actionNoticeSub && <div className="phone-subtitle">{actionNoticeSub}</div>}
+                    </div>
+                  </>
+                )}
                 <div className="phone-section-title">Choose Your Action</div>
                 <div className="phone-action-grid">
                   <button
@@ -2269,104 +2359,10 @@ export default function PhonePlayerPage({ code, onNavigate }: Props) {
         </>
       )}
 
-      {pendingRevealConfirm && (
-        <div className="phone-scrim">
-          <div className="phone-scrim-card phone-scrim-card-stack">
-            <div>Reveal the next clue?</div>
-            <div className="phone-button-row">
-              <button
-                type="button"
-                className="phone-button ghost"
-                onClick={() => setPendingRevealConfirm(false)}
-                style={plumButtonStyle}
-              >
-                Cancel
-              </button>
-              <button type="button" className="phone-button" onClick={confirmRevealClue} style={plumButtonStyle}>
-                Confirm
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      
 
-      {pendingSuggestionConfirm && (
-        <div className="phone-scrim">
-          <div className="phone-scrim-card phone-scrim-card-stack">
-            <div>Make a suggestion?</div>
-            <div className="phone-button-row">
-              <button
-                type="button"
-                className="phone-button ghost"
-                onClick={() => setPendingSuggestionConfirm(false)}
-                style={plumButtonStyle}
-              >
-                Cancel
-              </button>
-              <button type="button" className="phone-button" onClick={confirmSuggestion} style={plumButtonStyle}>
-                Confirm
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
-      {isLead && interruptionActive && (
-        <div className="phone-scrim">
-          <div className="phone-scrim-card phone-scrim-card-stack">
-            <div className="phone-section-title">Inspector Interruption</div>
-            <div className="phone-subtitle">
-              Inspector Brown would like a word...
-            </div>
-            <button
-              type="button"
-              className="phone-button"
-              onClick={confirmInterruption}
-              disabled={interruptionConfirming}
-              style={plumButtonStyle}
-            >
-              {interruptionConfirming ? "Sending..." : "Continue"}
-            </button>
-          </div>
-        </div>
-      )}
 
-      {(showAccusationNotice || showActionContinue) && (
-        <div className="phone-scrim">
-          <div className="phone-scrim-card phone-scrim-card-stack">
-            <div>
-              {showAccusationNotice
-                ? (accusationFeedback
-                    ? accusationFeedback.correct
-                      ? "Correct!"
-                      : accusationFeedback.correctCount === 0
-                        ? zeroAccusationMessage || "So close."
-                        : accusationFeedback.correctCount === 1
-                          ? oneAccusationMessage || "So close."
-                          : accusationFeedback.correctCount === 2
-                            ? twoAccusationMessage || "So close."
-                            : accusationFeedback.correctCount === 3
-                              ? threeAccusationMessage || "So close."
-                              : "So close."
-                    : "Accusation Submitted")
-                : actionContinueMessage || "Action sent to the host."}
-            </div>
-            {showAccusationNotice && accusationFeedback && !accusationFeedback.correct && (
-              <div className="phone-subtitle">
-                {accusationFeedback.correctCount}/4 correct
-              </div>
-            )}
-            <button
-              type="button"
-              className="phone-button"
-              onClick={handleContinueInvestigation}
-              style={plumButtonStyle}
-            >
-              Continue Investigation
-            </button>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

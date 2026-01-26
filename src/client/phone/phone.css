@@ -1,6 +1,6 @@
 :root {
-  --phone-card-bg: rgba(15, 13, 10, 0.92);
-  --phone-border: rgba(212, 175, 55, 0.2);
+  --phone-card-bg: rgba(20, 18, 14, 0.94);
+  --phone-border: rgba(212, 175, 55, 0.26);
   --phone-gap: 12px;
   --suspect-scale: 1.08;
   --suspect-scale-selected: 1.12;
@@ -20,6 +20,7 @@
   min-height: 100dvh;
   position: relative;
   z-index: 0;
+  isolation: isolate;
   color: var(--color-cream);
   padding: calc(20px + env(safe-area-inset-top)) 16px 32px;
   padding-bottom: calc(32px + env(safe-area-inset-bottom));
@@ -99,6 +100,110 @@
       transparent 78%
     );
   filter: blur(6px);
+}
+
+.phone-action-toast {
+  max-width: min(88vw, 520px);
+  padding: 12px 16px;
+  border-radius: 14px;
+  background: rgba(12, 18, 30, 0.92);
+  border: 1px solid rgba(var(--phone-accent-rgb), 0.28);
+  color: rgba(255, 255, 255, 0.9);
+  text-align: center;
+  box-shadow: var(--phone-shadow-lg);
+}
+
+.phone-action-confirm {
+  width: min(90%, 360px);
+}
+
+.phone-action-toast-large {
+  transform: none;
+}
+
+.phone-action-toast-fixed {
+  position: fixed;
+  top: calc(env(safe-area-inset-top) + 24px);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 9999;
+  pointer-events: auto;
+}
+
+.phone-action-card {
+  position: relative;
+}
+
+.phone-action-card-dim {
+  position: absolute;
+  inset: 0;
+  background: rgba(6, 8, 12, 0.5);
+  border-radius: 16px;
+  z-index: 2;
+}
+
+.phone-action-toast-card {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 3;
+  margin: 0;
+}
+
+.phone-action-toast-card.phone-action-toast-large {
+  transform: translate(-50%, -50%) scale(1.2);
+}
+
+.phone-action-toast-fixed {
+  position: fixed;
+  top: calc(env(safe-area-inset-top) + 8px);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 9999;
+  pointer-events: auto;
+}
+
+.phone-action-toast-fixed.phone-action-toast-large {
+  transform: translateX(-50%) scale(1.2);
+}
+
+.phone-end-turn {
+  position: relative;
+  padding: 10px 14px;
+  border-radius: 999px;
+  border: 1px solid rgba(232, 84, 84, 0.6);
+  background: rgba(232, 84, 84, 0.2);
+  color: #f5efe6;
+  font-family: var(--font-display);
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  font-size: 0.6rem;
+  box-shadow: 0 0 14px rgba(232, 84, 84, 0.35), 0 6px 18px rgba(0, 0, 0, 0.3);
+  cursor: pointer;
+  animation: phone-end-turn-pulse 1.8s ease-in-out infinite;
+}
+
+.phone-end-turn:hover {
+  background: rgba(232, 84, 84, 0.32);
+  box-shadow: 0 0 18px rgba(232, 84, 84, 0.5), 0 6px 18px rgba(0, 0, 0, 0.35);
+}
+
+.phone-interruption-pill {
+  border-color: rgba(232, 124, 84, 0.7);
+  background: rgba(232, 124, 84, 0.22);
+  box-shadow: 0 0 14px rgba(232, 124, 84, 0.35), 0 6px 18px rgba(0, 0, 0, 0.3);
+}
+
+@keyframes phone-end-turn-pulse {
+  0%, 100% {
+    box-shadow: 0 0 10px rgba(232, 84, 84, 0.25), 0 6px 18px rgba(0, 0, 0, 0.3);
+    border-color: rgba(232, 84, 84, 0.45);
+  }
+  50% {
+    box-shadow: 0 0 20px rgba(232, 84, 84, 0.6), 0 6px 18px rgba(0, 0, 0, 0.35);
+    border-color: rgba(232, 84, 84, 0.85);
+  }
 }
 
 .phone-shell-player .phone-top-flare {
@@ -324,6 +429,19 @@
   position: relative;
 }
 
+.phone-header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.phone-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
 .phone-header h1 {
   font-family: var(--font-display);
   font-size: 1.6rem;
@@ -336,7 +454,7 @@
 
 .phone-subtitle {
   font-size: 0.88rem;
-  color: rgba(255, 255, 255, 0.65);
+  color: rgba(255, 255, 255, 0.72);
   line-height: 1.4;
 }
 
@@ -365,12 +483,12 @@
   text-transform: uppercase;
   font-size: 0.68rem;
   letter-spacing: 0.18em;
-  color: rgba(255, 255, 255, 0.6);
+  color: rgba(255, 255, 255, 0.7);
 }
 
 .phone-input {
-  background: rgba(22, 18, 13, 0.92);
-  border: 1px solid rgba(212, 175, 55, 0.15);
+  background: rgba(26, 22, 18, 0.94);
+  border: 1px solid rgba(212, 175, 55, 0.22);
   border-radius: 12px;
   color: var(--color-cream);
   padding: 12px 14px;
@@ -481,8 +599,8 @@
 }
 
 .phone-action-tile {
-  border: 1px solid var(--phone-border);
-  background: rgba(10, 16, 26, 0.8);
+  border: 1px solid rgba(218, 200, 160, 0.22);
+  background: rgba(16, 22, 34, 0.86);
   padding: 14px;
   border-radius: 16px;
   text-align: left;
@@ -536,7 +654,7 @@
 .phone-action-subtitle {
   margin-top: 5px;
   font-size: 0.72rem;
-  color: rgba(255, 255, 255, 0.58);
+  color: rgba(255, 255, 255, 0.68);
   line-height: 1.35;
 }
 
@@ -581,9 +699,9 @@
 }
 
 .phone-tab {
-  background: rgba(13, 18, 30, 0.8);
-  border: 1px solid var(--phone-border);
-  color: rgba(255, 255, 255, 0.65);
+  background: rgba(18, 24, 38, 0.85);
+  border: 1px solid rgba(218, 200, 160, 0.22);
+  color: rgba(255, 255, 255, 0.75);
   padding: 10px 6px;
   border-radius: 12px;
   font-size: 0.68rem;
@@ -623,12 +741,12 @@
 }
 
 .phone-option {
-  background: rgba(14, 19, 31, 0.75);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(18, 24, 38, 0.82);
+  border: 1px solid rgba(255, 255, 255, 0.16);
   border-radius: 12px;
   padding: 10px;
   text-align: center;
-  color: rgba(255, 255, 255, 0.85);
+  color: rgba(255, 255, 255, 0.9);
   font-size: 0.78rem;
   cursor: pointer;
   transition: border-color var(--phone-transition), box-shadow var(--phone-transition), background var(--phone-transition), transform var(--phone-transition-fast);
@@ -1185,9 +1303,11 @@
   background: rgba(6, 8, 14, 0.82);
   backdrop-filter: blur(6px);
   -webkit-backdrop-filter: blur(6px);
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  display: grid;
+  place-items: center;
+  width: 100vw;
+  height: 100svh;
+  padding: 24px 18px;
   z-index: 12;
   animation: phone-scrim-fade-in 0.2s ease;
 }
@@ -1630,7 +1750,6 @@
 }
 
 .phone-notes-undo {
-  margin-top: 8px;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -1643,6 +1762,13 @@
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: rgba(255, 255, 255, 0.75);
+  position: fixed;
+  left: 50%;
+  bottom: calc(12px + env(safe-area-inset-bottom));
+  z-index: 20;
+  width: min(calc(100% - 32px), 520px);
+  transform: translateX(-50%);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.35);
 }
 
 .phone-notes-undo-btn {
