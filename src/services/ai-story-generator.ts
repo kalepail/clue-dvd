@@ -11,6 +11,7 @@ import {
   type TimePeriod,
 } from "../data/game-elements";
 import type { CampaignPlan } from "../types/campaign";
+import { SeededRandom } from "./seeded-random";
 
 type StoryAiResponse = {
   opening: string;
@@ -40,6 +41,32 @@ const ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages";
 const MODEL_NAME = "claude-sonnet-5";
 const MAX_OUTPUT_TOKENS = 6000;
 const ALLOWED_GREETINGS = ["Good day", "Hello", "Coming", "Good evening"];
+const STORY_TOOL_NAME = "submit_mystery";
+const STORY_TOOL = {
+  name: STORY_TOOL_NAME,
+  description: "Submit the completed mystery in the required application format.",
+  input_schema: {
+    type: "object",
+    properties: {
+      opening: { type: "string" },
+      butler_clues: {
+        type: "array",
+        items: { type: "string" },
+        minItems: 10,
+        maxItems: 10,
+      },
+      inspector_notes: {
+        type: "array",
+        items: { type: "string" },
+        minItems: 2,
+        maxItems: 2,
+      },
+      closing: { type: "string" },
+    },
+    required: ["opening", "butler_clues", "inspector_notes", "closing"],
+    additionalProperties: false,
+  },
+};
 
 export async function generateStoryPackage(apiKey: string, params: {
   plan: CampaignPlan;
@@ -56,9 +83,11 @@ export async function generateStoryPackage(apiKey: string, params: {
     location: findName(LOCATIONS, params.plan.solution.locationId),
     time: findName(TIME_PERIODS, params.plan.solution.timeId),
   };
+  const possibilityField = buildPossibilityField(params.plan);
 
   const userPrompt = buildStoryUserPrompt({
     storySpec,
+    possibilityField,
     suspectList: SUSPECTS.map((s) => s.displayName),
     itemList: ITEMS.map((i) => i.nameUS),
     locationList: LOCATIONS.map((l) => l.name),
@@ -88,6 +117,8 @@ export async function generateStoryPackage(apiKey: string, params: {
       messages: [
         { role: "user", content: userPrompt },
       ],
+      tools: [STORY_TOOL],
+      tool_choice: { type: "tool", name: STORY_TOOL_NAME },
     }),
   });
 
@@ -97,24 +128,31 @@ export async function generateStoryPackage(apiKey: string, params: {
   }
 
   const data = await response.json() as {
-    content?: Array<{ type?: string; text?: string }>;
+    content?: Array<{
+      type?: string;
+      text?: string;
+      name?: string;
+      input?: unknown;
+    }>;
   };
 
+  const toolInput = data.content?.find(
+    (content) => content.type === "tool_use" && content.name === STORY_TOOL_NAME
+  )?.input;
   const outputText = data.content
     ?.filter((content) => content.type === "text")
     .map((content) => content.text ?? "")
     .join("") ?? "";
 
   if (lastStoryAiDebug) {
-    lastStoryAiDebug.rawResponse = outputText;
+    lastStoryAiDebug.rawResponse = toolInput
+      ? JSON.stringify(toolInput, null, 2)
+      : outputText;
   }
 
-  const cleaned = stripCodeFences(outputText);
-  if (!cleaned.trim()) {
-    throw new Error("Anthropic response was empty.");
-  }
-
-  const parsed = JSON.parse(cleaned) as StoryAiResponse;
+  const parsed = toolInput
+    ? toolInput as StoryAiResponse
+    : parseStoryJson(stripCodeFences(outputText));
   if (!parsed.opening || !parsed.closing) {
     throw new Error("Anthropic response missing opening or closing.");
   }
@@ -138,6 +176,53 @@ export async function generateStoryPackage(apiKey: string, params: {
     butlerClues: formattedClues,
     inspectorNotes: parsed.inspector_notes.map((note) => note.trim()),
     closing: parsed.closing.trim(),
+  };
+}
+
+export function buildPossibilityField(plan: CampaignPlan): {
+  suspects: string[];
+  items: string[];
+  locations: string[];
+  times: string[];
+} {
+  const rng = new SeededRandom(plan.seed ^ 0x5f3759df);
+  const answerSuspect = SUSPECTS.find((entry) => entry.id === plan.solution.suspectId)!;
+  const answerItem = ITEMS.find((entry) => entry.id === plan.solution.itemId)!;
+  const answerLocation = LOCATIONS.find((entry) => entry.id === plan.solution.locationId)!;
+  const answerTime = TIME_PERIODS.find((entry) => entry.id === plan.solution.timeId)!;
+
+  const suspectChoices = rng.pickMultiple(
+    SUSPECTS.filter((entry) => entry.id !== answerSuspect.id),
+    2
+  );
+  const itemChoices = rng.pickMultiple(
+    ITEMS.filter((entry) => entry.id !== answerItem.id && entry.category === answerItem.category),
+    2
+  );
+
+  const adjacentNames = new Set(answerLocation.adjacentRooms);
+  const nearbyLocations = LOCATIONS.filter((entry) => adjacentNames.has(entry.name));
+  const locationPool = nearbyLocations.length >= 2
+    ? nearbyLocations
+    : LOCATIONS.filter((entry) => entry.id !== answerLocation.id && entry.type === answerLocation.type);
+  const locationChoices = rng.pickMultiple(locationPool, Math.min(2, locationPool.length));
+
+  const orderedTimes = [...TIME_PERIODS].sort((a, b) => a.order - b.order);
+  const answerTimeIndex = orderedTimes.findIndex((entry) => entry.id === answerTime.id);
+  const neighboringTimes = orderedTimes
+    .filter((_, index) => index !== answerTimeIndex)
+    .sort((a, b) => {
+      const distanceA = Math.abs(orderedTimes.indexOf(a) - answerTimeIndex);
+      const distanceB = Math.abs(orderedTimes.indexOf(b) - answerTimeIndex);
+      return distanceA - distanceB || rng.next() - 0.5;
+    })
+    .slice(0, 2);
+
+  return {
+    suspects: rng.shuffle([answerSuspect, ...suspectChoices]).map((entry) => entry.displayName),
+    items: rng.shuffle([answerItem, ...itemChoices]).map((entry) => entry.nameUS),
+    locations: rng.shuffle([answerLocation, ...locationChoices]).map((entry) => entry.name),
+    times: rng.shuffle([answerTime, ...neighboringTimes]).map((entry) => entry.name),
   };
 }
 
@@ -216,4 +301,57 @@ export function stripCodeFences(value: string): string {
     return unwrapped.slice(objectStart, objectEnd + 1);
   }
   return unwrapped;
+}
+
+export function parseStoryJson(value: string): StoryAiResponse {
+  try {
+    return JSON.parse(value) as StoryAiResponse;
+  } catch (originalError) {
+    const repaired = escapeControlCharactersInsideStrings(value);
+    if (repaired === value) throw originalError;
+
+    try {
+      return JSON.parse(repaired) as StoryAiResponse;
+    } catch {
+      throw originalError;
+    }
+  }
+}
+
+function escapeControlCharactersInsideStrings(value: string): string {
+  let result = "";
+  let insideString = false;
+  let escaped = false;
+
+  for (const character of value) {
+    if (!insideString) {
+      result += character;
+      if (character === '"') insideString = true;
+      continue;
+    }
+
+    if (escaped) {
+      result += character;
+      escaped = false;
+      continue;
+    }
+
+    if (character === "\\") {
+      result += character;
+      escaped = true;
+    } else if (character === '"') {
+      result += character;
+      insideString = false;
+    } else if (character === "\n") {
+      result += "\\n";
+    } else if (character === "\r") {
+      result += "\\r";
+    } else if (character === "\t") {
+      result += "\\t";
+    } else {
+      result += character;
+    }
+  }
+
+  return result;
 }
