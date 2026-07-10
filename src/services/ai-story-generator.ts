@@ -36,8 +36,9 @@ type StoryAiDebug = {
 
 let lastStoryAiDebug: StoryAiDebug | null = null;
 
-const OPENAI_API_URL = "https://api.openai.com/v1/responses";
-const MODEL_NAME = "gpt-5.2-2025-12-11";
+const ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages";
+const MODEL_NAME = "claude-sonnet-5";
+const MAX_OUTPUT_TOKENS = 6000;
 const ALLOWED_GREETINGS = ["Good day", "Hello", "Coming", "Good evening"];
 
 export async function generateStoryPackage(apiKey: string, params: {
@@ -73,17 +74,18 @@ export async function generateStoryPackage(apiKey: string, params: {
     answerKey,
   };
 
-  const response = await fetch(OPENAI_API_URL, {
+  const response = await fetch(ANTHROPIC_API_URL, {
     method: "POST",
     headers: {
-      Authorization: `Bearer ${apiKey}`,
+      "x-api-key": apiKey,
+      "anthropic-version": "2023-06-01",
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
       model: MODEL_NAME,
-      temperature: 0.4,
-      input: [
-        { role: "system", content: STORY_SYSTEM_PROMPT },
+      max_tokens: MAX_OUTPUT_TOKENS,
+      system: STORY_SYSTEM_PROMPT,
+      messages: [
         { role: "user", content: userPrompt },
       ],
     }),
@@ -91,21 +93,17 @@ export async function generateStoryPackage(apiKey: string, params: {
 
   if (!response.ok) {
     const errorText = await response.text();
-    throw new Error(`OpenAI request failed: ${response.status} ${errorText}`);
+    throw new Error(`Anthropic request failed: ${response.status} ${errorText}`);
   }
 
   const data = await response.json() as {
-    output_text?: string;
-    output?: Array<{ content?: Array<{ type?: string; text?: string }> }>;
+    content?: Array<{ type?: string; text?: string }>;
   };
 
-  const outputText =
-    data.output_text ??
-    data.output
-      ?.flatMap((item) => item.content ?? [])
-      .map((content) => content.text ?? "")
-      .join("") ??
-    "";
+  const outputText = data.content
+    ?.filter((content) => content.type === "text")
+    .map((content) => content.text ?? "")
+    .join("") ?? "";
 
   if (lastStoryAiDebug) {
     lastStoryAiDebug.rawResponse = outputText;
@@ -113,12 +111,12 @@ export async function generateStoryPackage(apiKey: string, params: {
 
   const cleaned = stripCodeFences(outputText);
   if (!cleaned.trim()) {
-    throw new Error("OpenAI response was empty.");
+    throw new Error("Anthropic response was empty.");
   }
 
   const parsed = JSON.parse(cleaned) as StoryAiResponse;
   if (!parsed.opening || !parsed.closing) {
-    throw new Error("OpenAI response missing opening or closing.");
+    throw new Error("Anthropic response missing opening or closing.");
   }
   if (!Array.isArray(parsed.butler_clues) || parsed.butler_clues.length !== 10) {
     throw new Error(`Expected 10 butler clues, received ${parsed.butler_clues?.length ?? 0}.`);
@@ -200,12 +198,22 @@ function findName<T extends Suspect | Item | Location | TimePeriod>(list: T[], i
   return id;
 }
 
-function stripCodeFences(value: string): string {
+export function stripCodeFences(value: string): string {
   const trimmed = value.trim();
-  const fenceMatch = trimmed.match(/```[a-zA-Z]*\\n([\\s\\S]*?)```/);
-  if (fenceMatch) {
-    return fenceMatch[1].trim();
+  let unwrapped = trimmed;
+  if (unwrapped.startsWith("```")) {
+    // Claude may emit either ```json followed by a newline or put the JSON
+    // on the same line as the opening fence.
+    unwrapped = unwrapped
+      .replace(/^```(?:json)?\s*/i, "")
+      .replace(/\s*```$/, "")
+      .trim();
   }
-  if (!trimmed.startsWith("```")) return value;
-  return trimmed.replace(/^```[a-zA-Z]*\\n?/, "").replace(/```$/, "");
+
+  const objectStart = unwrapped.indexOf("{");
+  const objectEnd = unwrapped.lastIndexOf("}");
+  if (objectStart >= 0 && objectEnd > objectStart) {
+    return unwrapped.slice(objectStart, objectEnd + 1);
+  }
+  return unwrapped;
 }

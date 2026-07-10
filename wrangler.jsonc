@@ -19,7 +19,7 @@
 		"remote": true
 	},
 	"vars": {
-		"OPENAI_API_KEY": ""
+		"ANTHROPIC_API_KEY": ""
 	},
 	"d1_databases": [
 		{

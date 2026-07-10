@@ -35,9 +35,9 @@ const handleGenerateScenario = async (c: Context<{ Bindings: CloudflareBindings 
     const { scenario: baseScenario, plan } = generateScenarioWithPlan(request);
     let scenario = baseScenario;
     if (AI_STORY_ENABLED && plan.themeId === AI_THEME_ID) {
-      const apiKey = c.env.OPENAI_API_KEY;
+      const apiKey = c.env.ANTHROPIC_API_KEY;
       if (!apiKey) {
-        throw new Error("OPENAI_API_KEY is not configured.");
+        throw new Error("ANTHROPIC_API_KEY is not configured.");
       }
       const story = await generateStoryPackage(apiKey, { plan });
       scenario = applyStoryPackage(baseScenario, story);
