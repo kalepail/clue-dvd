@@ -78,6 +78,43 @@ ${CASE_BIBLE_CONTRACT}`,
   };
 }
 
+export function buildArchitectRepairPrompt(params: {
+  bible: CaseBible;
+  issues: string[];
+  answer: Answer;
+  world: MysteryWorld;
+}): { system: string; prompt: string } {
+  return {
+    system: `You are repairing a private CaseBible for the 2006 Clue DVD Game. Return only the required serialized caseBibleJson envelope. Preserve the immutable answer, lore, occasion, and story intent, but repair every deterministic validation issue. Do not write prose clues.`,
+    prompt: `Repair this CaseBible and return the complete corrected JSON serialized inside exactly one caseBibleJson string.
+
+Validation failures:
+${params.issues.map((issue) => `- ${issue}`).join("\n")}
+
+Immutable answer:
+${JSON.stringify(params.answer, null, 2)}
+
+Verified world:
+${JSON.stringify(params.world, null, 2)}
+
+Repair rules:
+- Sort timeline events and occasion schedule by the supplied printed time order.
+- Every cast trueActionEventId must point to an event whose participantIds include that suspect.
+- Every item thread event must list that item, and every location change must have a movement ending at the destination event with the item present.
+- Keep every clue's actual rulesOut/support categories within its declared answerDimensions, with no more than two dimensions.
+- Inspector notes must use new evidence atoms, important inferences need two separate public surfaces, and every deception contradiction must be exposed publicly.
+- Closing evidence must be exposed by a clue or Inspector note.
+- Adjust candidate effects so the remaining fields are broad after clue 5, 3–4 candidates after clue 7, and 2–3 candidates at the end, without ever eliminating the answer.
+- Preserve all required IDs and return complete arrays. Do not omit fields or invent card IDs.
+
+Current CaseBible:
+${JSON.stringify(params.bible, null, 2)}
+
+The corrected serialized caseBibleJson must follow this contract:
+${CASE_BIBLE_CONTRACT}`,
+  };
+}
+
 export function buildRendererPrompt(params: {
   bible: CaseBible;
   world: MysteryWorld;

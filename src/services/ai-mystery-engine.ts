@@ -6,6 +6,7 @@ import {
 } from "../data/game-elements";
 import {
   buildArchitectPrompt,
+  buildArchitectRepairPrompt,
   buildAuditPrompt,
   buildInspectorPrompt,
   buildRendererPrompt,
@@ -217,7 +218,7 @@ export async function generateMysteryV2(apiKey: string, params: {
       outputSchema: ArchitectEnvelopeSchema,
       maxTokens: 16_000,
     });
-    const caseBible = parseEmbeddedCaseBible(architectEnvelope.value.caseBibleJson);
+    let caseBible = parseEmbeddedCaseBible(architectEnvelope.value.caseBibleJson);
     debug.caseBible = toStageDebug(architectPrompt, { ...architectEnvelope, value: caseBible });
 
     await emit("timeline", "Simulating and validating the hidden timeline.", 36);
@@ -225,6 +226,36 @@ export async function generateMysteryV2(apiKey: string, params: {
       occasionFamily,
       recentSignatures,
     });
+    const repairableArchitectIssues = debug.deterministicIssues.caseBible.filter((issue) =>
+      !issue.includes("immutable answer") &&
+      !issue.includes("code-selected occasion family") &&
+      !issue.includes("recent mystery signature")
+    );
+    if (repairableArchitectIssues.length > 0) {
+      await emit("relationships", "Repairing the architect's causal case structure.", 28);
+      const repairPrompt = buildArchitectRepairPrompt({
+        bible: caseBible,
+        issues: repairableArchitectIssues,
+        answer,
+        world,
+      });
+      const repairedEnvelope = await provider({
+        apiKey,
+        stage: "architect",
+        ...repairPrompt,
+        toolName: "submit_case_bible_repair",
+        toolDescription: "Submit exactly one corrected caseBibleJson string.",
+        inputSchema: toToolInputSchema(ArchitectEnvelopeSchema),
+        outputSchema: ArchitectEnvelopeSchema,
+        maxTokens: 16_000,
+      });
+      caseBible = parseEmbeddedCaseBible(repairedEnvelope.value.caseBibleJson);
+      debug.caseBible = toStageDebug(repairPrompt, { ...repairedEnvelope, value: caseBible });
+      debug.deterministicIssues.caseBible = validateCaseBible(caseBible, answer, world, {
+        occasionFamily,
+        recentSignatures,
+      });
+    }
     throwForIssues("architect", "Case bible failed deterministic validation", debug.deterministicIssues.caseBible);
 
     const rendererPrompt = buildRendererPrompt({ bible: caseBible, world });
