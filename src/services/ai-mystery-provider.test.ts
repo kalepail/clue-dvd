@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod/v4";
 import { callStructured } from "./ai-mystery-provider";
-import { CaseBibleSchema, toToolInputSchema } from "./ai-mystery-schemas";
+import { toToolInputSchema } from "./ai-mystery-schemas";
 
 const OutputSchema = z.object({ value: z.string() });
 
@@ -111,7 +111,10 @@ describe("structured Anthropic provider", () => {
   });
 
   it("removes unsupported constraints before strict grammar compilation", () => {
-    const schema = toToolInputSchema(CaseBibleSchema);
+    const runtimeSchema = z.object({
+      entries: z.array(z.object({ label: z.string().min(2), score: z.number().min(1).max(10) })).min(2).max(5),
+    });
+    const schema = toToolInputSchema(runtimeSchema);
     const serialized = JSON.stringify(schema);
     for (const keyword of ["minimum", "maximum", "minLength", "maxLength", "minItems", "maxItems"]) {
       expect(serialized).not.toContain(`\"${keyword}\":`);

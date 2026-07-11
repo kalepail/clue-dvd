@@ -197,17 +197,9 @@ scenarios.get("/last-ai-stages.json", (c) => {
   }
   return new Response(JSON.stringify({
     setup: output.setup,
-    foundation: output.foundation ?? null,
-    causalTimeline: output.causalTimeline ?? null,
-    evidenceDesign: output.evidenceDesign ?? null,
-    cluePlan: output.cluePlan ?? null,
-    caseBible: output.caseBible ?? null,
-    renderedDraft: output.renderedDraft ?? null,
-    inspectorEvidence: output.inspectorEvidence ?? null,
+    creativeDraft: output.creativeDraft ?? null,
     blindAudit: output.blindAudit ?? null,
     revision: output.revision ?? null,
-    finalAudit: output.finalAudit ?? null,
-    deterministicIssues: output.deterministicIssues,
     finalPackage: output.finalPackage ?? null,
     failure: output.failure ?? null,
   }, null, 2), {
@@ -238,8 +230,7 @@ export function applyMysteryPackage(
   return {
     ...scenario,
     clues,
-    // Legacy dramatic events were generated independently from the V2 case
-    // bible and would fracture the causal story if exposed.
+    // Legacy dramatic events are unrelated to the generated mystery.
     dramaticEvents: [],
     inspectorNotes,
     narrative: {
@@ -249,7 +240,7 @@ export function applyMysteryPackage(
     },
     metadata: {
       ...scenario.metadata,
-      engineVersion: "2.0",
+      engineVersion: "2.1-creative",
       mysterySignature: story.mysterySignature,
     },
   };

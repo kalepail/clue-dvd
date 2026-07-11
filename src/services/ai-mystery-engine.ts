@@ -1,57 +1,23 @@
+import { ITEMS, LOCATIONS, SUSPECTS, TIME_PERIODS } from "../data/game-elements";
 import {
-  ITEMS,
-  LOCATIONS,
-  SUSPECTS,
-  TIME_PERIODS,
-} from "../data/game-elements";
-import {
-  buildAuditPrompt,
-  buildCluePlanPrompt,
-  buildEvidencePrompt,
-  buildFoundationPrompt,
-  buildInspectorPrompt,
-  buildRendererPrompt,
-  buildRevisionPrompt,
-  buildTimelinePrompt,
+  buildCreativeAuditPrompt,
+  buildCreativeMysteryPrompt,
+  buildCreativeRevisionPrompt,
   type MysteryWorld,
-} from "../data/ai-mystery-prompts";
+} from "../data/ai-creative-mystery-prompts";
 import {
-  BlindAuditSchema,
-  CausalTimelineSchema,
-  CluePlanSchema,
-  EvidenceDesignSchema,
-  InspectorPackageSchema,
-  RenderedMysterySchema,
-  RevisedPackageSchema,
-  StoryFoundationSchema,
+  CreativeAuditSchema,
+  CreativeMysterySchema,
   toToolInputSchema,
   type Answer,
-  type BlindAudit,
-  type CausalTimeline,
-  type CaseBible,
-  type CluePlan,
-  type EvidenceDesign,
-  type InspectorPackage,
-  type RenderedMystery,
-  type StoryFoundation,
+  type CreativeAudit,
+  type CreativeMystery,
 } from "./ai-mystery-schemas";
-import {
-  assembleCaseBible,
-  assembleCaseNarrative,
-  buildCandidateEffectPlan,
-  selectTrackedItemIds,
-} from "./ai-mystery-assembler";
 import {
   callStructured,
   MysteryStageError,
-  type MysteryStage,
   type StructuredCallResult,
 } from "./ai-mystery-provider";
-import {
-  evaluateBlindAudit,
-  validateCaseBible,
-  validatePublicPackage,
-} from "./ai-mystery-validator";
 import type { MysterySetup } from "./ai-mystery-setup";
 
 const OCCASION_FAMILIES = [
@@ -108,7 +74,7 @@ type StageDebug<T> = {
 };
 
 export type MysteryEngineDebug = {
-  engineVersion: "2.0";
+  engineVersion: "2.1-creative";
   startedAt: string;
   setup: {
     seed: number;
@@ -117,31 +83,10 @@ export type MysteryEngineDebug = {
     recentSignatures: string[];
     world: MysteryWorld;
   };
-  foundation?: StageDebug<StoryFoundation>;
-  causalTimeline?: StageDebug<CausalTimeline>;
-  evidenceDesign?: StageDebug<EvidenceDesign>;
-  cluePlan?: StageDebug<CluePlan>;
-  caseBible?: CaseBible;
-  renderedDraft?: StageDebug<RenderedMystery>;
-  inspectorEvidence?: StageDebug<InspectorPackage>;
-  blindAudit?: StageDebug<BlindAudit>;
-  revision?: StageDebug<RenderedMystery & InspectorPackage>;
-  finalAudit?: StageDebug<BlindAudit>;
-  deterministicIssues: {
-    caseBible: string[];
-    publicDraft: string[];
-    publicFinal: string[];
-    auditDraft: string[];
-    auditFinal: string[];
-  };
-  finalPackage?: {
-    opening: string;
-    clues: RenderedMystery["clues"];
-    inspectorNotes: InspectorPackage["notes"];
-    closing: string;
-    closingEvidenceIds: string[];
-    mysterySignature: string;
-  };
+  creativeDraft?: StageDebug<CreativeMystery>;
+  blindAudit?: StageDebug<CreativeAudit>;
+  revision?: StageDebug<CreativeMystery>;
+  finalPackage?: CreativeMystery;
   failure?: { stage: string; message: string; status?: number; rawResponse?: string };
 };
 
@@ -198,24 +143,10 @@ export async function generateMysteryV2(apiKey: string, params: {
   const world = buildMysteryWorld();
   const recentSignatures = (params.recentSignatures ?? []).filter(Boolean).slice(0, 5);
   const occasionFamily = chooseOccasionFamily(params.setup.seed, recentSignatures);
-
   const debug: MysteryEngineDebug = {
-    engineVersion: "2.0",
+    engineVersion: "2.1-creative",
     startedAt: new Date(startedAt).toISOString(),
-    setup: {
-      seed: params.setup.seed,
-      answer,
-      occasionFamily,
-      recentSignatures,
-      world,
-    },
-    deterministicIssues: {
-      caseBible: [],
-      publicDraft: [],
-      publicFinal: [],
-      auditDraft: [],
-      auditFinal: [],
-    },
+    setup: { seed: params.setup.seed, answer, occasionFamily, recentSignatures, world },
   };
   lastMysteryEngineDebug = debug;
 
@@ -224,241 +155,81 @@ export async function generateMysteryV2(apiKey: string, params: {
   };
 
   try {
-    await emit("occasion", "Designing the occasion.", 8);
-    const foundationPrompt = buildFoundationPrompt({ answer, world, occasionFamily, recentSignatures });
-    await emit("relationships", "Building motives and relationships.", 18);
-    const foundation = await provider({
-      apiKey,
-      stage: "architect",
-      ...foundationPrompt,
-      toolName: "submit_story_foundation",
-      toolDescription: "Submit the occasion, social tension, theft design, cast goals, relationships, and novelty signature.",
-      inputSchema: toToolInputSchema(StoryFoundationSchema),
-      outputSchema: StoryFoundationSchema,
-      maxTokens: 5_500,
-    });
-    debug.foundation = toStageDebug(foundationPrompt, foundation);
-
-    const trackedItemIds = selectTrackedItemIds(params.setup.seed, answer, world);
-    const candidatePlan = buildCandidateEffectPlan(params.setup.seed, answer, world);
-    const timelinePrompt = buildTimelinePrompt({
-      foundation: foundation.value,
-      answer,
-      world,
-      trackedItemIds,
-    });
-    await emit("timeline", "Simulating the hidden timeline and object movement.", 30);
-    const causalTimeline = await provider({
-      apiKey,
-      stage: "architect",
-      ...timelinePrompt,
-      toolName: "submit_causal_timeline",
-      toolDescription: "Submit phased events, embedded arrivals, and roles for the code-selected tracked items.",
-      inputSchema: toToolInputSchema(CausalTimelineSchema),
-      outputSchema: CausalTimelineSchema,
-      maxTokens: 8_000,
-    });
-    debug.causalTimeline = toStageDebug(timelinePrompt, causalTimeline);
-
-    const narrative = assembleCaseNarrative({
-      foundation: foundation.value,
-      timelineDraft: causalTimeline.value,
-      answer,
-      world,
-      occasionFamily,
-      trackedItemIds,
-    });
-    const evidencePrompt = buildEvidencePrompt({
-      foundation: foundation.value,
-      bibleContext: narrative,
-      candidatePlan,
-      world,
-    });
-    await emit("timeline", "Deriving lies, contradictions, and fair-play evidence.", 40);
-    const evidenceDesign = await provider({
-      apiKey,
-      stage: "architect",
-      ...evidencePrompt,
-      toolName: "submit_evidence_design",
-      toolDescription: "Submit evidence atoms, motivated deceptions, innocent suspicious threads, and multi-piece inferences.",
-      inputSchema: toToolInputSchema(EvidenceDesignSchema),
-      outputSchema: EvidenceDesignSchema,
-      maxTokens: 8_000,
-    });
-    debug.evidenceDesign = toStageDebug(evidencePrompt, evidenceDesign);
-
-    const cluePlanPrompt = buildCluePlanPrompt({
-      foundation: foundation.value,
-      bibleContext: narrative,
-      evidence: evidenceDesign.value,
-      candidatePlan,
-      world,
-    });
-    await emit("timeline", "Connecting evidence into ten mystery fragments.", 48);
-    const cluePlan = await provider({
-      apiKey,
-      stage: "architect",
-      ...cluePlanPrompt,
-      toolName: "submit_clue_plan",
-      toolDescription: "Submit ten evidence assignments, two Inspector evidence assignments, and closing evidence keys.",
-      inputSchema: toToolInputSchema(CluePlanSchema),
-      outputSchema: CluePlanSchema,
-      maxTokens: 5_500,
-    });
-    debug.cluePlan = toStageDebug(cluePlanPrompt, cluePlan);
-
-    let caseBible: CaseBible;
-    try {
-      caseBible = assembleCaseBible({
-        narrative,
-        evidence: evidenceDesign.value,
-        cluePlan: cluePlan.value,
-        candidatePlan,
-      });
-    } catch (error) {
-      throw new MysteryStageError(
-        "architect",
-        `Staged CaseBible assembly failed: ${error instanceof Error ? error.message : "unknown assembly error"}`
-      );
-    }
-    debug.caseBible = caseBible;
-    debug.deterministicIssues.caseBible = validateCaseBible(caseBible, answer, world, {
-      occasionFamily,
-      recentSignatures,
-    });
-    throwForIssues("architect", "Case bible failed deterministic validation", debug.deterministicIssues.caseBible);
-
-    const rendererPrompt = buildRendererPrompt({ bible: caseBible, world });
-    await emit("rendering", "Writing witness fragments.", 58);
-    const rendered = await provider({
+    await emit("occasion", "Creating an original Tudor Mansion mystery.", 10);
+    const creativePrompt = buildCreativeMysteryPrompt({ answer, world, occasionFamily, recentSignatures });
+    await emit("rendering", "Writing the complete mystery and story clues.", 35);
+    const draft = await provider({
       apiKey,
       stage: "renderer",
-      ...rendererPrompt,
-      toolName: "submit_rendered_mystery",
-      toolDescription: "Submit the opening, ten evidence-linked fragments, and evidence-grounded closing.",
-      inputSchema: toToolInputSchema(RenderedMysterySchema),
-      outputSchema: RenderedMysterySchema,
-      maxTokens: 6_500,
+      ...creativePrompt,
+      toolName: "submit_creative_mystery",
+      toolDescription: "Submit one complete creative theft mystery with opening, hidden truth, ten clues, two notes, and closing.",
+      inputSchema: toToolInputSchema(CreativeMysterySchema),
+      outputSchema: CreativeMysterySchema,
+      maxTokens: 9_000,
     });
-    debug.renderedDraft = toStageDebug(rendererPrompt, rendered);
+    debug.creativeDraft = toStageDebug(creativePrompt, draft);
 
-    const inspectorPrompt = buildInspectorPrompt({ bible: caseBible, mystery: rendered.value, world });
-    await emit("inspector", "Preparing Inspector evidence.", 68);
-    const inspector = await provider({
-      apiKey,
-      stage: "inspector",
-      ...inspectorPrompt,
-      toolName: "submit_inspector_evidence",
-      toolDescription: "Submit the two evidence-linked Inspector Brown notes.",
-      inputSchema: toToolInputSchema(InspectorPackageSchema),
-      outputSchema: InspectorPackageSchema,
-      maxTokens: 1_200,
-    });
-    debug.inspectorEvidence = toStageDebug(inspectorPrompt, inspector);
-    debug.deterministicIssues.publicDraft = validatePublicPackage({
-      bible: caseBible,
-      mystery: rendered.value,
-      inspector: inspector.value,
-      world,
-    });
-
-    const auditPrompt = buildAuditPrompt({ mystery: rendered.value, inspector: inspector.value, world });
-    await emit("audit", "Blind-playtesting the mystery.", 78);
+    await emit("audit", "Blind-playtesting the mystery for coherence and fairness.", 70);
+    const auditPrompt = buildCreativeAuditPrompt({ mystery: draft.value, world });
     const audit = await provider({
       apiKey,
       stage: "audit",
       ...auditPrompt,
-      toolName: "submit_blind_audit",
-      toolDescription: "Submit the three-snapshot blind playtest and narrative audit.",
-      inputSchema: toToolInputSchema(BlindAuditSchema),
-      outputSchema: BlindAuditSchema,
-      maxTokens: 3_000,
+      toolName: "submit_creative_audit",
+      toolDescription: "Judge broad coherence, playability, solvability, early answer leakage, and closing support.",
+      inputSchema: toToolInputSchema(CreativeAuditSchema),
+      outputSchema: CreativeAuditSchema,
+      maxTokens: 1_500,
     });
     debug.blindAudit = toStageDebug(auditPrompt, audit);
-    debug.deterministicIssues.auditDraft = evaluateBlindAudit(audit.value, answer, world);
 
-    let finalMystery = rendered.value;
-    let finalInspector = inspector.value;
-    const draftIssues = unique([
-      ...debug.deterministicIssues.publicDraft,
-      ...debug.deterministicIssues.auditDraft,
-    ]);
+    const answerMissingFromClosing = !closingNamesAnswer(draft.value.closing, answer, world);
+    const needsRevision = answerMissingFromClosing ||
+      !audit.value.coherent ||
+      !audit.value.playable ||
+      !audit.value.solvable ||
+      audit.value.answerTooObviousEarly ||
+      !audit.value.closingSupportedByClues;
+    let finalMystery = draft.value;
 
-    if (draftIssues.length > 0) {
-      await emit("revision", "Revising the public mystery package.", 87);
-      const revisionPrompt = buildRevisionPrompt({
-        bible: caseBible,
-        mystery: rendered.value,
-        inspector: inspector.value,
-        audit: audit.value,
-        deterministicIssues: draftIssues,
+    if (needsRevision) {
+      const revisionAudit: CreativeAudit = answerMissingFromClosing
+        ? { ...audit.value, feedback: [...audit.value.feedback, "The closing must explicitly name the supplied WHO, WHAT, WHERE, and WHEN."] }
+        : audit.value;
+      await emit("revision", "Giving the writer one broad creative revision.", 84);
+      const revisionPrompt = buildCreativeRevisionPrompt({
+        answer,
+        world,
+        mystery: draft.value,
+        audit: revisionAudit,
       });
       const revision = await provider({
         apiKey,
         stage: "revision",
         ...revisionPrompt,
-        toolName: "submit_revised_mystery",
-        toolDescription: "Submit the complete revised public mystery while preserving all evidence provenance.",
-        inputSchema: toToolInputSchema(RevisedPackageSchema),
-        outputSchema: RevisedPackageSchema,
-        maxTokens: 7_000,
+        toolName: "submit_revised_creative_mystery",
+        toolDescription: "Submit the complete revised mystery while preserving its strongest creative ideas.",
+        inputSchema: toToolInputSchema(CreativeMysterySchema),
+        outputSchema: CreativeMysterySchema,
+        maxTokens: 9_000,
       });
-      finalMystery = {
-        opening: revision.value.opening,
-        clues: revision.value.clues,
-        closing: revision.value.closing,
-        closingEvidenceIds: revision.value.closingEvidenceIds,
-      };
-      finalInspector = { notes: revision.value.notes };
       debug.revision = toStageDebug(revisionPrompt, revision);
-      debug.deterministicIssues.publicFinal = validatePublicPackage({
-        bible: caseBible,
-        mystery: finalMystery,
-        inspector: finalInspector,
-        world,
-      });
-      throwForIssues("revision", "Revised package failed deterministic validation", debug.deterministicIssues.publicFinal);
-
-      await emit("revision", "Rechecking the revised mystery blind.", 92);
-      const finalAuditPrompt = buildAuditPrompt({ mystery: finalMystery, inspector: finalInspector, world });
-      const finalAudit = await provider({
-        apiKey,
-        stage: "audit",
-        ...finalAuditPrompt,
-        toolName: "submit_final_blind_audit",
-        toolDescription: "Submit the final three-snapshot blind playtest.",
-        inputSchema: toToolInputSchema(BlindAuditSchema),
-        outputSchema: BlindAuditSchema,
-        maxTokens: 3_000,
-      });
-      debug.finalAudit = toStageDebug(finalAuditPrompt, finalAudit);
-      debug.deterministicIssues.auditFinal = evaluateBlindAudit(finalAudit.value, answer, world);
-      throwForIssues("audit", "Final blind audit rejected the mystery", debug.deterministicIssues.auditFinal);
+      finalMystery = revision.value;
     }
 
-    const mysterySignature = formatMysterySignature(caseBible);
-    debug.finalPackage = {
-      opening: finalMystery.opening,
-      clues: finalMystery.clues,
-      inspectorNotes: finalInspector.notes,
-      closing: finalMystery.closing,
-      closingEvidenceIds: finalMystery.closingEvidenceIds,
-      mysterySignature,
-    };
+    debug.finalPackage = finalMystery;
     await emit("complete", "Case ready.", 100);
-
     return {
       opening: finalMystery.opening.trim(),
-      butlerClues: finalMystery.clues
-        .slice()
-        .sort((left, right) => left.position - right.position)
-        .map((clue) => clue.text.trim()),
-      inspectorNotes: finalInspector.notes
-        .slice()
-        .sort((left, right) => left.id.localeCompare(right.id))
-        .map((note) => ({ id: note.id, text: note.text.trim(), relatedClues: note.relatedClues })),
+      butlerClues: finalMystery.clues.map((clue) => clue.trim()),
+      inspectorNotes: finalMystery.inspectorNotes.map((note, index) => ({
+        id: index === 0 ? "N1" : "N2",
+        text: note.text.trim(),
+        relatedClues: sanitizeRelatedClues(note.relatedClues),
+      })),
       closing: finalMystery.closing.trim(),
-      mysterySignature,
+      mysterySignature: finalMystery.mysterySignature.trim(),
     };
   } catch (error) {
     debug.failure = {
@@ -476,23 +247,25 @@ function chooseOccasionFamily(seed: number, recentSignatures: string[]): string 
   const start = ((normalizedSeed * 2_654_435_761) >>> 0) % OCCASION_FAMILIES.length;
   for (let offset = 0; offset < OCCASION_FAMILIES.length; offset += 1) {
     const candidate = OCCASION_FAMILIES[(start + offset) % OCCASION_FAMILIES.length];
-    if (!recentSignatures.some((signature) => signature.toLowerCase().includes(candidate.toLowerCase()))) {
-      return candidate;
-    }
+    if (!recentSignatures.some((signature) => signature.toLowerCase().includes(candidate.toLowerCase()))) return candidate;
   }
   return OCCASION_FAMILIES[start];
 }
 
-function formatMysterySignature(bible: CaseBible): string {
-  const signature = bible.noveltySignature;
-  return [signature.occasion, signature.motive, signature.relationship, signature.deception]
-    .map((part) => part.trim().replace(/\s+/g, " "))
-    .join(" | ");
+function closingNamesAnswer(closing: string, answer: Answer, world: MysteryWorld): boolean {
+  const normalized = closing.toLowerCase();
+  const names = [
+    world.suspects.find(({ id }) => id === answer.suspectId)?.name,
+    world.items.find(({ id }) => id === answer.itemId)?.name,
+    world.locations.find(({ id }) => id === answer.locationId)?.name,
+    world.times.find(({ id }) => id === answer.timeId)?.name,
+  ].filter((name): name is string => Boolean(name));
+  return names.every((name) => normalized.includes(name.toLowerCase()));
 }
 
-function throwForIssues(stage: MysteryStage, prefix: string, issues: string[]): void {
-  if (issues.length === 0) return;
-  throw new MysteryStageError(stage, `${prefix}: ${issues.join(" ")}`);
+function sanitizeRelatedClues(values: number[]): number[] {
+  const valid = [...new Set(values.filter((value) => Number.isInteger(value) && value >= 1 && value <= 10))];
+  return valid.length > 0 ? valid : [1];
 }
 
 function toStageDebug<T>(
@@ -509,8 +282,4 @@ function toStageDebug<T>(
     stopReason: result.stopReason,
     strictSchema: result.strictSchema,
   };
-}
-
-function unique(values: string[]): string[] {
-  return [...new Set(values)];
 }

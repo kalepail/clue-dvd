@@ -74,8 +74,8 @@ export function createMysteryScenarioShell(setup: MysterySetup): GeneratedScenar
       totalClues: EXPERT_CLUE_COUNT,
       seed: setup.seed,
       createdAt,
-      version: "2.0.0",
-      engineVersion: "2.0",
+      version: "2.1.0",
+      engineVersion: "2.1-creative",
     },
   };
 }
