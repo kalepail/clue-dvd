@@ -376,6 +376,22 @@ describe("AI Mystery Engine V2 orchestration", () => {
     expect(provider).toHaveBeenCalledTimes(1);
   });
 
+  it("normalizes harmless architect importance aliases before validation", async () => {
+    const fixture = buildFixtures();
+    const aliasedBible = structuredClone(fixture.bible) as unknown as Record<string, unknown>;
+    const inferences = aliasedBible.inferences as Array<Record<string, unknown>>;
+    inferences[3].importance = "critical";
+    inferences[2].importance = "minor";
+    const provider = sequenceProvider([
+      { caseBibleJson: JSON.stringify(aliasedBible) },
+      fixture.mystery,
+      fixture.inspector,
+      fixture.audit,
+    ]);
+    await expect(generateMysteryV2("test-key", { setup: fixture.setup, provider })).resolves.toBeDefined();
+    expect(provider).toHaveBeenCalledTimes(4);
+  });
+
   it("revises once and performs a second blind audit", async () => {
     const fixture = buildFixtures();
     const failedAudit: BlindAudit = {

@@ -407,7 +407,7 @@ function parseEmbeddedCaseBible(serialized: string): CaseBible {
       serialized
     );
   }
-  const parsed = CaseBibleSchema.safeParse(candidate);
+  const parsed = CaseBibleSchema.safeParse(normalizeCaseBibleEnums(candidate));
   if (!parsed.success) {
     const issueText = parsed.error.issues
       .slice(0, 8)
@@ -416,6 +416,42 @@ function parseEmbeddedCaseBible(serialized: string): CaseBible {
     throw new MysteryStageError("architect", `Embedded caseBibleJson failed validation: ${issueText}`, undefined, serialized);
   }
   return parsed.data;
+}
+
+/**
+ * Claude can vary the spelling/casing of qualitative enum values inside the
+ * serialized architect payload. Normalize only documented semantic aliases;
+ * unknown values remain untouched and are still rejected by Zod.
+ */
+function normalizeCaseBibleEnums(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(normalizeCaseBibleEnums);
+  if (!value || typeof value !== "object") return value;
+
+  const normalized: Record<string, unknown> = {};
+  for (const [key, child] of Object.entries(value as Record<string, unknown>)) {
+    const next = normalizeCaseBibleEnums(child);
+    if (typeof next !== "string") {
+      normalized[key] = next;
+      continue;
+    }
+    const token = next.trim().toLowerCase().replace(/[\s-]+/g, "_");
+    if (key === "importance") {
+      normalized[key] = token === "support" || token === "minor" || token === "secondary" || token === "contextual"
+        ? "supporting"
+        : token === "critical" || token === "major" || token === "decisive" || token === "primary" || token === "key"
+          ? "important"
+          : token === "supporting" || token === "important" ? token : next;
+    } else if (key === "category") {
+      normalized[key] = token.endsWith("s") ? token.slice(0, -1) : token;
+    } else if (key === "method" && token === "secret_passage") {
+      normalized[key] = "secret_passage";
+    } else if (key === "purpose" && token === "contextual") {
+      normalized[key] = "context";
+    } else {
+      normalized[key] = next;
+    }
+  }
+  return normalized;
 }
 
 function throwForIssues(stage: MysteryStage, prefix: string, issues: string[]): void {
