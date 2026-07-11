@@ -148,7 +148,6 @@ scenarios.get("/last-ai.json", (c) => {
     parsed: output.parsed ?? null,
     answerKey: output.answerKey ?? null,
     formattedClues: output.formattedClues ?? null,
-    storySpec: output.storySpec,
   }, null, 2), {
     headers: {
       "Content-Type": "application/json; charset=utf-8",
@@ -171,7 +170,6 @@ scenarios.get("/last-ai-stages.json", (c) => {
     },
     answerKey: output.answerKey ?? null,
     formattedClues: output.formattedClues ?? null,
-    storySpec: output.storySpec,
   }, null, 2), {
     headers: {
       "Content-Type": "application/json; charset=utf-8",

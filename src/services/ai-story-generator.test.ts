@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { buildPossibilityField, parseStoryJson, stripCodeFences } from "./ai-story-generator";
-import type { CampaignPlan } from "../types/campaign";
+import { parseStoryJson, stripCodeFences } from "./ai-story-generator";
+import { buildStoryUserPrompt } from "../data/ai-story-prompt";
 
 describe("AI story response parsing", () => {
   it("unwraps JSON fences with or without a newline", () => {
@@ -29,23 +29,25 @@ continued unexpectedly",
   });
 });
 
-describe("story possibility field", () => {
-  it("surrounds every answer with coherent alternatives", () => {
-    const field = buildPossibilityField({
-      seed: 2201,
-      solution: {
-        suspectId: "S10",
-        itemId: "I01",
-        locationId: "L09",
-        timeId: "T04",
+describe("AI story prompt", () => {
+  it("passes the answer and full world without a possibility field", () => {
+    const prompt = buildStoryUserPrompt({
+      suspectList: ["Miss Scarlet", "Mr. Green"],
+      itemList: ["Revolver", "Rare Book"],
+      locationList: ["Lounge", "Library"],
+      timeList: ["Dusk", "Dinner"],
+      answerKey: {
+        suspect: "Mr. Green",
+        item: "Revolver",
+        location: "Lounge",
+        time: "Dusk",
       },
-    } as CampaignPlan);
+    });
 
-    expect(field.suspects).toHaveLength(3);
-    expect(field.suspects).toContain("Rusty");
-    expect(field.items).toHaveLength(3);
-    expect(field.items).toContain("Spyglass");
-    expect(field.locations).toEqual(expect.arrayContaining(["Study", "Library", "Hall"]));
-    expect(field.times).toEqual(expect.arrayContaining(["Late Morning", "Lunch", "Early Afternoon"]));
+    expect(prompt).toContain("Hidden answer:");
+    expect(prompt).toContain("Who: Mr. Green");
+    expect(prompt).toContain("What: Revolver");
+    expect(prompt).not.toContain("possibility field");
+    expect(prompt).not.toContain("Story foundation");
   });
 });

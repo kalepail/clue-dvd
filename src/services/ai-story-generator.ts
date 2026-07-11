@@ -1,5 +1,4 @@
 import { STORY_SYSTEM_PROMPT, buildStoryUserPrompt } from "../data/ai-story-prompt";
-import { buildStorySpec, type StorySpec } from "./story-pool-selector";
 import {
   SUSPECTS,
   ITEMS,
@@ -11,7 +10,6 @@ import {
   type TimePeriod,
 } from "../data/game-elements";
 import type { CampaignPlan } from "../types/campaign";
-import { SeededRandom } from "./seeded-random";
 
 type StoryAiResponse = {
   opening: string;
@@ -25,7 +23,6 @@ type StoryAiDebug = {
   userPrompt: string;
   rawResponse: string;
   parsed?: StoryAiResponse;
-  storySpec: StorySpec;
   answerKey: {
     suspect: string;
     item: string;
@@ -76,18 +73,13 @@ export async function generateStoryPackage(apiKey: string, params: {
   inspectorNotes: string[];
   closing: string;
 }> {
-  const storySpec = buildStorySpec(params.plan);
   const answerKey = {
     suspect: findName(SUSPECTS, params.plan.solution.suspectId),
     item: findName(ITEMS, params.plan.solution.itemId),
     location: findName(LOCATIONS, params.plan.solution.locationId),
     time: findName(TIME_PERIODS, params.plan.solution.timeId),
   };
-  const possibilityField = buildPossibilityField(params.plan);
-
   const userPrompt = buildStoryUserPrompt({
-    storySpec,
-    possibilityField,
     suspectList: SUSPECTS.map((s) => s.displayName),
     itemList: ITEMS.map((i) => i.nameUS),
     locationList: LOCATIONS.map((l) => l.name),
@@ -99,7 +91,6 @@ export async function generateStoryPackage(apiKey: string, params: {
     systemPrompt: STORY_SYSTEM_PROMPT,
     userPrompt,
     rawResponse: "",
-    storySpec,
     answerKey,
   };
 
@@ -178,54 +169,6 @@ export async function generateStoryPackage(apiKey: string, params: {
     closing: parsed.closing.trim(),
   };
 }
-
-export function buildPossibilityField(plan: CampaignPlan): {
-  suspects: string[];
-  items: string[];
-  locations: string[];
-  times: string[];
-} {
-  const rng = new SeededRandom(plan.seed ^ 0x5f3759df);
-  const answerSuspect = SUSPECTS.find((entry) => entry.id === plan.solution.suspectId)!;
-  const answerItem = ITEMS.find((entry) => entry.id === plan.solution.itemId)!;
-  const answerLocation = LOCATIONS.find((entry) => entry.id === plan.solution.locationId)!;
-  const answerTime = TIME_PERIODS.find((entry) => entry.id === plan.solution.timeId)!;
-
-  const suspectChoices = rng.pickMultiple(
-    SUSPECTS.filter((entry) => entry.id !== answerSuspect.id),
-    2
-  );
-  const itemChoices = rng.pickMultiple(
-    ITEMS.filter((entry) => entry.id !== answerItem.id && entry.category === answerItem.category),
-    2
-  );
-
-  const adjacentNames = new Set(answerLocation.adjacentRooms);
-  const nearbyLocations = LOCATIONS.filter((entry) => adjacentNames.has(entry.name));
-  const locationPool = nearbyLocations.length >= 2
-    ? nearbyLocations
-    : LOCATIONS.filter((entry) => entry.id !== answerLocation.id && entry.type === answerLocation.type);
-  const locationChoices = rng.pickMultiple(locationPool, Math.min(2, locationPool.length));
-
-  const orderedTimes = [...TIME_PERIODS].sort((a, b) => a.order - b.order);
-  const answerTimeIndex = orderedTimes.findIndex((entry) => entry.id === answerTime.id);
-  const neighboringTimes = orderedTimes
-    .filter((_, index) => index !== answerTimeIndex)
-    .sort((a, b) => {
-      const distanceA = Math.abs(orderedTimes.indexOf(a) - answerTimeIndex);
-      const distanceB = Math.abs(orderedTimes.indexOf(b) - answerTimeIndex);
-      return distanceA - distanceB || rng.next() - 0.5;
-    })
-    .slice(0, 2);
-
-  return {
-    suspects: rng.shuffle([answerSuspect, ...suspectChoices]).map((entry) => entry.displayName),
-    items: rng.shuffle([answerItem, ...itemChoices]).map((entry) => entry.nameUS),
-    locations: rng.shuffle([answerLocation, ...locationChoices]).map((entry) => entry.name),
-    times: rng.shuffle([answerTime, ...neighboringTimes]).map((entry) => entry.name),
-  };
-}
-
 
 export function getLastStoryAiDebug(): StoryAiDebug | null {
   return lastStoryAiDebug;

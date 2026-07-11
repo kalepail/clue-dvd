@@ -1,29 +1,10 @@
-import type { StorySpec } from "../services/story-pool-selector";
+export const STORY_SYSTEM_PROMPT = `You are the author and game master for an original mystery in the style and structure of the 2006 Clue DVD Game.
 
-export const STORY_SYSTEM_PROMPT = `You are the narrator for Clue DVD-style mysteries. Write in a 1920s British tone. The crime is always THEFT of a collectible.
+The crime is theft, never murder. Write a coherent 1920s British country-house story using only the supplied game elements. The hidden answer is a private continuity fact, not the subject around which every clue should revolve.
 
-You will produce:
-- an opening that sets the scene and mentions a theft,
-- 10 investigative statements (scene observations, witness interviews, or evidence notes),
-- 2 inspector notes (formal, deductive),
-- a closing that clearly explains who/what/where/when.
-
-Constraints:
-- Use ONLY the provided suspects, items, locations, and times.
-- Keep the investigation coherent and non-contradictory.
-- Your clues should leave 2–3 plausible suspects, 2–3 plausible times, 2–3 plausible locations, and 2–3 plausible items.
-- Do not reveal the answer until the closing.
-
-You are writing a small, human mystery story first, and a logic puzzle second.`;
+Produce an opening, 10 Butler clues, 2 Inspector notes, and a closing. The clues must feel like varied excerpts from one lived-in story. Preserve several credible possibilities in every category so the physical cards remain necessary. Do not make the answer obvious through repetition, emphasis, or a single decisive clue.`;
 
 export const buildStoryUserPrompt = (params: {
-  storySpec: StorySpec;
-  possibilityField: {
-    suspects: string[];
-    items: string[];
-    locations: string[];
-    times: string[];
-  };
   suspectList: string[];
   itemList: string[];
   locationList: string[];
@@ -34,127 +15,43 @@ export const buildStoryUserPrompt = (params: {
     location: string;
     time: string;
   };
-}) => {
-  const worldContext = [
-    "Rules: Theft only. 1920s British setting. Mr. Boddy owns all valuables.",
-    "Use only the provided suspect/item/location/time names.",
-    "Mrs. White and Rusty are staff; all others are guests.",
-  ].join("\n");
+}) => `Write one complete, original country-house theft mystery.
 
-  return `Assume the role of a classic British mystery novelist in the style of Agatha Christie.
+World:
+- Mr. Boddy owns the valuables and is the victim of the theft.
+- Ashe is the Butler narrator. Inspector Brown writes the two Inspector notes.
+- Mrs. White is the housekeeper and Rusty is the gardener. Do not invent unnamed household workers.
+- All ten suspects are present and part of the story world.
+- Events take place across one normal day; references to meals, daylight, and later events must follow chronological sense.
 
-Before thinking about puzzles or clues, imagine you are writing a short chapter of a country-house mystery:
+Game elements:
+- Suspects: ${params.suspectList.join(", ")}
+- Items: ${params.itemList.join(", ")}
+- Locations: ${params.locationList.join(", ")}
+- Times: ${params.timeList.join(", ")}
 
-- The house, the guests, and the servants are your cast.
-- The chapter turns naturally around several equally plausible people, valuables, rooms, and neighboring parts of the day; the true answer is not the protagonist of every incident.
-- The evening is defined by small social tensions, quiet motives, mild embarrassments, polite rivalries, and unspoken intentions.
-- People wait for one another, avoid one another, misinterpret one another, or use small social moments as excuses.
-- Ordinary routines (tea, lamps, staff duties) continue while something subtle and improper occurs.
+Hidden answer:
+- Who: ${params.answerKey.suspect}
+- What: ${params.answerKey.item}
+- Where: ${params.answerKey.location}
+- When: ${params.answerKey.time}
 
-Think like a novelist:
-- What does each person want?
-- Who is irritated, curious, jealous, embarrassed, or impatient?
-- What small, human moment creates the opportunity?
-- What is seen, what is half-seen, and what is merely assumed?
+Privately imagine the whole incident and the surrounding social story before writing the clues. Use the answer to keep that story true, but do not continually point toward it.
 
-You may draw inspiration from the style and narrative thinking of classic Christie-era mysteries (without copying any specific story).
+The opening should establish the occasion, household atmosphere, and discovery of a theft without naming the stolen item or revealing the answer room.
 
-Write this scene fully in your head. Do NOT output it.
+The 10 Butler clues should read as distinct moments from the same story: conversations, observations, misunderstandings, routines, objects being used, social tensions, or unexplained behavior. Many clues should concern innocent people and non-answer elements. Several different valuables should belong naturally to the story. No clue should directly combine the culprit, answer room, answer time, and a concealed object.
 
-Now imagine you are also the editor adapting that chapter into a fair-play mystery puzzle.
+Keep multiple suspects, nearby times, plausible rooms, and possible valuables alive through the public clues. The physical cards should be needed to make the final distinction. Vary sentence structure, speaker, rhythm, and dramatic purpose; avoid recycled phrasing or repeatedly using the same reporting verbs and mannered adverbs.
 
-Guiding principle:
-This is not a puzzle about floorplans. It is a story about people. The puzzle must emerge from the social drama, not the other way around.
+The two Inspector notes may connect patterns already present, but must not solve the case by themselves.
 
-Tone:
-Polite, restrained, civilized — with quiet tensions, small vanities, and unspoken motives underneath.
+The closing should clearly and satisfyingly explain who stole what, from where, at when, using the established story without introducing new evidence.
 
-How to choose what each clue is about:
-Prefer:
-- overheard or reported conversations
-- awkward encounters
-- social avoidance or social pursuit
-- small favors, borrowings, or obligations
-- someone waiting for a moment, or for a room to clear
-- someone being flustered, annoyed, embarrassed, or too curious
-
-Use rooms and times only when they naturally arise from these human situations, not as the main point of the clue.
-
-Structure:
-Do not try to account for everyone’s entire evening. Most of it was dull.
-Focus only on the handful of moments that created:
-- misunderstandings
-- cover stories
-- mistaken assumptions
-- or quiet opportunities
-
-One or two early clues may clear away a large group of suspects at once (a shared event, staff routine, or public moment).
-After that, the narrative should naturally narrow to 3–4 plausible people.
-
-Item handling:
-Do not explicitly state in any clue that a specific item is missing or stolen.
-The opening may describe a disturbed collection, absence, or unease, but must not name the exact stolen item or the room from which it was taken. Confirm those details only in the closing.
-Let several valuables live naturally in the story through admiration, borrowing, cleaning, display, repair, or innocent handling, just as rooms and guests do.
-
-Subtle inconsistency:
-Include one quiet, easy-to-miss inconsistency or mistaken assumption that becomes useful only when considered with other clues and the players' cards.
-Prefer a social or conversational inconsistency over a purely physical one.
-Hide it in someone else’s remark or a staff observation, not in the culprit’s own statement.
-When a character tells an important lie, do not reveal the contradiction in the same clue. Let the lie stand on its own. The conflicting fact must appear in a different, later clue, in a different voice, without explicitly referencing the lie.
-
-Inspector notes:
-The inspector is not explaining the genre.
-The inspector is summarizing patterns of behavior, social friction, or timeline oddities specific to this household and this night.
-
-They must never talk about:
-- “no forced entry”
-- “no tools”
-- “someone familiar with the house”
-or any other generic mystery-novel assumptions.
-
-They should talk only about what is peculiar in THIS case.
-
-Anti-mechanical principle:
-No single clue should, by itself, identify the culprit, the item, or the room. The truth should only become clear when several human details are considered together.
-In particular, avoid an eyewitness account that joins one suspect to a specific room while carrying, hiding, or handling an object; that collapses several deductions into one.
-Imagine these statements were written down before anyone knew what detail would prove important. People are not defending places or objects; they are simply recounting their own small, human concerns of the evening. Any importance a room or object has should only become clear in hindsight.
-
-After writing, do a silent editor’s pass to ensure:
-- No clue explicitly states which item is missing.
-- only reference a room,item,suspect,or time that is relevant - not considered only because its the answer
-- The solution is not given away by any single line.
-
-Available elements:
-Suspects: ${params.suspectList.join(", ")}
-Items: ${params.itemList.join(", ")}
-Locations: ${params.locationList.join(", ")}
-Times: ${params.timeList.join(", ")}
-
-Story foundation:
-Build the chapter around this whole field of live possibilities, giving each a genuine narrative reason to remain in question. Other elements may furnish atmosphere or alibis, but do not let the answer key dominate the account.
-- people: ${params.possibilityField.suspects.join(", ")}
-- valuables: ${params.possibilityField.items.join(", ")}
-- places: ${params.possibilityField.locations.join(", ")}
-- neighboring periods: ${params.possibilityField.times.join(", ")}
-
-World reference (do not contradict):
-- Theft only.
-- 1920s British setting.
-- Mr. Boddy owns all valuables.
-- Use only the provided suspect/item/location/time names.
-- Mrs. White and Rusty are staff; all others are guests.
-
-Answer key (do not reveal until the closing):
-- suspect: ${params.answerKey.suspect}
-- item: ${params.answerKey.item}
-- where: ${params.answerKey.location}
-- when: ${params.answerKey.time}
-
-Output JSON only, matching this schema:
+Return only this JSON structure:
 {
   "opening": "...",
   "butler_clues": ["...", "...", "...", "...", "...", "...", "...", "...", "...", "..."],
   "inspector_notes": ["...", "..."],
   "closing": "..."
 }`;
-};
