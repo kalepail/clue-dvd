@@ -2,18 +2,25 @@ import { describe, expect, it, vi } from "vitest";
 import {
   buildMysteryWorld,
   generateMysteryV2,
+  getLastMysteryEngineDebug,
 } from "./ai-mystery-engine";
 import {
   BlindAuditSchema,
+  CausalTimelineSchema,
   CaseBibleSchema,
+  CluePlanSchema,
+  EvidenceDesignSchema,
   InspectorPackageSchema,
   RenderedMysterySchema,
+  StoryFoundationSchema,
+  toToolInputSchema,
   type Answer,
   type BlindAudit,
   type CaseBible,
   type InspectorPackage,
   type RenderedMystery,
 } from "./ai-mystery-schemas";
+import { selectTrackedItemIds } from "./ai-mystery-assembler";
 import type { StructuredCallResult } from "./ai-mystery-provider";
 import type { callStructured } from "./ai-mystery-provider";
 import {
@@ -252,7 +259,110 @@ function buildFixtures() {
     reasons: [],
   });
 
-  return { setup, world, answer, bible, mystery, inspector, audit };
+  const foundation = StoryFoundationSchema.parse({
+    occasion: {
+      title: bible.occasion.title,
+      purpose: bible.occasion.purpose,
+      schedule: bible.occasion.schedule,
+    },
+    centralTension: bible.centralTension,
+    theft: {
+      motive: bible.theft.motive,
+      opportunity: bible.theft.opportunity,
+      access: bible.theft.access,
+      method: bible.theft.method,
+      concealment: bible.theft.concealment,
+      coverStory: bible.theft.coverStory,
+      discovery: bible.theft.discovery,
+    },
+    cast: bible.cast.map(({ trueActionEventIds: _actions, ...member }) => member),
+    noveltySignature: bible.noveltySignature,
+  });
+  const trackedItemIds = selectTrackedItemIds(setup.seed, answer, world);
+  const regularEvent = (index: number, timeId: string, itemIds: string[] = []) => ({
+    timeId,
+    locationId: nonLocations[index % nonLocations.length],
+    participantIds: [world.suspects[index].id],
+    itemIds,
+    actualEvent: `Causal timeline episode ${index + 1}.`,
+    witnessIds: [world.suspects[(index + 1) % world.suspects.length].id],
+    arrivals: index === 0 ? [{
+      actorId: world.suspects[index].id,
+      fromLocationId: nonLocations[1],
+      method: "ordinary" as const,
+      itemIds: [],
+    }] : [],
+  });
+  const extraTrackedItems = trackedItemIds.filter((id) => id !== answer.itemId);
+  const timelineDraft = CausalTimelineSchema.parse({
+    beforeTheftEvents: [
+      regularEvent(0, "T01", extraTrackedItems[0] ? [extraTrackedItems[0]] : []),
+      regularEvent(1, "T02", extraTrackedItems[1] ? [extraTrackedItems[1]] : []),
+      regularEvent(2, "T03", extraTrackedItems[2] ? [extraTrackedItems[2]] : []),
+      regularEvent(3, "T04", extraTrackedItems.slice(3)),
+    ],
+    theftEvent: {
+      participantIds: [answer.suspectId],
+      itemIds: [answer.itemId],
+      actualEvent: "The culprit removes the valuable during the planned diversion.",
+      witnessIds: [],
+      arrivals: [],
+    },
+    betweenTheftAndDiscoveryEvents: [
+      regularEvent(5, "T09"),
+      regularEvent(6, "T09"),
+    ],
+    discoveryEvent: regularEvent(7, "T10"),
+    afterDiscoveryEvents: [
+      regularEvent(8, "T10"),
+      regularEvent(9, "T10"),
+    ],
+    itemRoles: trackedItemIds.map((itemId, index) => ({
+      itemId,
+      storyFunction: index === 0 ? "The stolen and concealed valuable" : `Innocent object thread ${index}`,
+    })),
+  });
+  const evidenceDesign = EvidenceDesignSchema.parse({
+    evidenceAtoms: Array.from({ length: 14 }, (_, index) => ({
+      key: `fact_${index + 1}`,
+      eventId: `E${String((index % 10) + 1).padStart(2, "0")}`,
+      publicFact: `Publicly discoverable fact ${index + 1}.`,
+      surface: index === 10 ? "inspector_1" : index === 11 ? "inspector_2" : "clue",
+    })),
+    deceptions: [
+      { suspectId: answer.suspectId, kind: "lie", publicClaim: "The papers were never opened.", truth: "The papers concealed the valuable.", reason: "To hide the theft route.", contradictionEvidenceKeys: ["fact_2"] },
+      { suspectId: nonSuspects[0], kind: "omission", publicClaim: "Nothing personal was discussed.", truth: "A private debt was discussed.", reason: "To protect a friend.", contradictionEvidenceKeys: ["fact_3"] },
+    ],
+    innocentThreads: [
+      { suspectIds: [nonSuspects[0]], suspiciousAppearance: "A torn list appears concealed.", innocentTruth: "It hides an anonymous gift.", evidenceKeys: ["fact_4"] },
+      { suspectIds: [nonSuspects[1]], suspiciousAppearance: "A private meeting looks conspiratorial.", innocentTruth: "It settles a personal concern.", evidenceKeys: ["fact_5"] },
+    ],
+    inferences: [
+      { evidenceKeys: ["fact_1", "fact_2"], conclusion: "One account cannot be literal.", category: "suspect", importance: "important" },
+      { evidenceKeys: ["fact_3", "fact_4"], conclusion: "Several objects retain continuous histories.", category: "item", importance: "important" },
+      { evidenceKeys: ["fact_5", "fact_6"], conclusion: "The schedule accounts for several rooms.", category: "location", importance: "important" },
+      { evidenceKeys: ["fact_7", "fact_8"], conclusion: "Two events must occur in that order.", category: "time", importance: "important" },
+    ],
+  });
+  const clueAssignments = Object.fromEntries(Array.from({ length: 10 }, (_, index) => [
+    `clue${index + 1}`,
+    {
+      source: index % 2 === 0 ? "Ashe's observation" : "A named guest's account",
+      evidenceKeys: [`fact_${index + 1}`],
+      threadId: "committee-ledger",
+      purpose: index === 0 ? "setup" : index === 9 ? "payoff" : index % 3 === 0 ? "contradiction" : "testimony",
+    },
+  ]));
+  const cluePlan = CluePlanSchema.parse({
+    clues: clueAssignments,
+    inspector: {
+      note1: { fact: bible.inspectorEvidence[0].fact, evidenceKeys: ["fact_11"], relatedCluePositions: [2, 5] },
+      note2: { fact: bible.inspectorEvidence[1].fact, evidenceKeys: ["fact_12"], relatedCluePositions: [4, 7] },
+    },
+    closingEvidenceKeys: ["fact_1", "fact_6", "fact_9", "fact_10"],
+  });
+
+  return { setup, world, answer, bible, mystery, inspector, audit, foundation, timelineDraft, evidenceDesign, cluePlan };
 }
 
 function sequenceProvider(values: unknown[]): typeof callStructured {
@@ -267,7 +377,20 @@ function sequenceProvider(values: unknown[]): typeof callStructured {
   return mock as unknown as typeof callStructured;
 }
 
+function architectureValues(fixture: ReturnType<typeof buildFixtures>): unknown[] {
+  return [fixture.foundation, fixture.timelineDraft, fixture.evidenceDesign, fixture.cluePlan];
+}
+
 describe("AI Mystery Engine V2 validation", () => {
+  it("keeps strict architecture grammars small and fixed mechanics out of model outputs", () => {
+    const schemas = [StoryFoundationSchema, CausalTimelineSchema, EvidenceDesignSchema, CluePlanSchema]
+      .map((schema) => JSON.stringify(toToolInputSchema(schema)));
+    expect(Math.max(...schemas.map((schema) => schema.length))).toBeLessThan(6_000);
+    expect(schemas.join(" ")).not.toContain("availableAfterClue");
+    expect(schemas.join(" ")).not.toContain("answerDimensions");
+    expect(schemas.join(" ")).not.toContain("caseBibleJson");
+  });
+
   it("accepts a connected, fair-play case bible and public package", () => {
     const fixture = buildFixtures();
     expect(validateCaseBible(fixture.bible, fixture.answer, fixture.world)).toEqual([]);
@@ -346,9 +469,9 @@ describe("AI Mystery Engine V2 validation", () => {
 });
 
 describe("AI Mystery Engine V2 orchestration", () => {
-  it("uses four calls when the first blind audit passes", async () => {
+  it("uses schema-enforced architecture stages before rendering", async () => {
     const fixture = buildFixtures();
-    const provider = sequenceProvider([{ caseBibleJson: JSON.stringify(fixture.bible) }, fixture.mystery, fixture.inspector, fixture.audit]);
+    const provider = sequenceProvider([...architectureValues(fixture), fixture.mystery, fixture.inspector, fixture.audit]);
     const progress: string[] = [];
     const result = await generateMysteryV2("test-key", {
       setup: fixture.setup,
@@ -358,41 +481,31 @@ describe("AI Mystery Engine V2 orchestration", () => {
       },
     });
 
-    expect(provider).toHaveBeenCalledTimes(4);
+    expect(provider).toHaveBeenCalledTimes(7);
     expect(result.butlerClues).toHaveLength(10);
     expect(result.inspectorNotes).toHaveLength(2);
     expect(result.mysterySignature).toContain("village memorial subscription");
     expect(progress.at(-1)).toBe("complete");
   });
 
-  it("requires the architect to honor the code-selected non-repeating occasion", async () => {
+  it("keeps fixed CaseBible mechanics under application ownership", async () => {
     const fixture = buildFixtures();
-    const provider = sequenceProvider([{ caseBibleJson: JSON.stringify(fixture.bible) }]);
-    await expect(generateMysteryV2("test-key", {
-      setup: fixture.setup,
-      provider,
-      recentSignatures: ["charitable benefit | prior motive | prior relationship | prior deception"],
-    })).rejects.toThrow("changed the code-selected occasion family");
-    expect(provider).toHaveBeenCalledTimes(1);
-  });
-
-  it("normalizes harmless architect importance aliases before validation", async () => {
-    const fixture = buildFixtures();
-    const aliasedBible = structuredClone(fixture.bible) as unknown as Record<string, unknown>;
-    const inferences = aliasedBible.inferences as Array<Record<string, unknown>>;
-    inferences[3].importance = "critical";
-    inferences[2].importance = "minor";
-    inferences[1].category = "people";
-    const blueprints = aliasedBible.clueBlueprints as Array<Record<string, unknown>>;
-    blueprints[8].answerDimensions = ["item", "location", "time"];
     const provider = sequenceProvider([
-      { caseBibleJson: JSON.stringify(aliasedBible) },
+      ...architectureValues(fixture),
       fixture.mystery,
       fixture.inspector,
       fixture.audit,
     ]);
     await expect(generateMysteryV2("test-key", { setup: fixture.setup, provider })).resolves.toBeDefined();
-    expect(provider).toHaveBeenCalledTimes(4);
+    const bible = getLastMysteryEngineDebug()?.caseBible;
+    expect(bible?.version).toBe("2.0");
+    expect(bible?.answer).toEqual(fixture.answer);
+    expect(bible?.clueBlueprints.map(({ position }) => position)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+    expect(bible?.clueBlueprints.every((clue) => clue.answerDimensions.length <= 2)).toBe(true);
+    expect(bible?.inspectorEvidence.map(({ id, availableAfterClue }) => [id, availableAfterClue])).toEqual([
+      ["N1", 5],
+      ["N2", 7],
+    ]);
   });
 
   it("revises once and performs a second blind audit", async () => {
@@ -404,7 +517,7 @@ describe("AI Mystery Engine V2 orchestration", () => {
     };
     const revised = { ...fixture.mystery, notes: fixture.inspector.notes };
     const provider = sequenceProvider([
-      { caseBibleJson: JSON.stringify(fixture.bible) },
+      ...architectureValues(fixture),
       fixture.mystery,
       fixture.inspector,
       failedAudit,
@@ -413,7 +526,7 @@ describe("AI Mystery Engine V2 orchestration", () => {
     ]);
 
     await expect(generateMysteryV2("test-key", { setup: fixture.setup, provider })).resolves.toBeDefined();
-    expect(provider).toHaveBeenCalledTimes(6);
+    expect(provider).toHaveBeenCalledTimes(9);
   });
 
   it("fails clearly when the final blind audit still rejects the package", async () => {
@@ -425,7 +538,7 @@ describe("AI Mystery Engine V2 orchestration", () => {
     };
     const revised = { ...fixture.mystery, notes: fixture.inspector.notes };
     const provider = sequenceProvider([
-      { caseBibleJson: JSON.stringify(fixture.bible) },
+      ...architectureValues(fixture),
       fixture.mystery,
       fixture.inspector,
       failedAudit,
@@ -435,6 +548,6 @@ describe("AI Mystery Engine V2 orchestration", () => {
 
     await expect(generateMysteryV2("test-key", { setup: fixture.setup, provider }))
       .rejects.toThrow("Final blind audit rejected the mystery");
-    expect(provider).toHaveBeenCalledTimes(6);
+    expect(provider).toHaveBeenCalledTimes(9);
   });
 });

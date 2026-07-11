@@ -5,28 +5,42 @@ import {
   TIME_PERIODS,
 } from "../data/game-elements";
 import {
-  buildArchitectPrompt,
-  buildArchitectRepairPrompt,
   buildAuditPrompt,
+  buildCluePlanPrompt,
+  buildEvidencePrompt,
+  buildFoundationPrompt,
   buildInspectorPrompt,
   buildRendererPrompt,
   buildRevisionPrompt,
+  buildTimelinePrompt,
   type MysteryWorld,
 } from "../data/ai-mystery-prompts";
 import {
   BlindAuditSchema,
-  ArchitectEnvelopeSchema,
-  CaseBibleSchema,
+  CausalTimelineSchema,
+  CluePlanSchema,
+  EvidenceDesignSchema,
   InspectorPackageSchema,
   RenderedMysterySchema,
   RevisedPackageSchema,
+  StoryFoundationSchema,
   toToolInputSchema,
   type Answer,
   type BlindAudit,
+  type CausalTimeline,
   type CaseBible,
+  type CluePlan,
+  type EvidenceDesign,
   type InspectorPackage,
   type RenderedMystery,
+  type StoryFoundation,
 } from "./ai-mystery-schemas";
+import {
+  assembleCaseBible,
+  assembleCaseNarrative,
+  buildCandidateEffectPlan,
+  selectTrackedItemIds,
+} from "./ai-mystery-assembler";
 import {
   callStructured,
   MysteryStageError,
@@ -102,7 +116,11 @@ export type MysteryEngineDebug = {
     recentSignatures: string[];
     world: MysteryWorld;
   };
-  caseBible?: StageDebug<CaseBible>;
+  foundation?: StageDebug<StoryFoundation>;
+  causalTimeline?: StageDebug<CausalTimeline>;
+  evidenceDesign?: StageDebug<EvidenceDesign>;
+  cluePlan?: StageDebug<CluePlan>;
+  caseBible?: CaseBible;
   renderedDraft?: StageDebug<RenderedMystery>;
   inspectorEvidence?: StageDebug<InspectorPackage>;
   blindAudit?: StageDebug<BlindAudit>;
@@ -206,60 +224,111 @@ export async function generateMysteryV2(apiKey: string, params: {
 
   try {
     await emit("occasion", "Designing the occasion.", 8);
-    const architectPrompt = buildArchitectPrompt({ answer, world, occasionFamily, recentSignatures });
+    const foundationPrompt = buildFoundationPrompt({ answer, world, occasionFamily, recentSignatures });
     await emit("relationships", "Building motives and relationships.", 18);
-    const architectEnvelope = await provider({
+    const foundation = await provider({
       apiKey,
       stage: "architect",
-      ...architectPrompt,
-      toolName: "submit_case_bible_envelope",
-      toolDescription: "Submit exactly one caseBibleJson string containing the complete private causal case bible as valid JSON.",
-      inputSchema: toToolInputSchema(ArchitectEnvelopeSchema),
-      outputSchema: ArchitectEnvelopeSchema,
-      maxTokens: 16_000,
+      ...foundationPrompt,
+      toolName: "submit_story_foundation",
+      toolDescription: "Submit the occasion, social tension, theft design, cast goals, relationships, and novelty signature.",
+      inputSchema: toToolInputSchema(StoryFoundationSchema),
+      outputSchema: StoryFoundationSchema,
+      maxTokens: 5_500,
     });
-    let caseBible = parseEmbeddedCaseBible(architectEnvelope.value.caseBibleJson);
-    debug.caseBible = toStageDebug(architectPrompt, { ...architectEnvelope, value: caseBible });
+    debug.foundation = toStageDebug(foundationPrompt, foundation);
 
-    await emit("timeline", "Simulating and validating the hidden timeline.", 36);
+    const trackedItemIds = selectTrackedItemIds(params.setup.seed, answer, world);
+    const candidatePlan = buildCandidateEffectPlan(params.setup.seed, answer, world);
+    const timelinePrompt = buildTimelinePrompt({
+      foundation: foundation.value,
+      answer,
+      world,
+      trackedItemIds,
+    });
+    await emit("timeline", "Simulating the hidden timeline and object movement.", 30);
+    const causalTimeline = await provider({
+      apiKey,
+      stage: "architect",
+      ...timelinePrompt,
+      toolName: "submit_causal_timeline",
+      toolDescription: "Submit phased events, embedded arrivals, and roles for the code-selected tracked items.",
+      inputSchema: toToolInputSchema(CausalTimelineSchema),
+      outputSchema: CausalTimelineSchema,
+      maxTokens: 8_000,
+    });
+    debug.causalTimeline = toStageDebug(timelinePrompt, causalTimeline);
+
+    const narrative = assembleCaseNarrative({
+      foundation: foundation.value,
+      timelineDraft: causalTimeline.value,
+      answer,
+      world,
+      occasionFamily,
+      trackedItemIds,
+    });
+    const evidencePrompt = buildEvidencePrompt({
+      foundation: foundation.value,
+      bibleContext: narrative,
+      candidatePlan,
+      world,
+    });
+    await emit("timeline", "Deriving lies, contradictions, and fair-play evidence.", 40);
+    const evidenceDesign = await provider({
+      apiKey,
+      stage: "architect",
+      ...evidencePrompt,
+      toolName: "submit_evidence_design",
+      toolDescription: "Submit evidence atoms, motivated deceptions, innocent suspicious threads, and multi-piece inferences.",
+      inputSchema: toToolInputSchema(EvidenceDesignSchema),
+      outputSchema: EvidenceDesignSchema,
+      maxTokens: 8_000,
+    });
+    debug.evidenceDesign = toStageDebug(evidencePrompt, evidenceDesign);
+
+    const cluePlanPrompt = buildCluePlanPrompt({
+      foundation: foundation.value,
+      bibleContext: narrative,
+      evidence: evidenceDesign.value,
+      candidatePlan,
+      world,
+    });
+    await emit("timeline", "Connecting evidence into ten mystery fragments.", 48);
+    const cluePlan = await provider({
+      apiKey,
+      stage: "architect",
+      ...cluePlanPrompt,
+      toolName: "submit_clue_plan",
+      toolDescription: "Submit ten evidence assignments, two Inspector evidence assignments, and closing evidence keys.",
+      inputSchema: toToolInputSchema(CluePlanSchema),
+      outputSchema: CluePlanSchema,
+      maxTokens: 5_500,
+    });
+    debug.cluePlan = toStageDebug(cluePlanPrompt, cluePlan);
+
+    let caseBible: CaseBible;
+    try {
+      caseBible = assembleCaseBible({
+        narrative,
+        evidence: evidenceDesign.value,
+        cluePlan: cluePlan.value,
+        candidatePlan,
+      });
+    } catch (error) {
+      throw new MysteryStageError(
+        "architect",
+        `Staged CaseBible assembly failed: ${error instanceof Error ? error.message : "unknown assembly error"}`
+      );
+    }
+    debug.caseBible = caseBible;
     debug.deterministicIssues.caseBible = validateCaseBible(caseBible, answer, world, {
       occasionFamily,
       recentSignatures,
     });
-    const repairableArchitectIssues = debug.deterministicIssues.caseBible.filter((issue) =>
-      !issue.includes("immutable answer") &&
-      !issue.includes("code-selected occasion family") &&
-      !issue.includes("recent mystery signature")
-    );
-    if (repairableArchitectIssues.length > 0) {
-      await emit("relationships", "Repairing the architect's causal case structure.", 28);
-      const repairPrompt = buildArchitectRepairPrompt({
-        bible: caseBible,
-        issues: repairableArchitectIssues,
-        answer,
-        world,
-      });
-      const repairedEnvelope = await provider({
-        apiKey,
-        stage: "architect",
-        ...repairPrompt,
-        toolName: "submit_case_bible_repair",
-        toolDescription: "Submit exactly one corrected caseBibleJson string.",
-        inputSchema: toToolInputSchema(ArchitectEnvelopeSchema),
-        outputSchema: ArchitectEnvelopeSchema,
-        maxTokens: 16_000,
-      });
-      caseBible = parseEmbeddedCaseBible(repairedEnvelope.value.caseBibleJson);
-      debug.caseBible = toStageDebug(repairPrompt, { ...repairedEnvelope, value: caseBible });
-      debug.deterministicIssues.caseBible = validateCaseBible(caseBible, answer, world, {
-        occasionFamily,
-        recentSignatures,
-      });
-    }
     throwForIssues("architect", "Case bible failed deterministic validation", debug.deterministicIssues.caseBible);
 
     const rendererPrompt = buildRendererPrompt({ bible: caseBible, world });
-    await emit("rendering", "Writing witness fragments.", 46);
+    await emit("rendering", "Writing witness fragments.", 58);
     const rendered = await provider({
       apiKey,
       stage: "renderer",
@@ -273,7 +342,7 @@ export async function generateMysteryV2(apiKey: string, params: {
     debug.renderedDraft = toStageDebug(rendererPrompt, rendered);
 
     const inspectorPrompt = buildInspectorPrompt({ bible: caseBible, mystery: rendered.value, world });
-    await emit("inspector", "Preparing Inspector evidence.", 62);
+    await emit("inspector", "Preparing Inspector evidence.", 68);
     const inspector = await provider({
       apiKey,
       stage: "inspector",
@@ -293,7 +362,7 @@ export async function generateMysteryV2(apiKey: string, params: {
     });
 
     const auditPrompt = buildAuditPrompt({ mystery: rendered.value, inspector: inspector.value, world });
-    await emit("audit", "Blind-playtesting the mystery.", 74);
+    await emit("audit", "Blind-playtesting the mystery.", 78);
     const audit = await provider({
       apiKey,
       stage: "audit",
@@ -315,7 +384,7 @@ export async function generateMysteryV2(apiKey: string, params: {
     ]);
 
     if (draftIssues.length > 0) {
-      await emit("revision", "Revising the public mystery package.", 84);
+      await emit("revision", "Revising the public mystery package.", 87);
       const revisionPrompt = buildRevisionPrompt({
         bible: caseBible,
         mystery: rendered.value,
@@ -418,119 +487,6 @@ function formatMysterySignature(bible: CaseBible): string {
   return [signature.occasion, signature.motive, signature.relationship, signature.deception]
     .map((part) => part.trim().replace(/\s+/g, " "))
     .join(" | ");
-}
-
-function parseEmbeddedCaseBible(serialized: string): CaseBible {
-  const cleaned = serialized
-    .trim()
-    .replace(/^```(?:json)?\s*/i, "")
-    .replace(/\s*```$/i, "")
-    .trim();
-  let candidate: unknown;
-  try {
-    candidate = JSON.parse(cleaned);
-    if (typeof candidate === "string") candidate = JSON.parse(candidate);
-  } catch (error) {
-    throw new MysteryStageError(
-      "architect",
-      `caseBibleJson was not valid JSON: ${error instanceof Error ? error.message : "parse failure"}`,
-      undefined,
-      serialized
-    );
-  }
-  const parsed = CaseBibleSchema.safeParse(normalizeCaseBibleEnums(candidate));
-  if (!parsed.success) {
-    const issueText = parsed.error.issues
-      .slice(0, 8)
-      .map((issue) => `${issue.path.join(".") || "caseBible"}: ${issue.message}`)
-      .join("; ");
-    throw new MysteryStageError("architect", `Embedded caseBibleJson failed validation: ${issueText}`, undefined, serialized);
-  }
-  return parsed.data;
-}
-
-/**
- * Claude can vary the spelling/casing of qualitative enum values inside the
- * serialized architect payload. Normalize only documented semantic aliases;
- * unknown values remain untouched and are still rejected by Zod.
- */
-function normalizeCaseBibleEnums(value: unknown): unknown {
-  if (Array.isArray(value)) return value.map(normalizeCaseBibleEnums);
-  if (!value || typeof value !== "object") return value;
-
-  const normalized: Record<string, unknown> = {};
-  for (const [key, child] of Object.entries(value as Record<string, unknown>)) {
-    const next = normalizeCaseBibleEnums(child);
-    if (key === "answerDimensions" && Array.isArray(next)) {
-      const actualDimensions = [
-        ...new Set([
-          ...((value as Record<string, unknown>).rulesOut as Array<Record<string, unknown>> ?? [])
-            .map((effect) => normalizeCategoryToken(effect.category)),
-          ...((value as Record<string, unknown>).supports as Array<Record<string, unknown>> ?? [])
-            .map((support) => normalizeCategoryToken(support.category)),
-        ].filter((category): category is string => Boolean(category))),
-      ];
-      normalized[key] = actualDimensions.length <= 2
-        ? actualDimensions
-        : next;
-      continue;
-    }
-    if (typeof next !== "string") {
-      normalized[key] = next;
-      continue;
-    }
-    const token = next.trim().toLowerCase().replace(/[\s-]+/g, "_");
-    if (key === "importance") {
-      normalized[key] = token === "support" || token === "minor" || token === "secondary" || token === "contextual"
-        ? "supporting"
-        : token === "critical" || token === "major" || token === "decisive" || token === "primary" || token === "key"
-          ? "important"
-          : token === "supporting" || token === "important" ? token : next;
-    } else if (key === "category") {
-      normalized[key] = normalizeCategoryToken(next) ?? next;
-    } else if (key === "method" && token === "secret_passage") {
-      normalized[key] = "secret_passage";
-    } else if (key === "purpose" && token === "contextual") {
-      normalized[key] = "context";
-    } else {
-      normalized[key] = next;
-    }
-  }
-  return normalized;
-}
-
-function normalizeCategoryToken(value: unknown): string | undefined {
-  if (typeof value !== "string") return undefined;
-  const token = value.trim().toLowerCase().replace(/[\s-]+/g, "_");
-  const aliases: Record<string, string> = {
-    suspect: "suspect",
-    suspects: "suspect",
-    person: "suspect",
-    people: "suspect",
-    culprit: "suspect",
-    who: "suspect",
-    motive: "suspect",
-    relationship: "suspect",
-    item: "item",
-    items: "item",
-    object: "item",
-    objects: "item",
-    valuable: "item",
-    valuables: "item",
-    what: "item",
-    location: "location",
-    locations: "location",
-    room: "location",
-    rooms: "location",
-    place: "location",
-    where: "location",
-    time: "time",
-    times: "time",
-    when: "time",
-    period: "time",
-    at_when: "time",
-  };
-  return aliases[token];
 }
 
 function throwForIssues(stage: MysteryStage, prefix: string, issues: string[]): void {

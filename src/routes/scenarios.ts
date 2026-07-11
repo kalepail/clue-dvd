@@ -197,6 +197,10 @@ scenarios.get("/last-ai-stages.json", (c) => {
   }
   return new Response(JSON.stringify({
     setup: output.setup,
+    foundation: output.foundation ?? null,
+    causalTimeline: output.causalTimeline ?? null,
+    evidenceDesign: output.evidenceDesign ?? null,
+    cluePlan: output.cluePlan ?? null,
     caseBible: output.caseBible ?? null,
     renderedDraft: output.renderedDraft ?? null,
     inspectorEvidence: output.inspectorEvidence ?? null,

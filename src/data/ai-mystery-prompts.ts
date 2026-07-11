@@ -1,9 +1,12 @@
 import type {
   Answer,
   BlindAudit,
+  CausalTimeline,
   CaseBible,
+  EvidenceDesign,
   InspectorPackage,
   RenderedMystery,
+  StoryFoundation,
 } from "../services/ai-mystery-schemas";
 import { ORIGINAL_MYSTERY_STYLE_GUIDE } from "./original-mystery-style";
 
@@ -14,35 +17,29 @@ export type MysteryWorld = {
   times: Array<{ id: string; name: string; order: number; activities: string[] }>;
 };
 
-const CASE_BIBLE_CONTRACT = `{
-  "version":"2.0",
-  "occasion":{"family":"...","title":"...","purpose":"...","schedule":[{"timeId":"T01","activity":"..."}]},
-  "answer":{"suspectId":"S01","itemId":"I01","locationId":"L01","timeId":"T01"},
-  "centralTension":"...",
-  "theft":{"theftEventId":"E06","discoveryEventId":"E09","motive":"...","opportunity":"...","access":"...","method":"...","concealment":"...","coverStory":"...","discovery":"..."},
-  "cast":[{"suspectId":"S01","eventRole":"...","privateGoal":"...","relationships":[{"suspectId":"S02","nature":"..."}],"trueActionEventIds":["E01"]}],
-  "timeline":[{"id":"E01","timeId":"T01","locationId":"L01","participantIds":["S01"],"itemIds":["I01"],"actualEvent":"...","witnessIds":["S02"]}],
-  "movements":[{"id":"M01","eventId":"E02","actorId":"S01","fromLocationId":"L01","toLocationId":"L02","method":"ordinary","itemIds":["I01"]}],
-  "itemThreads":[{"itemId":"I01","eventIds":["E01"],"storyFunction":"..."}],
-  "deceptions":[{"id":"D01","suspectId":"S01","kind":"lie","publicClaim":"...","truth":"...","reason":"...","contradictionEvidenceIds":["A01"]}],
-  "innocentThreads":[{"id":"R01","suspectIds":["S02"],"suspiciousAppearance":"...","innocentTruth":"...","evidenceIds":["A02"]}],
-  "evidenceAtoms":[{"id":"A01","eventId":"E01","publicFact":"..."}],
-  "inferences":[{"id":"F01","evidenceIds":["A01","A02"],"conclusion":"...","category":"suspect","importance":"important"}],
-  "clueBlueprints":[{"position":1,"source":"Ashe or a named suspect","evidenceIds":["A01"],"threadId":"core","purpose":"setup","rulesOut":[{"category":"item","ids":["I02"],"reason":"..."}],"supports":[{"category":"suspect","id":"S01"}],"answerDimensions":["suspect"]}],
-  "inspectorEvidence":[{"id":"N1","availableAfterClue":5,"fact":"...","evidenceIds":["A03"],"relatedCluePositions":[2,5],"rulesOut":[{"category":"time","ids":["T10"],"reason":"..."}]}],
-  "closingEvidenceIds":["A01","A02","A03","A04"],
-  "noveltySignature":{"occasion":"...","motive":"...","relationship":"...","deception":"..."}
-}`;
+function compactWorld(world: MysteryWorld) {
+  return {
+    suspects: world.suspects.map(({ id, name, role }) => ({ id, name, role })),
+    items: world.items.map(({ id, name, category }) => ({ id, name, category })),
+    locations: world.locations.map(({ id, name }) => ({ id, name })),
+    times: world.times.map(({ id, name, order }) => ({ id, name, order })),
+  };
+}
 
-export function buildArchitectPrompt(params: {
+export type CandidateEffectPlan = {
+  clues: Array<{ position: number; rulesOut: CaseBible["clueBlueprints"][number]["rulesOut"] }>;
+  inspector: Array<{ id: "N1" | "N2"; availableAfterClue: 5 | 7; rulesOut: CaseBible["inspectorEvidence"][number]["rulesOut"] }>;
+};
+
+export function buildFoundationPrompt(params: {
   answer: Answer;
   world: MysteryWorld;
   occasionFamily: string;
   recentSignatures: string[];
 }): { system: string; prompt: string } {
   return {
-    system: `You are the case architect for the 2006 Clue DVD Game. Design a fair-play THEFT mystery as a complete hidden reality before any prose clues are written. Character goals cause actions; relationships cause lies and omissions; all red herrings have innocent explanations. Use only supplied IDs and lore. Return the required serialized CaseBible tool envelope only.`,
-    prompt: `Build one original case bible. The tool arguments must be exactly one property named caseBibleJson. Put the complete CaseBible JSON serialized as the value of that string property. Do not add any other outer property. The application will parse and validate the serialized CaseBible after receiving it.
+    system: `You are the story architect for a fair-play 2006 Clue DVD Game theft mystery. Design only the social and emotional foundation. Do not design clue mechanics, evidence IDs, or timeline event IDs. Use the structured tool directly.`,
+    prompt: `Design the foundation of one original theft mystery.
 
 Immutable answer:
 ${JSON.stringify(params.answer, null, 2)}
@@ -56,62 +53,119 @@ ${JSON.stringify(params.world, null, 2)}
 Recent signatures to avoid:
 ${params.recentSignatures.length ? params.recentSignatures.join("\n") : "None"}
 
-Design requirements:
+Requirements:
 - Theft only. Mr. Boddy owns the valuables. Ashe and Inspector Brown are non-suspect investigators.
 - All ten suspects are present. Mrs. White is the housekeeper; Rusty is the gardener. Invent no unnamed workers.
-- Create a coherent social occasion, central tension, complete chronological day, and a theft that is physically and emotionally motivated.
-- Identify the exact theft and discovery timeline events. The theft event must use the immutable answer time and location and include the answer suspect and item; discovery must not precede it.
-- Give all ten suspects a role and private goal. Every trueActionEventId must name an event in which that suspect participates. Use two to four motivated lies or omissions; at least one belongs to the culprit and at least one to an innocent suspect.
-- Create two or three innocent suspicious threads that resolve through evidence rather than coincidence.
-- Track four to six items, including the answer item, through actual events.
-- Record meaningful character and object movements. A movement ends at its referenced event, where its actor and carried items must be present. Use secret_passage only for a verified passage pair; whenever a tracked item changes locations between its listed events, include the carrying movement.
-- Build evidence atoms first, then multi-piece inferences. No important inference may rest on one atom. Every inference category must be one of the four deduction dimensions: suspect, item, location, or time—not motive, relationship, or evidence.
-- Inferences must use exactly importance: "supporting" or importance: "important"; do not invent alternate labels such as critical, minor, or decisive.
-- Blueprint exactly ten connected clue fragments. Setup and payoff must occur in different positions. No clue may carry more than two answer dimensions.
-- Reserve N1 as genuinely new evidence after clue 5 and N2 after clue 7. Their evidence atoms must not also appear in clue blueprints. Each note may concern only one answer category; its fact may rule out non-answers but may not state an answer card.
-- Private rulesOut effects must leave the true answer untouched, leave at least 4 candidates after clue 5 plus N1, leave 3–4 after clue 7 plus both notes, and leave 2–3 after everything.
-- Every important inference must combine evidence exposed on at least two different clues or notes.
-- Closing evidence must already exist in evidenceAtoms and every closing evidence atom must be exposed by a clue or Inspector note.
-
-The serialized caseBibleJson must contain exactly this inner shape (with complete arrays, not the abbreviated sample):
-${CASE_BIBLE_CONTRACT}`,
+- Use the selected occasion family exactly as the basis of the gathering, but provide only its title, purpose, and social schedule; application code supplies the family field.
+- Give each verified suspect exactly one cast entry, a meaningful event role, a private goal, and at least one relationship to another verified suspect.
+- Build one central social tension that naturally connects several guests. The culprit's motive must be specific and human, while innocent goals should be capable of creating believable suspicion later.
+- Explain the theft's motive, access, opportunity, physical method, concealment, cover story, and eventual discovery as one causal chain.
+- Do not write clues, evidence, event IDs, card eliminations, Inspector timing, or prose for players. Those belong to later stages.`,
   };
 }
 
-export function buildArchitectRepairPrompt(params: {
-  bible: CaseBible;
-  issues: string[];
+export function buildTimelinePrompt(params: {
+  foundation: StoryFoundation;
   answer: Answer;
   world: MysteryWorld;
+  trackedItemIds: string[];
 }): { system: string; prompt: string } {
   return {
-    system: `You are repairing a private CaseBible for the 2006 Clue DVD Game. Return only the required serialized caseBibleJson envelope. Preserve the immutable answer, lore, occasion, and story intent, but repair every deterministic validation issue. Do not write prose clues.`,
-    prompt: `Repair this CaseBible and return the complete corrected JSON serialized inside exactly one caseBibleJson string.
-
-Validation failures:
-${params.issues.map((issue) => `- ${issue}`).join("\n")}
+    system: `You are the causal simulator for a fair-play theft mystery. Convert the supplied story foundation into a physically coherent day. Do not design clues or candidate eliminations. Use the structured tool directly.`,
+    prompt: `Simulate the hidden timeline for this mystery.
 
 Immutable answer:
 ${JSON.stringify(params.answer, null, 2)}
 
+Story foundation:
+${JSON.stringify(params.foundation, null, 2)}
+
 Verified world:
 ${JSON.stringify(params.world, null, 2)}
 
-Repair rules:
-- Sort timeline events and occasion schedule by the supplied printed time order.
-- Every cast trueActionEventId must point to an event whose participantIds include that suspect.
-- Every item thread event must list that item, and every location change must have a movement ending at the destination event with the item present.
-- Keep every clue's actual rulesOut/support categories within its declared answerDimensions, with no more than two dimensions.
-- Inspector notes must use new evidence atoms, important inferences need two separate public surfaces, and every deception contradiction must be exposed publicly.
-- Closing evidence must be exposed by a clue or Inspector note.
-- Adjust candidate effects so the remaining fields are broad after clue 5, 3–4 candidates after clue 7, and 2–3 candidates at the end, without ever eliminating the answer.
-- Preserve all required IDs and return complete arrays. Do not omit fields or invent card IDs.
+Tracked items selected by application code (use every one, invent no others):
+${params.trackedItemIds.join(", ")}
 
-Current CaseBible:
-${JSON.stringify(params.bible, null, 2)}
+Requirements:
+- Events are divided into explicit phases. Keep every event in chronological printed-time order within and across phases.
+- Application code fixes the theft event at ${params.answer.timeId} in ${params.answer.locationId} and automatically includes culprit ${params.answer.suspectId} and item ${params.answer.itemId}; do not repeat those two fixed fields in the theft object.
+- The discovery event must occur later than the theft. The between and after phases must use times at or after ${params.answer.timeId}.
+- Make every suspect participate in at least one event. Witnesses must truly be able to observe the stated event.
+- An arrival means its actor ends at that event's location. List the actor among participants and every carried item among event items; code reinforces those memberships.
+- Whenever a tracked item next appears in a different location, include an arrival at that destination carrying it from its previous location. Use secret_passage only for a verified pair.
+- Give each tracked item exactly one item role. Build all events from the supplied foundation rather than adding unrelated incidents.
+- Do not create event IDs, movement IDs, cast action lists, or item-thread event lists. Application code derives them from this structure.`,
+  };
+}
 
-The corrected serialized caseBibleJson must follow this contract:
-${CASE_BIBLE_CONTRACT}`,
+export function buildEvidencePrompt(params: {
+  foundation: StoryFoundation;
+  bibleContext: Pick<CaseBible, "answer" | "theft" | "cast" | "timeline" | "movements" | "itemThreads">;
+  candidatePlan: CandidateEffectPlan;
+  world: MysteryWorld;
+}): { system: string; prompt: string } {
+  return {
+    system: `You are the evidence designer for a fair-play theft mystery. Derive truthful evidence, motivated deception, and multi-piece deductions only from the supplied hidden reality. Use the structured tool directly.`,
+    prompt: `Design the evidence layer for this already-simulated mystery.
+
+Story foundation:
+${JSON.stringify(params.foundation, null, 2)}
+
+Hidden reality:
+${JSON.stringify(params.bibleContext, null, 2)}
+
+Verified card reference:
+${JSON.stringify(compactWorld(params.world), null, 2)}
+
+Code-selected candidate-accounting targets:
+${JSON.stringify(params.candidatePlan, null, 2)}
+
+Requirements:
+- Create at least fourteen evidence atoms with unique short keys. Every atom must cite a real event ID and state one specific, publicly discoverable fact.
+- Mark each atom for exactly one surface: clue, inspector_1, or inspector_2. Reserve genuinely new facts for both Inspector surfaces.
+- Create two to four motivated lies or omissions: at least one by the culprit and one by an innocent suspect. Every contradiction key must identify a real public evidence atom.
+- Create two or three innocent suspicious threads that resolve through real evidence.
+- Important inferences must combine at least two evidence keys and must be revealable on at least two separate public pieces later.
+- Categories are only suspect, item, location, or time.
+- The candidate targets are private balancing constraints. Evidence must make those accounts logically defensible within the story; do not turn the mystery into a list of eliminations.
+- Do not assign clues, Inspector timing, final IDs, or player-facing prose.`,
+  };
+}
+
+export function buildCluePlanPrompt(params: {
+  foundation: StoryFoundation;
+  bibleContext: Pick<CaseBible, "answer" | "theft" | "cast" | "timeline" | "itemThreads">;
+  evidence: EvidenceDesign;
+  candidatePlan: CandidateEffectPlan;
+  world: MysteryWorld;
+}): { system: string; prompt: string } {
+  return {
+    system: `You are the deduction editor for a fair-play theft mystery. Arrange existing evidence into one reconstructable ten-piece story. Do not invent facts or alter the hidden reality. Use the structured tool directly.`,
+    prompt: `Map the evidence into ten clue slots, two Inspector evidence slots, and an evidence-grounded closing.
+
+Story foundation:
+${JSON.stringify(params.foundation, null, 2)}
+
+Hidden reality:
+${JSON.stringify(params.bibleContext, null, 2)}
+
+Evidence design:
+${JSON.stringify(params.evidence, null, 2)}
+
+Verified card reference:
+${JSON.stringify(compactWorld(params.world), null, 2)}
+
+Code-selected candidate-accounting targets:
+${JSON.stringify(params.candidatePlan, null, 2)}
+
+Requirements:
+- Fill clue1 through clue10 exactly. Use only evidence marked surface=clue in clue slots.
+- Most clues must belong to a thread used by another clue. Every payoff needs an earlier setup. Spread important-inference evidence across different slots.
+- Each clue should expose one useful story fragment and should naturally support its assigned candidate targets without naming mechanical eliminations.
+- note1 may use only inspector_1 evidence and relate only to clues 1–5. note2 may use only inspector_2 evidence and relate only to clues 1–7.
+- Inspector evidence must be new, factual, and connected to already available clues; it must not announce a theory.
+- Closing keys must all be exposed by a clue or Inspector slot and collectively support WHO, WHAT, WHERE, and WHEN without introducing new facts.
+- Do not output clue numbers, note IDs, reveal timing, rulesOut arrays, answerDimensions, or final evidence IDs. Application code owns those mechanics.`,
   };
 }
 

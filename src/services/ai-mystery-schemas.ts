@@ -15,6 +15,159 @@ const CandidateEffectSchema = z.object({
   reason: z.string().min(1),
 });
 
+const RelationshipDraftSchema = z.object({
+  suspectId: z.string(),
+  nature: z.string().min(1),
+});
+
+/**
+ * Creative architecture is intentionally split into small strict contracts.
+ * Fixed IDs and mechanical fields are omitted here and supplied by code when
+ * the final CaseBible is assembled.
+ */
+export const StoryFoundationSchema = z.object({
+  occasion: z.object({
+    title: z.string().min(1),
+    purpose: z.string().min(1),
+    schedule: z.array(z.object({
+      timeId: z.string(),
+      activity: z.string().min(1),
+    })).min(3),
+  }),
+  centralTension: z.string().min(1),
+  theft: z.object({
+    motive: z.string().min(1),
+    opportunity: z.string().min(1),
+    access: z.string().min(1),
+    method: z.string().min(1),
+    concealment: z.string().min(1),
+    coverStory: z.string().min(1),
+    discovery: z.string().min(1),
+  }),
+  cast: z.array(z.object({
+    suspectId: z.string(),
+    eventRole: z.string().min(1),
+    privateGoal: z.string().min(1),
+    relationships: z.array(RelationshipDraftSchema).min(1),
+  })).length(10),
+  noveltySignature: z.object({
+    occasion: z.string().min(1),
+    motive: z.string().min(1),
+    relationship: z.string().min(1),
+    deception: z.string().min(1),
+  }),
+});
+
+const ArrivalDraftSchema = z.object({
+  actorId: z.string(),
+  fromLocationId: z.string(),
+  method: z.enum(["ordinary", "secret_passage"]),
+  itemIds: z.array(z.string()),
+});
+
+const TimelineEventDraftSchema = z.object({
+  timeId: z.string(),
+  locationId: z.string(),
+  participantIds: z.array(z.string()).min(1),
+  itemIds: z.array(z.string()),
+  actualEvent: z.string().min(1),
+  witnessIds: z.array(z.string()),
+  arrivals: z.array(ArrivalDraftSchema),
+});
+
+const FixedTheftEventDraftSchema = z.object({
+  participantIds: z.array(z.string()),
+  itemIds: z.array(z.string()),
+  actualEvent: z.string().min(1),
+  witnessIds: z.array(z.string()),
+  arrivals: z.array(ArrivalDraftSchema),
+});
+
+export const CausalTimelineSchema = z.object({
+  beforeTheftEvents: z.array(TimelineEventDraftSchema).min(4).max(8),
+  theftEvent: FixedTheftEventDraftSchema,
+  betweenTheftAndDiscoveryEvents: z.array(TimelineEventDraftSchema).min(2).max(4),
+  discoveryEvent: TimelineEventDraftSchema,
+  afterDiscoveryEvents: z.array(TimelineEventDraftSchema).min(2).max(4),
+  itemRoles: z.array(z.object({
+    itemId: z.string(),
+    storyFunction: z.string().min(1),
+  })).min(4).max(6),
+});
+
+const EvidenceKeySchema = z.string().min(1);
+
+export const EvidenceDesignSchema = z.object({
+  evidenceAtoms: z.array(z.object({
+    key: EvidenceKeySchema,
+    eventId: z.string(),
+    publicFact: z.string().min(1),
+    surface: z.enum(["clue", "inspector_1", "inspector_2"]),
+  })).min(14),
+  deceptions: z.array(z.object({
+    suspectId: z.string(),
+    kind: z.enum(["lie", "omission"]),
+    publicClaim: z.string().min(1),
+    truth: z.string().min(1),
+    reason: z.string().min(1),
+    contradictionEvidenceKeys: z.array(EvidenceKeySchema).min(1),
+  })).min(2).max(4),
+  innocentThreads: z.array(z.object({
+    suspectIds: z.array(z.string()).min(1),
+    suspiciousAppearance: z.string().min(1),
+    innocentTruth: z.string().min(1),
+    evidenceKeys: z.array(EvidenceKeySchema).min(1),
+  })).min(2).max(3),
+  inferences: z.array(z.object({
+    evidenceKeys: z.array(EvidenceKeySchema).min(2),
+    conclusion: z.string().min(1),
+    category: CategorySchema,
+    importance: z.enum(["supporting", "important"]),
+  })).min(4),
+});
+
+const ClueAssignmentSchema = z.object({
+  source: z.string().min(1),
+  evidenceKeys: z.array(EvidenceKeySchema).min(1).max(3),
+  threadId: z.string().min(1),
+  purpose: z.enum(["setup", "testimony", "contradiction", "payoff", "context"]),
+});
+
+const NoteOnePositionSchema = z.union([
+  z.literal(1), z.literal(2), z.literal(3), z.literal(4), z.literal(5),
+]);
+const NoteTwoPositionSchema = z.union([
+  z.literal(1), z.literal(2), z.literal(3), z.literal(4), z.literal(5), z.literal(6), z.literal(7),
+]);
+
+export const CluePlanSchema = z.object({
+  clues: z.object({
+    clue1: ClueAssignmentSchema,
+    clue2: ClueAssignmentSchema,
+    clue3: ClueAssignmentSchema,
+    clue4: ClueAssignmentSchema,
+    clue5: ClueAssignmentSchema,
+    clue6: ClueAssignmentSchema,
+    clue7: ClueAssignmentSchema,
+    clue8: ClueAssignmentSchema,
+    clue9: ClueAssignmentSchema,
+    clue10: ClueAssignmentSchema,
+  }),
+  inspector: z.object({
+    note1: z.object({
+      fact: z.string().min(1),
+      evidenceKeys: z.array(EvidenceKeySchema).min(1),
+      relatedCluePositions: z.array(NoteOnePositionSchema).min(1),
+    }),
+    note2: z.object({
+      fact: z.string().min(1),
+      evidenceKeys: z.array(EvidenceKeySchema).min(1),
+      relatedCluePositions: z.array(NoteTwoPositionSchema).min(1),
+    }),
+  }),
+  closingEvidenceKeys: z.array(EvidenceKeySchema).min(4),
+});
+
 export const CaseBibleSchema = z.object({
   version: z.literal("2.0"),
   occasion: z.object({
@@ -127,13 +280,6 @@ export const CaseBibleSchema = z.object({
   }),
 });
 
-// The full CaseBible is intentionally validated locally. Anthropic's strict
-// grammar compiler receives this small envelope instead of the deeply nested
-// CaseBible grammar, which keeps strict transport reliable.
-export const ArchitectEnvelopeSchema = z.object({
-  caseBibleJson: z.string().min(100),
-});
-
 export const RenderedMysterySchema = z.object({
   opening: z.string().min(1),
   clues: z.array(z.object({
@@ -183,6 +329,10 @@ export const RevisedPackageSchema = RenderedMysterySchema.extend({
 });
 
 export type Answer = z.infer<typeof AnswerSchema>;
+export type StoryFoundation = z.infer<typeof StoryFoundationSchema>;
+export type CausalTimeline = z.infer<typeof CausalTimelineSchema>;
+export type EvidenceDesign = z.infer<typeof EvidenceDesignSchema>;
+export type CluePlan = z.infer<typeof CluePlanSchema>;
 export type CaseBible = z.infer<typeof CaseBibleSchema>;
 export type RenderedMystery = z.infer<typeof RenderedMysterySchema>;
 export type InspectorPackage = z.infer<typeof InspectorPackageSchema>;
