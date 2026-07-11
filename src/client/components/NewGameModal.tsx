@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Sparkles } from "lucide-react";
-import { gameStore } from "../hooks/useGameStore";
+import { gameStore, type GenerationProgress } from "../hooks/useGameStore";
 import { THEMES, PLAYER_COUNTS, SUSPECTS } from "../../shared/game-elements";
 import { Button } from "@/client/components/ui/button";
 import {
@@ -19,6 +19,7 @@ import {
   SelectValue,
 } from "@/client/components/ui/select";
 import { Label } from "@/client/components/ui/label";
+import GenerationProgressPanel from "./GenerationProgressPanel";
 
 interface Props {
   onClose: () => void;
@@ -131,6 +132,7 @@ export default function NewGameModal({ onClose, onCreated }: Props) {
   const [pickerSelection, setPickerSelection] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [generationProgress, setGenerationProgress] = useState<GenerationProgress | null>(null);
 
   const handleThemeChange = (value: string) => {
     setThemeId(value);
@@ -184,6 +186,12 @@ export default function NewGameModal({ onClose, onCreated }: Props) {
   const handleCreate = async () => {
     setCreating(true);
     setError(null);
+    setGenerationProgress({
+      stage: "occasion",
+      message: "Starting the case architect.",
+      progress: 2,
+      elapsedMs: 0,
+    });
     const hasMissing = players.some((player) => !player.name.trim() || !player.suspectId);
     if (hasMissing) {
       setError("Please enter a name and choose a character for each player.");
@@ -201,6 +209,7 @@ export default function NewGameModal({ onClose, onCreated }: Props) {
         playerCount: Number(playerCount),
         players,
         useAI: false, // Set to true if AI enhancement is desired
+        onGenerationProgress: setGenerationProgress,
       });
       onCreated(game.id);
     } catch (err) {
@@ -311,6 +320,12 @@ export default function NewGameModal({ onClose, onCreated }: Props) {
 
         {error && (
           <div className="text-destructive text-sm mb-4">{error}</div>
+        )}
+
+        {creating && generationProgress && (
+          <div className="mb-4">
+            <GenerationProgressPanel progress={generationProgress} />
+          </div>
         )}
 
         <DialogFooter>

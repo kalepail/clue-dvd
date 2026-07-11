@@ -4,11 +4,10 @@ import { Badge } from "@/client/components/ui/badge";
 interface Props {
   speaker: string;
   text: string;
-  eliminated?: { type: string; id: string };
   index: number;
 }
 
-export default function ClueDisplay({ speaker, text, eliminated, index }: Props) {
+export default function ClueDisplay({ speaker, text, index }: Props) {
   return (
     <div>
       <div className="flex items-center justify-between mb-2">
@@ -24,8 +23,6 @@ export default function ClueDisplay({ speaker, text, eliminated, index }: Props)
       <blockquote className="border-l-2 border-primary/50 pl-3 italic text-foreground text-sm leading-snug clue-display-text">
         "{text}"
       </blockquote>
-
-      {null}
     </div>
   );
 }

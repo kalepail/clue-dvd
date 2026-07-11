@@ -113,6 +113,18 @@ export interface LocalGameListItem {
   totalClues: number;
 }
 
+export interface GenerationProgress {
+  stage: string;
+  message: string;
+  progress: number;
+  elapsedMs: number;
+}
+
+type ScenarioStreamEvent =
+  | ({ type: "progress" } & GenerationProgress)
+  | { type: "complete"; success: true; scenario: GeneratedScenario }
+  | { type: "error"; success: false; error: string };
+
 // ============================================
 // LOCAL STORAGE KEY
 // ============================================
@@ -230,6 +242,7 @@ class GameStore {
     players?: { name: string; suspectId: string }[];
     useAI?: boolean;
     phoneSessionCode?: string | null;
+    onGenerationProgress?: (progress: GenerationProgress) => void;
   }): Promise<LocalGame> {
     const {
       themeId,
@@ -238,14 +251,22 @@ class GameStore {
       players = [],
       useAI: _useAI = true,
       phoneSessionCode = null,
+      onGenerationProgress,
     } = options;
 
-    // Call the AI-driven scenario generation API (mandatory)
-    const endpoint = "/api/scenarios/generate";
+    const recentMysterySignatures = Object.values(this.games)
+      .sort((left, right) => right.createdAt.localeCompare(left.createdAt))
+      .map((game) => game.scenario.metadata.mysterySignature)
+      .filter((signature): signature is string => Boolean(signature))
+      .slice(0, 5);
+
+    // The streamed endpoint has no arbitrary overall timeout. It reports the
+    // provider stage that is actually active and finishes with one scenario.
+    const endpoint = "/api/scenarios/generate-stream";
     const response = await fetch(endpoint, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ themeId, difficulty }),
+      body: JSON.stringify({ themeId, difficulty, recentMysterySignatures }),
     });
 
     if (!response.ok) {
@@ -253,23 +274,50 @@ class GameStore {
       throw new Error(error.error || "Failed to generate scenario");
     }
 
-    const result = await response.json() as { success: boolean; scenario?: GeneratedScenario; error?: string };
-    if (!result.success || !result.scenario) {
-      throw new Error(result.error || "Failed to generate scenario");
-    }
+    if (!response.body) throw new Error("Mystery generation stream was unavailable.");
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+    let scenario: GeneratedScenario | null = null;
+    let streamError: string | null = null;
 
-    const scenario = result.scenario;
-    const theme = THEMES.find((t) => t.id === scenario.theme.id);
+    const consumeLine = (line: string) => {
+      if (!line.trim()) return;
+      let event: ScenarioStreamEvent;
+      try {
+        event = JSON.parse(line) as ScenarioStreamEvent;
+      } catch {
+        throw new Error("Mystery generation returned an invalid progress event.");
+      }
+      if (event.type === "progress") onGenerationProgress?.(event);
+      if (event.type === "complete") scenario = event.scenario;
+      if (event.type === "error") streamError = event.error;
+    };
+
+    while (true) {
+      const { value, done } = await reader.read();
+      buffer += decoder.decode(value, { stream: !done });
+      const lines = buffer.split("\n");
+      buffer = lines.pop() ?? "";
+      lines.forEach(consumeLine);
+      if (done) break;
+    }
+    consumeLine(buffer);
+    if (streamError) throw new Error(streamError);
+    const completedScenario = scenario as GeneratedScenario | null;
+    if (!completedScenario) throw new Error("Mystery generation ended before the case was ready.");
+
+    const theme = THEMES.find((t) => t.id === completedScenario.theme.id);
 
     const game: LocalGame = {
       id: generateId(),
       status: "setup",
       theme: theme ? { id: theme.id, name: theme.name, description: theme.description } : null,
-      difficulty: scenario.metadata.difficulty,
+      difficulty: completedScenario.metadata.difficulty,
       playerCount,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
-      scenario,
+      scenario: completedScenario,
       currentClueIndex: 0,
       phase: "setup",
       wrongAccusations: 0,
@@ -366,7 +414,6 @@ class GameStore {
       clueNumber: clue.position,
       clueType: clue.type,
       clueText: clue.text,
-      eliminates: clue.eliminates,
     });
 
     // Check for dramatic event
@@ -743,27 +790,14 @@ class GameStore {
     const scenario = game.scenario;
     const solution = scenario.solution;
 
-    // Calculate eliminated elements from revealed clues
+    // AI evidence is interpreted by players. Revealing a clue never marks a
+    // card or publishes private validation effects automatically.
     const eliminated: EliminationState = {
       suspects: [],
       items: [],
       locations: [],
       times: [],
     };
-
-    for (const clueId of game.revealedClueIds) {
-      const clue = scenario.clues.find((c) => c.id === clueId);
-      if (clue?.eliminates) {
-        const categoryKey = `${clue.eliminates.category}s` as keyof EliminationState;
-        eliminated[categoryKey] = [...eliminated[categoryKey], ...clue.eliminates.ids];
-      }
-    }
-
-    // Deduplicate
-    eliminated.suspects = [...new Set(eliminated.suspects)];
-    eliminated.items = [...new Set(eliminated.items)];
-    eliminated.locations = [...new Set(eliminated.locations)];
-    eliminated.times = [...new Set(eliminated.times)];
 
     const remaining: RemainingCounts = {
       suspects: SUSPECTS.length - eliminated.suspects.length,
@@ -779,12 +813,6 @@ class GameStore {
         type: clue.type as "butler" | "inspector" | "observation",
         speaker: clue.speaker,
         text: clue.text,
-        eliminates: clue.eliminates ? {
-          suspects: clue.eliminates.category === "suspect" ? clue.eliminates.ids : [],
-          items: clue.eliminates.category === "item" ? clue.eliminates.ids : [],
-          locations: clue.eliminates.category === "location" ? clue.eliminates.ids : [],
-          times: clue.eliminates.category === "time" ? clue.eliminates.ids : [],
-        } : undefined,
       };
     });
 

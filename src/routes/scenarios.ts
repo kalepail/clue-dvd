@@ -1,60 +1,76 @@
 import { Hono, type Context } from "hono";
+import { stream } from "hono/streaming";
 import {
   generateScenarioWithPlan,
   generatePlanOnly,
   validateScenario,
 } from "../services/scenario-generator";
-import { generateStoryPackage, getLastStoryAiDebug } from "../services/ai-story-generator";
+import {
+  generateMysteryV2,
+  getLastMysteryEngineDebug,
+  type MysteryEngineResult,
+  type MysteryProgressEvent,
+} from "../services/ai-mystery-engine";
 import type { GenerateCampaignRequest } from "../types/campaign";
+import type { GeneratedScenario } from "../types/campaign";
+import { createMysteryScenarioShell, createMysterySetup } from "../services/ai-mystery-setup";
 
 const scenarios = new Hono<{ Bindings: CloudflareBindings }>();
 const DEFAULT_THEME_ID = "AI01";
 const AI_THEME_ID = "AI01";
-// AI story generation is enabled (legacy prompt preserved separately).
-const AI_STORY_ENABLED = true;
+
+type ScenarioRequestBody = GenerateCampaignRequest & { theme?: string };
+
+async function generateForRequest(
+  c: Context<{ Bindings: CloudflareBindings }>,
+  body: ScenarioRequestBody,
+  onProgress?: (event: MysteryProgressEvent) => void | Promise<void>
+) {
+  const rawThemeId = body.themeId || body.theme;
+  const themeId = typeof rawThemeId === "string" && rawThemeId.trim().length > 0
+    ? rawThemeId
+    : DEFAULT_THEME_ID;
+
+  const request: GenerateCampaignRequest = {
+    themeId,
+    difficulty: "expert",
+    seed: body.seed,
+    excludeSuspects: body.excludeSuspects,
+    excludeItems: body.excludeItems,
+    excludeLocations: body.excludeLocations,
+    excludeTimes: body.excludeTimes,
+    recentMysterySignatures: body.recentMysterySignatures?.slice(0, 5),
+  };
+
+  let scenario: GeneratedScenario;
+  if (themeId === AI_THEME_ID) {
+    const apiKey = c.env.ANTHROPIC_API_KEY;
+    if (!apiKey) throw new Error("ANTHROPIC_API_KEY is not configured.");
+    const setup = createMysterySetup(request);
+    const baseScenario = createMysteryScenarioShell(setup);
+    const mystery = await generateMysteryV2(apiKey, {
+      setup,
+      recentSignatures: request.recentMysterySignatures,
+      onProgress,
+    });
+    scenario = applyMysteryPackage(baseScenario, mystery);
+  } else {
+    scenario = generateScenarioWithPlan(request).scenario;
+    await onProgress?.({ stage: "complete", message: "Case ready.", progress: 100, elapsedMs: 0 });
+  }
+
+  const validation = validateScenario(scenario);
+  if (!validation.valid) {
+    const details = validation.errors.map((error) => error.message).join(" ");
+    throw new Error(`Generated scenario failed validation. ${details}`.trim());
+  }
+  return { scenario, validation };
+}
 
 const handleGenerateScenario = async (c: Context<{ Bindings: CloudflareBindings }>) => {
   try {
-    const body = await c.req.json<GenerateCampaignRequest & { theme?: string }>().catch(() => ({} as GenerateCampaignRequest & { theme?: string }));
-    const rawThemeId = body.themeId || body.theme;
-    const themeId = typeof rawThemeId === "string" && rawThemeId.trim().length > 0
-      ? rawThemeId
-      : DEFAULT_THEME_ID;
-
-    // Map old 'theme' param to 'themeId'
-    const request: GenerateCampaignRequest = {
-      themeId,
-      difficulty: "expert",
-      seed: body.seed,
-      excludeSuspects: body.excludeSuspects,
-      excludeItems: body.excludeItems,
-      excludeLocations: body.excludeLocations,
-      excludeTimes: body.excludeTimes,
-    };
-
-    const { scenario: baseScenario, plan } = generateScenarioWithPlan(request);
-    let scenario = baseScenario;
-    if (AI_STORY_ENABLED && plan.themeId === AI_THEME_ID) {
-      const apiKey = c.env.ANTHROPIC_API_KEY;
-      if (!apiKey) {
-        throw new Error("ANTHROPIC_API_KEY is not configured.");
-      }
-      const story = await generateStoryPackage(apiKey, { plan });
-      scenario = applyStoryPackage(baseScenario, story);
-    }
-    const validation = validateScenario(scenario);
-
-    if (!validation.valid) {
-      return c.json(
-        {
-          success: false,
-          error: "Generated scenario failed validation",
-          validationErrors: validation.errors,
-        },
-        500
-      );
-    }
-
+    const body = await c.req.json<ScenarioRequestBody>().catch(() => ({}));
+    const { scenario, validation } = await generateForRequest(c, body);
     return c.json({
       success: true,
       scenario,
@@ -73,6 +89,33 @@ const handleGenerateScenario = async (c: Context<{ Bindings: CloudflareBindings 
 
 // Generate a scenario
 scenarios.post("/generate", handleGenerateScenario);
+
+// NDJSON stream used by the client for honest stage and elapsed-time updates.
+// There is intentionally no application-level overall timeout.
+scenarios.post("/generate-stream", async (c) => {
+  const body = await c.req.json<ScenarioRequestBody>().catch(() => ({}));
+  c.header("Content-Type", "application/x-ndjson; charset=utf-8");
+  c.header("Cache-Control", "no-cache, no-transform");
+  c.header("X-Accel-Buffering", "no");
+
+  return stream(c, async (writer) => {
+    const writeEvent = async (event: unknown) => {
+      await writer.write(`${JSON.stringify(event)}\n`);
+    };
+    try {
+      const { scenario, validation } = await generateForRequest(c, body, async (progress) => {
+        await writeEvent({ type: "progress", ...progress });
+      });
+      await writeEvent({ type: "complete", success: true, scenario, validation });
+    } catch (error) {
+      await writeEvent({
+        type: "error",
+        success: false,
+        error: error instanceof Error ? error.message : "Unknown mystery generation error",
+      });
+    }
+  });
+});
 
 // Generate scenario with full plan (for debugging)
 scenarios.post("/generate-with-plan", async (c) => {
@@ -134,25 +177,12 @@ scenarios.post("/validate", async (c) => {
   }
 });
 
-// AI-enhanced scenario endpoints removed
-
 scenarios.get("/last-ai.json", (c) => {
-  const output = getLastStoryAiDebug();
+  const output = getLastMysteryEngineDebug();
   if (!output) {
     return c.text("No AI scenario has been generated yet.", 404);
   }
-  return new Response(JSON.stringify({
-    systemPrompt: output.systemPrompt,
-    userPrompt: output.userPrompt,
-    rawResponse: output.rawResponse,
-    openingPrompt: output.openingPrompt ?? null,
-    openingRawResponse: output.openingRawResponse ?? null,
-    inspectorPrompt: output.inspectorPrompt ?? null,
-    inspectorRawResponse: output.inspectorRawResponse ?? null,
-    parsed: output.parsed ?? null,
-    answerKey: output.answerKey ?? null,
-    formattedClues: output.formattedClues ?? null,
-  }, null, 2), {
+  return new Response(JSON.stringify(output, null, 2), {
     headers: {
       "Content-Type": "application/json; charset=utf-8",
       "Content-Disposition": "attachment; filename=\"ai-last.json\"",
@@ -161,23 +191,21 @@ scenarios.get("/last-ai.json", (c) => {
 });
 
 scenarios.get("/last-ai-stages.json", (c) => {
-  const output = getLastStoryAiDebug();
+  const output = getLastMysteryEngineDebug();
   if (!output) {
     return c.text("No AI scenario has been generated yet.", 404);
   }
   return new Response(JSON.stringify({
-    stages: {
-      system: output.systemPrompt,
-      user: output.userPrompt,
-      raw: output.rawResponse,
-      openingPrompt: output.openingPrompt ?? null,
-      openingRaw: output.openingRawResponse ?? null,
-      inspectorPrompt: output.inspectorPrompt ?? null,
-      inspectorRaw: output.inspectorRawResponse ?? null,
-      parsed: output.parsed ?? null,
-    },
-    answerKey: output.answerKey ?? null,
-    formattedClues: output.formattedClues ?? null,
+    setup: output.setup,
+    caseBible: output.caseBible ?? null,
+    renderedDraft: output.renderedDraft ?? null,
+    inspectorEvidence: output.inspectorEvidence ?? null,
+    blindAudit: output.blindAudit ?? null,
+    revision: output.revision ?? null,
+    finalAudit: output.finalAudit ?? null,
+    deterministicIssues: output.deterministicIssues,
+    finalPackage: output.finalPackage ?? null,
+    failure: output.failure ?? null,
   }, null, 2), {
     headers: {
       "Content-Type": "application/json; charset=utf-8",
@@ -186,37 +214,39 @@ scenarios.get("/last-ai-stages.json", (c) => {
   });
 });
 
-function applyStoryPackage(
-  scenario: ReturnType<typeof generateScenarioWithPlan>["scenario"],
-  story: {
-    opening: string;
-    butlerClues: string[];
-    inspectorNotes: string[];
-    closing: string;
-  }
+export function applyMysteryPackage(
+  scenario: GeneratedScenario,
+  story: MysteryEngineResult
 ) {
-  const butlerClues = scenario.clues.filter((clue) => clue.type === "butler");
-  if (butlerClues.length !== story.butlerClues.length) {
-    throw new Error(`Expected ${butlerClues.length} butler clues, received ${story.butlerClues.length}.`);
+  if (scenario.clues.length !== story.butlerClues.length) {
+    throw new Error(`Expected ${scenario.clues.length} Butler clues, received ${story.butlerClues.length}.`);
   }
-  let index = 0;
-  const clues = scenario.clues.map((clue) => {
-    if (clue.type !== "butler") return clue;
-    const text = story.butlerClues[index++];
-    return { ...clue, text };
+  const clues = scenario.clues.map((clue, index) => {
+    const { eliminates: _privateLegacyElimination, ...publicClue } = clue;
+    return {
+      ...publicClue,
+      type: "butler" as const,
+      speaker: "Ashe" as const,
+      text: story.butlerClues[index],
+    };
   });
-  const inspectorNotes = story.inspectorNotes.map((text, noteIndex) => ({
-    id: `N${noteIndex + 1}`,
-    text,
-  }));
+  const inspectorNotes = story.inspectorNotes.map((note) => ({ ...note }));
   return {
     ...scenario,
     clues,
+    // Legacy dramatic events were generated independently from the V2 case
+    // bible and would fracture the causal story if exposed.
+    dramaticEvents: [],
     inspectorNotes,
     narrative: {
       ...scenario.narrative,
       opening: story.opening,
       closing: story.closing,
+    },
+    metadata: {
+      ...scenario.metadata,
+      engineVersion: "2.0",
+      mysterySignature: story.mysterySignature,
     },
   };
 }

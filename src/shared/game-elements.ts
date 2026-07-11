@@ -112,7 +112,7 @@ export const THEMES: ThemeElement[] = [
 // ============================================
 
 export const DIFFICULTIES: DifficultyLevel[] = [
-  { id: "expert", name: "Expert", description: "Fixed expert difficulty", clueCount: 7 },
+  { id: "expert", name: "Expert", description: "Fixed expert difficulty", clueCount: 10 },
 ];
 
 // ============================================

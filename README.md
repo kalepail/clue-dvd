@@ -11,6 +11,8 @@ npm run dev      # Development server
 
 Open the app at `http://localhost:5173` (Vite default).
 
+For AI mystery generation, put `ANTHROPIC_API_KEY=...` in `.dev.vars`. The active story system is the multi-pass Sonnet V2 engine documented in [AI_MYSTERY_ENGINE_V2.md](AI_MYSTERY_ENGINE_V2.md).
+
 ```bash
 npm run deploy   # Deploy to Cloudflare Workers
 ```
@@ -84,9 +86,9 @@ This web app acts as the **game master** for the 2006 Clue DVD Game, generating:
 | Feature | Status | Description |
 |---------|--------|-------------|
 | Scenario Generation | Complete | Random solutions with logical clues |
-| AI Narrative Enhancement | Complete | Cloudflare AI generates atmospheric text |
+| AI Mystery Engine V2 | Complete | Sonnet builds, renders, blind-tests, and optionally revises a causal case |
 | Symbol System | Complete | Red magnifying glass card mirroring |
-| Elimination Tracking | Complete | Track deductions in UI |
+| Deduction Tracking | Complete | Players track AI evidence without automatic answer-card badges |
 | Clue Reveal System | Complete | Progressive clue revelation |
 | Accusation System | Complete | Make accusations, win/lose |
 | Phone Companion | Complete | D1-backed sessions for notes, eliminations, turns, accusations |
@@ -140,15 +142,14 @@ This web app acts as the **game master** for the 2006 Clue DVD Game, generating:
 |                           |                                  |
 |  +------------------------+----------------------------+    |
 |  |                    Services                          |    |
-|  |  +-----------+  +-----------+  +-----------+         |    |
-|  |  | Campaign  |  |   Clue    |  |    AI     |         |    |
-|  |  | Planner   |->| Generator |->| Narrative |         |    |
-|  |  +-----------+  +-----------+  +-----------+         |    |
-|  |       |                                              |    |
-|  |       v                                              |    |
-|  |  +-----------+                                       |    |
-|  |  | Validator |  (ensures clues don't break game)     |    |
-|  |  +-----------+                                       |    |
+|  |  +-----------+  +--------------+  +-------------+    |    |
+|  |  | Answer +  |->| Case Bible + |->| Renderer +  |    |    |
+|  |  | Occasion  |  | Validation   |  | Inspector   |    |    |
+|  |  +-----------+  +--------------+  +------+------+    |    |
+|  |                                         |            |    |
+|  |                                  +------v------+     |    |
+|  |                                  | Blind Audit |     |    |
+|  |                                  +-------------+     |    |
 |  +------------------------------------------------------+   |
 |                           |                                  |
 |  +------------------------------------------------------+   |
@@ -166,8 +167,8 @@ This web app acts as the **game master** for the 2006 Clue DVD Game, generating:
 
 | Frontend Action | Endpoint | Method | Purpose |
 |-----------------|----------|--------|---------|
-| Create new game | `/api/scenarios/generate` | POST | Generate scenario |
-| Create with AI | `/api/scenarios/generate-enhanced` | POST | AI-enhanced scenario |
+| Create new game | `/api/scenarios/generate-stream` | POST | Stream V2 stages and final scenario |
+| Compatibility generation | `/api/scenarios/generate` | POST | Generate the same scenario response synchronously |
 | Get card symbols | `/api/symbols/cards/:cardId` | GET | Symbol positions for card |
 | Phone session | `/api/phone/sessions` | POST | Create phone lobby |
 | Phone join | `/api/phone/sessions/:code/join` | POST | Join with name + suspect |
@@ -179,12 +180,12 @@ This web app acts as the **game master** for the 2006 Clue DVD Game, generating:
 
 ```typescript
 // POST /api/scenarios/generate
-// POST /api/scenarios/generate-enhanced
+// POST /api/scenarios/generate-stream
 {
-  themeId?: string;        // M01-M12 (optional)
-  difficulty?: string;     // "beginner" | "intermediate" | "expert"
-  playerCount?: number;    // 2-6
+  themeId?: string;        // AI01 or DEV01
+  difficulty?: string;     // Runtime currently standardizes on expert
   seed?: number;           // For reproducible scenarios
+  recentMysterySignatures?: string[]; // Up to five local cases
 }
 ```
 
@@ -206,7 +207,7 @@ This web app acts as the **game master** for the 2006 Clue DVD Game, generating:
       speaker: "Ashe" | "Inspector Brown";
       text: string;         // The clue text
       act: string;          // act1_setup | act2_confrontation | act3_resolution
-      eliminates: {
+      eliminates?: {       // Omitted from AI V2 clues
         category: "suspect" | "item" | "location" | "time";
         ids: string[];      // Elements eliminated
         reason: string;     // Elimination type
@@ -217,7 +218,7 @@ This web app acts as the **game master** for the 2006 Clue DVD Game, generating:
       atmosphere: string;   // Sensory description
       closing: string;      // Resolution narrative
     };
-    metadata: { difficulty, totalClues, seed, createdAt };
+    metadata: { difficulty, totalClues, seed, createdAt, engineVersion, mysterySignature };
   };
   validation: {
     valid: boolean;
@@ -289,10 +290,11 @@ This web app acts as the **game master** for the 2006 Clue DVD Game, generating:
 | Endpoint | Method | Purpose |
 |----------|--------|---------|
 | `POST /generate` | POST | Generate scenario |
+| `POST /generate-stream` | POST | Stream V2 progress and final scenario as NDJSON |
 | `POST /generate-with-plan` | POST | Generate with plan details |
 | `POST /generate-plan` | POST | Generate plan only |
 | `POST /validate` | POST | Validate existing scenario |
-| `POST /generate-enhanced` | POST | AI-enhanced scenario |
+| `GET /last-ai.json` | GET | Download complete V2 diagnostics for the latest local generation |
 
 #### Phone Routes (`/api/phone`)
 | Endpoint | Method | Purpose |
@@ -412,7 +414,11 @@ src/
 │   ├── campaign-clue-generator.ts    # Phase 2: Clue text generation
 │   ├── campaign-validator.ts         # Phase 3: Validation
 │   ├── setup-generator.ts            # Symbol-based setup
-│   ├── ai-narrative.ts               # Cloudflare AI integration
+│   ├── ai-mystery-engine.ts          # V2 multi-pass orchestration
+│   ├── ai-mystery-setup.ts           # Direct seed/answer selection + shell
+│   ├── ai-mystery-provider.ts        # Structured Sonnet provider
+│   ├── ai-mystery-schemas.ts         # Runtime output contracts
+│   ├── ai-mystery-validator.ts       # Causal/fair-play validation
 │   └── seeded-random.ts              # Reproducible randomization
 │
 ├── data/                             # Static game data
@@ -420,7 +426,8 @@ src/
 │   ├── card-symbols.ts               # 252 symbol positions
 │   ├── game-constants.ts             # NPCs, settings, config
 │   ├── campaign-settings.ts          # Difficulty configurations
-│   └── ai-context.ts                 # AI grounding context
+│   ├── ai-mystery-prompts.ts         # Compact V2 stage prompts
+│   └── original-mystery-style.ts     # Distilled style principles
 │
 ├── types/                            # TypeScript definitions
 │   ├── campaign.ts                   # Campaign/clue types
@@ -556,28 +563,24 @@ src/
 
 ---
 
-## Clue Generation System
+## Mystery Generation System
 
-### Three-Phase Pipeline
+### Story-first V2 pipeline
 
 ```
-Phase 1: PLANNING (campaign-planner.ts)
-├── Select theme and solution
-├── Plan elimination groups
-├── Distribute across 3-act structure
-└── Add red herrings and dramatic events
+Deterministic setup
+├── Fix seed and immutable four-card answer
+├── Select occasion family and recent signatures
+└── Supply the verified 42-card world
 
-Phase 2: GENERATION (campaign-clue-generator.ts)
-├── Convert plans to clue text
-├── Apply speaker voice (Ashe vs Inspector Brown)
-├── Generate narrative elements
-└── Optionally enhance with AI
+Case Architect → Renderer → Inspector Evidence → Blind Audit
+                                      │
+                                      └── one revision + final audit when required
 
-Phase 3: VALIDATION (campaign-validator.ts)
-├── Verify solution not eliminated
-├── Check coverage completeness
-├── Validate narrative coherence
-└── Report errors/warnings
+Deterministic validation
+├── Lore, cast, chronology, movement, lies, and evidence provenance
+├── Opening, Inspector, answer-leakage, and repetition checks
+└── Hybrid candidate progression with physical cards retained
 ```
 
 ### Elimination Types (17)
@@ -667,7 +670,7 @@ interface GameAction { actor, actionType, details, timestamp }
 
 ### Tech Stack
 
-- **Backend:** Hono, Cloudflare Workers, Workers AI (Llama 3.1 8B)
+- **Backend:** Hono, Cloudflare Workers, Anthropic Sonnet structured tool calls
 - **Frontend:** React 18, TypeScript, Tailwind CSS v4
 - **Deployment:** Cloudflare Pages + Workers
 
@@ -685,7 +688,7 @@ npm run typecheck    # TypeScript checks
 ### Testing
 
 ```bash
-npm test             # Run tests (campaign-system.test.ts)
+npm test -- --run    # Campaign, V2 provider/engine, and route integration tests
 ```
 
 ---
@@ -705,7 +708,7 @@ npm test             # Run tests (campaign-system.test.ts)
 
 ## Reference Documents
 
-- `CLAUDE.md` - AI assistant instructions (comprehensive game reference)
+- `AI_MYSTERY_ENGINE_V2.md` - Active mystery architecture, diagnostics, and acceptance flow
 - `CARD_SYMBOLS.md` - Symbol system documentation
 - [Cluepedia - DVD Game](https://cluepedia.fandom.com/wiki/Clue_DVD_Game)
 - [Hasbro Instructions](https://instructions.hasbro.com/en-us/instruction/clue-dvd-game)

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Users, RefreshCw, X, Smartphone } from "lucide-react";
-import { gameStore } from "../hooks/useGameStore";
+import { gameStore, type GenerationProgress } from "../hooks/useGameStore";
 import { createSession, closeSession } from "../phone/api";
 import type { PhoneSessionSummary } from "../../phone/types";
 import {
@@ -11,6 +11,7 @@ import {
 import { DEV_PHONE_JOIN_HOST } from "../phone/phone-config";
 import { Button } from "@/client/components/ui/button";
 import { connectPhoneSessionSocket } from "../phone/ws";
+import GenerationProgressPanel from "../components/GenerationProgressPanel";
 
 interface Props {
   onNavigate: (path: string) => void;
@@ -21,6 +22,7 @@ export default function HostLobbyPage({ onNavigate }: Props) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [startingGame, setStartingGame] = useState(false);
+  const [generationProgress, setGenerationProgress] = useState<GenerationProgress | null>(null);
   const [lastEventId, setLastEventId] = useState<number | null>(null);
   const sessionRef = useRef<PhoneSessionSummary | null>(null);
   const lastEventIdRef = useRef<number | null>(null);
@@ -65,6 +67,7 @@ export default function HostLobbyPage({ onNavigate }: Props) {
             const currentSession = sessionRef.current;
             if (!currentSession) return;
             setStartingGame(true);
+            setGenerationProgress({ stage: "occasion", message: "Starting the case architect.", progress: 2, elapsedMs: 0 });
             const themeId = typeof event.payload.themeId === "string" && event.payload.themeId.length > 0
               ? event.payload.themeId
               : undefined;
@@ -76,17 +79,25 @@ export default function HostLobbyPage({ onNavigate }: Props) {
             }));
             if (players.length === 0) {
               setError("No players joined the phone lobby yet.");
+              setStartingGame(false);
               return;
             }
-            const game = await gameStore.createGame({
-              themeId,
-              difficulty: difficulty as "beginner" | "intermediate" | "expert",
-              playerCount: players.length,
-              players,
-              useAI: false,
-              phoneSessionCode: currentSession.session.code,
-            });
-            onNavigate(`/game/${game.id}`);
+            try {
+              const game = await gameStore.createGame({
+                themeId,
+                difficulty: difficulty as "beginner" | "intermediate" | "expert",
+                playerCount: players.length,
+                players,
+                useAI: false,
+                phoneSessionCode: currentSession.session.code,
+                onGenerationProgress: setGenerationProgress,
+              });
+              onNavigate(`/game/${game.id}`);
+            } catch (err) {
+              setError(err instanceof Error ? err.message : "Failed to generate mystery");
+            } finally {
+              setStartingGame(false);
+            }
           }
         },
       },
@@ -232,7 +243,7 @@ export default function HostLobbyPage({ onNavigate }: Props) {
           <div className="lobby-active">
             {startingGame && (
               <div className="lobby-starting">
-                Generating the mystery… this can take up to a minute.
+                {generationProgress && <GenerationProgressPanel progress={generationProgress} />}
               </div>
             )}
             {/* Join Code Section */}

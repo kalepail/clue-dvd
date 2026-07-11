@@ -390,6 +390,8 @@ export interface GenerateCampaignRequest {
   excludeLocations?: string[];
   /** Exclude specific times from solution */
   excludeTimes?: string[];
+  /** Recent V2 novelty signatures to avoid repeating across local games */
+  recentMysterySignatures?: string[];
 }
 
 /**
@@ -409,7 +411,7 @@ export interface GeneratedClue {
   /** Which act */
   act: NarrativeAct;
   /** What this clue eliminates */
-  eliminates: {
+  eliminates?: {
     category: EliminationCategory;
     ids: string[];
     reason: string;
@@ -483,5 +485,9 @@ export interface GeneratedScenario {
     seed: number;
     createdAt: string;
     version: string;
+    /** Active AI generation engine */
+    engineVersion?: string;
+    /** Occasion/motive/relationship/deception novelty signature */
+    mysterySignature?: string;
   };
 }

@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 import { closeSession, createSession } from "./api";
 import { clearHostSessionCode, storeHostSessionCode } from "./storage";
-import { gameStore } from "../hooks/useGameStore";
+import { gameStore, type GenerationProgress } from "../hooks/useGameStore";
 import type { PhoneSessionSummary } from "../../phone/types";
 import { connectPhoneSessionSocket } from "./ws";
 import "./phone.css";
+import GenerationProgressPanel from "../components/GenerationProgressPanel";
 
 interface Props {
   onNavigate: (path: string) => void;
@@ -25,6 +26,8 @@ export default function PhoneHostPage({ onNavigate }: Props) {
   const [loading, setLoading] = useState(true);
   const [lastEventId, setLastEventId] = useState<number | null>(null);
   const [closing, setClosing] = useState(false);
+  const [startingGame, setStartingGame] = useState(false);
+  const [generationProgress, setGenerationProgress] = useState<GenerationProgress | null>(null);
   const sessionRef = useRef<PhoneSessionSummary | null>(null);
   const lastEventIdRef = useRef<number | null>(null);
 
@@ -86,15 +89,24 @@ export default function PhoneHostPage({ onNavigate }: Props) {
               setError("No players joined the phone lobby yet.");
               return;
             }
-            const game = await gameStore.createGame({
-              themeId,
-              difficulty: difficulty as "beginner" | "intermediate" | "expert",
-              playerCount: players.length,
-              players,
-              useAI: false,
-              phoneSessionCode: currentSession.session.code,
-            });
-            onNavigate(`/game/${game.id}`);
+            setStartingGame(true);
+            setGenerationProgress({ stage: "occasion", message: "Starting the case architect.", progress: 2, elapsedMs: 0 });
+            try {
+              const game = await gameStore.createGame({
+                themeId,
+                difficulty: difficulty as "beginner" | "intermediate" | "expert",
+                playerCount: players.length,
+                players,
+                useAI: false,
+                phoneSessionCode: currentSession.session.code,
+                onGenerationProgress: setGenerationProgress,
+              });
+              onNavigate(`/game/${game.id}`);
+            } catch (err) {
+              setError(err instanceof Error ? err.message : "Failed to generate mystery");
+            } finally {
+              setStartingGame(false);
+            }
           }
         },
       },
@@ -152,6 +164,9 @@ export default function PhoneHostPage({ onNavigate }: Props) {
       </div>
 
       <div className="phone-stack">
+        {startingGame && generationProgress && (
+          <GenerationProgressPanel progress={generationProgress} />
+        )}
         <div className="phone-card phone-stack">
           <div className="phone-section-title">Join Code</div>
           <div style={{ fontSize: "2.4rem", letterSpacing: "0.4em", fontFamily: "var(--font-display)" }}>

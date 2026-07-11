@@ -46,7 +46,7 @@ tts.post("/tts", async (c) => {
     return c.json({ error: "TTS not configured" }, 500);
   }
 
-  const envVars = c.env as Record<string, string | undefined>;
+  const envVars = c.env as unknown as Record<string, string | undefined>;
   const voiceId = getEnvVoiceId(envVars, role);
   if (!voiceId) {
     return c.json({ error: "TTS voice not configured" }, 500);
@@ -56,7 +56,7 @@ tts.post("/tts", async (c) => {
   const cacheUrl = new URL(c.req.url);
   cacheUrl.pathname = `/api/tts/${role}/${cacheKey}.mp3`;
   const cacheRequest = new Request(cacheUrl.toString(), { method: "GET" });
-  const cache = caches.default;
+  const cache = (caches as unknown as { default: Cache }).default;
   const cached = await cache.match(cacheRequest);
   if (cached) {
     return cached;

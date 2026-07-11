@@ -226,9 +226,9 @@ describe("Campaign Planner (Phase 1)", () => {
   });
 
   describe("Difficulty settings", () => {
-    it("expert should have 7 clues", () => {
+    it("expert should have 10 clues", () => {
       const plan = planCampaign({});
-      expect(plan.clues.length).toBe(7);
+      expect(plan.clues.length).toBe(10);
     });
   });
 });
@@ -284,11 +284,12 @@ describe("Clue Generator (Phase 2)", () => {
     it("should include elimination info in all clues", () => {
       for (const clue of scenario.clues) {
         expect(clue.eliminates).toBeDefined();
+        const eliminates = clue.eliminates!;
         expect(["suspect", "item", "location", "time"]).toContain(
-          clue.eliminates.category
+          eliminates.category
         );
-        expect(clue.eliminates.ids.length).toBeGreaterThan(0);
-        expect(clue.eliminates.reason).toBeDefined();
+        expect(eliminates.ids.length).toBeGreaterThan(0);
+        expect(eliminates.reason).toBeDefined();
       }
     });
 

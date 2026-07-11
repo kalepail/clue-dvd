@@ -179,5 +179,5 @@ export interface ClueGenerationContext {
 export interface GeneratedClue {
   text: string;
   type: ClueType;
-  eliminates: EliminationInfo[];
+  eliminates?: EliminationInfo[];
 }

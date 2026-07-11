@@ -208,7 +208,7 @@ export const DIFFICULTY_LEVELS = {
   expert: {
     name: "Expert",
     description: "Fixed expert difficulty",
-    clueCount: 7,
+    clueCount: 10,
     estimatedMinutes: 75,
   },
 } as const;

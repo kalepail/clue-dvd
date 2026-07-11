@@ -143,12 +143,12 @@ export function toLegacyFormat(scenario: GeneratedScenario): LegacyScenario {
       text: clue.text,
       revealOrder: clue.position,
       logic: {
-        eliminates: [{
+        eliminates: clue.eliminates ? [{
           category: clue.eliminates.category,
           ids: clue.eliminates.ids,
           reason: clue.eliminates.reason,
-        }],
-        reasoning: clue.eliminates.reason,
+        }] : [],
+        reasoning: clue.eliminates?.reason ?? "Player-facing story evidence",
       },
     })),
     gameSetup: {

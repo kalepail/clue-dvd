@@ -11,7 +11,7 @@ import { Badge } from "@/client/components/ui/badge";
 import { Progress } from "@/client/components/ui/progress";
 import { IconStat } from "@/client/components/ui/icon-stat";
 import type { EliminationState } from "../../shared/api-types";
-import { getLocationName } from "../../shared/game-elements";
+import { getLocationName, getSuspectName } from "../../shared/game-elements";
 import { closeSession, sendAccusationResult, sendInspectorNoteResult, updateInspectorNoteAvailability, updateInterruptionStatus, updateSessionTurn } from "../phone/api";
 import { clearHostSessionCode, setHostAutoCreate } from "../phone/storage";
 import type { PhoneSessionStatus } from "../../phone/types";
@@ -97,7 +97,6 @@ export default function GamePage({ gameId, onNavigate, onMusicPauseChange }: Pro
   const [latestClue, setLatestClue] = useState<{
     speaker: string;
     text: string;
-    eliminated?: { type: string; ids: string[] };
   } | null>(null);
   const [showClueReveal, setShowClueReveal] = useState(false);
   const [showAccusation, setShowAccusation] = useState(false);
@@ -190,8 +189,8 @@ export default function GamePage({ gameId, onNavigate, onMusicPauseChange }: Pro
     "/images/ui/Inspector Brown.png",
     "/images/ui/Inspector Brown 3.png",
   ];
-  const note1Available = gameProgress >= 0.5;
-  const note2Available = gameProgress >= 0.65;
+  const note1Available = (game?.currentClueIndex ?? 0) >= 5;
+  const note2Available = (game?.currentClueIndex ?? 0) >= 7;
   const shouldPauseMusic = showClueReveal
     || showInterruption
     || showAccusation
@@ -482,8 +481,8 @@ export default function GamePage({ gameId, onNavigate, onMusicPauseChange }: Pro
     if (!game || game.status !== "in_progress") return;
     if (showInterruption || showInterruptionIntro) return;
 
-    const note1Ready = gameProgress >= 0.5;
-    const note2Ready = gameProgress >= 0.65;
+    const note1Ready = game.currentClueIndex >= 5;
+    const note2Ready = game.currentClueIndex >= 7;
 
     if (note1Ready && !game.inspectorNoteAnnouncements.note1) {
       try {
@@ -579,10 +578,6 @@ export default function GamePage({ gameId, onNavigate, onMusicPauseChange }: Pro
         setLatestClue({
           speaker: result.clue.speaker,
           text: result.clue.text,
-          eliminated: result.clue.eliminates ? {
-            type: result.clue.eliminates.category,
-            ids: result.clue.eliminates.ids,
-          } : undefined,
         });
         setShowClueReveal(true);
         playVoiceover(result.clue.text, role);
@@ -1198,7 +1193,7 @@ export default function GamePage({ gameId, onNavigate, onMusicPauseChange }: Pro
                             <span className="game-turn-indicator" style={{ backgroundColor: color }} />
                             <div className="game-turn-info">
                               <span className="game-turn-name">{player.name}</span>
-                              <span className="game-turn-suspect">{player.suspectName}</span>
+                              <span className="game-turn-suspect">{getSuspectName(player.suspectId)}</span>
                             </div>
                             <span className="game-turn-badge">
                               {isActive ? "Now" : `#${index + 1}`}
@@ -1400,10 +1395,6 @@ export default function GamePage({ gameId, onNavigate, onMusicPauseChange }: Pro
               <ClueDisplay
                 speaker={latestClue.speaker}
                 text={latestClue.text}
-                eliminated={latestClue.eliminated ? {
-                  type: latestClue.eliminated.type,
-                  id: latestClue.eliminated.ids[0],
-                } : undefined}
                 index={game.currentClueIndex}
               />
             </div>
