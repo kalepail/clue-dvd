@@ -137,6 +137,9 @@ export function assembleCaseNarrative(params: {
       return phaseDifference !== 0 ? phaseDifference : left.originalIndex - right.originalIndex;
     });
 
+  const theftIndex = ordered.findIndex(({ event }) => event.phase === "theft");
+  const discoveryIndex = ordered.findIndex(({ event }) => event.phase === "discovery");
+
   const timeline = ordered.map(({ event }, index) => {
     const fixedParticipants = event.phase === "theft" ? [answer.suspectId] : [];
     const fixedItems = event.phase === "theft" ? [answer.itemId] : [];
@@ -151,27 +154,61 @@ export function assembleCaseNarrative(params: {
     };
   });
 
-  const theftIndex = ordered.findIndex(({ event }) => event.phase === "theft");
-  const discoveryIndex = ordered.findIndex(({ event }) => event.phase === "discovery");
-  const movements: CaseBible["movements"] = [];
+  // The tracked set is selected by code, so code guarantees its baseline
+  // presence. A baseline appearance means the object is simply present at an
+  // event; it does not invent testimony or a new public clue.
+  const baselineIndexes = ordered
+    .map(({ event }, index) => ({ phase: event.phase, index }))
+    .filter(({ phase }) => phase === "before_theft")
+    .map(({ index }) => index);
+  trackedItemIds.forEach((itemId, index) => {
+    if (timeline.some((event) => event.itemIds.includes(itemId))) return;
+    const baselineIndex = itemId === answer.itemId
+      ? theftIndex
+      : baselineIndexes[index % Math.max(1, baselineIndexes.length)] ?? theftIndex;
+    timeline[baselineIndex].itemIds = unique([...timeline[baselineIndex].itemIds, itemId]);
+  });
+
+  const movementCandidates: CaseBible["movements"] = [];
   ordered.forEach(({ event }, eventIndex) => {
     event.arrivals.forEach((arrival) => {
-      movements.push({
-        id: `M${String(movements.length + 1).padStart(2, "0")}`,
+      movementCandidates.push({
+        id: "pending",
         eventId: eventId(eventIndex),
         actorId: arrival.actorId,
         fromLocationId: arrival.fromLocationId,
         toLocationId: event.locationId,
-        method: arrival.method,
+        method: arrival.method === "secret_passage" && isVerifiedPassage(
+          arrival.fromLocationId,
+          event.locationId,
+          world
+        ) ? "secret_passage" : "ordinary",
         itemIds: unique(arrival.itemIds),
       });
     });
   });
+  const trackedItems = new Set(trackedItemIds);
+  const deduplicatedMovements = uniqueBy(
+    movementCandidates,
+    (movement) => [
+      movement.eventId,
+      movement.actorId,
+      movement.fromLocationId,
+      movement.toLocationId,
+      movement.method,
+      movement.itemIds.slice().sort().join(","),
+    ].join("|")
+  );
+  const consequential = deduplicatedMovements.filter((movement) =>
+    movement.method === "secret_passage" || movement.itemIds.some((itemId) => trackedItems.has(itemId))
+  );
+  const movements = consequential.slice(0, 20)
+    .map((movement, index) => ({ ...movement, id: `M${String(index + 1).padStart(2, "0")}` }));
 
   const roleByItem = new Map(timelineDraft.itemRoles.map((role) => [role.itemId, role.storyFunction]));
   const itemThreads = trackedItemIds.map((itemId) => ({
     itemId,
-    eventIds: timeline.filter((event) => event.itemIds.includes(itemId)).map((event) => event.id),
+    eventIds: coherentItemEvents(itemId, timeline, movements),
     storyFunction: roleByItem.get(itemId) ?? "A tracked object in the shared mystery.",
   }));
 
@@ -322,4 +359,45 @@ function eventId(index: number): string {
 
 function unique<T>(values: T[]): T[] {
   return [...new Set(values)];
+}
+
+function uniqueBy<T>(values: T[], keyFor: (value: T) => string): T[] {
+  const seen = new Set<string>();
+  return values.filter((value) => {
+    const key = keyFor(value);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+function coherentItemEvents(
+  itemId: string,
+  timeline: CaseBible["timeline"],
+  movements: CaseBible["movements"]
+): string[] {
+  const appearances = timeline.filter((event) => event.itemIds.includes(itemId));
+  if (appearances.length === 0) return [];
+  const coherent = [appearances[0]];
+  for (const event of appearances.slice(1)) {
+    const previous = coherent[coherent.length - 1];
+    if (previous.locationId === event.locationId) {
+      coherent.push(event);
+      continue;
+    }
+    const hasMovement = movements.some((movement) =>
+      movement.eventId === event.id &&
+      movement.fromLocationId === previous.locationId &&
+      movement.toLocationId === event.locationId &&
+      movement.itemIds.includes(itemId)
+    );
+    if (hasMovement) coherent.push(event);
+  }
+  return coherent.map(({ id }) => id);
+}
+
+function isVerifiedPassage(fromLocationId: string, toLocationId: string, world: MysteryWorld): boolean {
+  const from = world.locations.find(({ id }) => id === fromLocationId);
+  const to = world.locations.find(({ id }) => id === toLocationId);
+  return from?.secretPassageTo === to?.id || to?.secretPassageTo === from?.id;
 }

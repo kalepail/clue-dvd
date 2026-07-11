@@ -183,7 +183,7 @@ export const CaseBibleSchema = z.object({
     toLocationId: z.string(),
     method: z.enum(["ordinary", "secret_passage"]),
     itemIds: z.array(z.string()),
-  })).min(1).max(20),
+  })).max(20),
   itemThreads: z.array(z.object({
     itemId: z.string(),
     eventIds: z.array(z.string()).min(1),

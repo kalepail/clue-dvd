@@ -506,6 +506,35 @@ describe("AI Mystery Engine V2 orchestration", () => {
     ]);
   });
 
+  it("discards routine arrival noise and guarantees every code-selected item a baseline appearance", async () => {
+    const fixture = buildFixtures();
+    const noisyTimeline = structuredClone(fixture.timelineDraft);
+    const omittedItemId = noisyTimeline.itemRoles[2].itemId;
+    noisyTimeline.events.forEach((event, eventIndex) => {
+      event.itemIds = event.itemIds.filter((id) => id !== omittedItemId);
+      event.arrivals.push(...Array.from({ length: 3 }, (_, arrivalIndex) => ({
+        actorId: fixture.world.suspects[(eventIndex + arrivalIndex) % fixture.world.suspects.length].id,
+        fromLocationId: fixture.world.locations[(eventIndex + arrivalIndex + 1) % fixture.world.locations.length].id,
+        method: "ordinary" as const,
+        itemIds: [],
+      })));
+    });
+    const provider = sequenceProvider([
+      fixture.foundation,
+      noisyTimeline,
+      fixture.evidenceDesign,
+      fixture.cluePlan,
+      fixture.mystery,
+      fixture.inspector,
+      fixture.audit,
+    ]);
+
+    await expect(generateMysteryV2("test-key", { setup: fixture.setup, provider })).resolves.toBeDefined();
+    const bible = getLastMysteryEngineDebug()?.caseBible;
+    expect(bible?.movements.length).toBeLessThanOrEqual(20);
+    expect(bible?.itemThreads.find(({ itemId }) => itemId === omittedItemId)?.eventIds.length).toBeGreaterThan(0);
+  });
+
   it("revises once and performs a second blind audit", async () => {
     const fixture = buildFixtures();
     const failedAudit: BlindAudit = {

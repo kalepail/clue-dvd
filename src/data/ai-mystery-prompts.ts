@@ -91,9 +91,10 @@ Requirements:
 - Application code fixes the phase=theft event at ${params.answer.timeId} in ${params.answer.locationId} and automatically includes culprit ${params.answer.suspectId} and item ${params.answer.itemId}.
 - The discovery event must occur later than the theft. The between and after phases must use times at or after ${params.answer.timeId}.
 - Make every suspect participate in at least one event. Witnesses must truly be able to observe the stated event.
+- Use arrivals only for consequential movement: carrying a tracked item into a new location or using a secret passage. Do not record routine guest entrances, attendance, or every participant's travel. Keep at most two arrivals on any event and no more than twenty overall.
 - An arrival means its actor ends at that event's location. List the actor among participants and every carried item among event items; code reinforces those memberships.
 - Whenever a tracked item next appears in a different location, include an arrival at that destination carrying it from its previous location. Use secret_passage only for a verified pair.
-- Give each tracked item exactly one item role. Build all events from the supplied foundation rather than adding unrelated incidents.
+- Give each tracked item exactly one item role and place every tracked item in at least one event. Build all events from the supplied foundation rather than adding unrelated incidents.
 - Supply ten to eighteen total events. Do not create event IDs, movement IDs, cast action lists, or item-thread event lists. Application code derives them from this structure.`,
   };
 }
@@ -122,6 +123,7 @@ ${JSON.stringify(params.candidatePlan, null, 2)}
 
 Requirements:
 - Create at least fourteen evidence atoms with unique short keys. Every atom must cite a real event ID and state one specific, publicly discoverable fact.
+- Treat itemThreads as the authoritative object histories. Do not infer an object's movement from incidental event itemIds that are absent from its item thread.
 - Mark each atom for exactly one surface: clue, inspector_1, or inspector_2. Reserve genuinely new facts for both Inspector surfaces.
 - Create two to four motivated lies or omissions: at least one by the culprit and one by an innocent suspect. Every contradiction key must identify a real public evidence atom.
 - Create two or three innocent suspicious threads that resolve through real evidence.
