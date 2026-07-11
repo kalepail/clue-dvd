@@ -65,7 +65,7 @@ Design requirements:
 - Create two or three innocent suspicious threads that resolve through evidence rather than coincidence.
 - Track four to six items, including the answer item, through actual events.
 - Record meaningful character and object movements. A movement ends at its referenced event, where its actor and carried items must be present. Use secret_passage only for a verified passage pair; whenever a tracked item changes locations between its listed events, include the carrying movement.
-- Build evidence atoms first, then multi-piece inferences. No important inference may rest on one atom.
+- Build evidence atoms first, then multi-piece inferences. No important inference may rest on one atom. Every inference category must be one of the four deduction dimensions: suspect, item, location, or time—not motive, relationship, or evidence.
 - Inferences must use exactly importance: "supporting" or importance: "important"; do not invent alternate labels such as critical, minor, or decisive.
 - Blueprint exactly ten connected clue fragments. Setup and payoff must occur in different positions. No clue may carry more than two answer dimensions.
 - Reserve N1 as genuinely new evidence after clue 5 and N2 after clue 7. Their evidence atoms must not also appear in clue blueprints. Each note may concern only one answer category; its fact may rule out non-answers but may not state an answer card.

@@ -430,6 +430,20 @@ function normalizeCaseBibleEnums(value: unknown): unknown {
   const normalized: Record<string, unknown> = {};
   for (const [key, child] of Object.entries(value as Record<string, unknown>)) {
     const next = normalizeCaseBibleEnums(child);
+    if (key === "answerDimensions" && Array.isArray(next)) {
+      const actualDimensions = [
+        ...new Set([
+          ...((value as Record<string, unknown>).rulesOut as Array<Record<string, unknown>> ?? [])
+            .map((effect) => normalizeCategoryToken(effect.category)),
+          ...((value as Record<string, unknown>).supports as Array<Record<string, unknown>> ?? [])
+            .map((support) => normalizeCategoryToken(support.category)),
+        ].filter((category): category is string => Boolean(category))),
+      ];
+      normalized[key] = actualDimensions.length <= 2
+        ? actualDimensions
+        : next;
+      continue;
+    }
     if (typeof next !== "string") {
       normalized[key] = next;
       continue;
@@ -442,7 +456,7 @@ function normalizeCaseBibleEnums(value: unknown): unknown {
           ? "important"
           : token === "supporting" || token === "important" ? token : next;
     } else if (key === "category") {
-      normalized[key] = token.endsWith("s") ? token.slice(0, -1) : token;
+      normalized[key] = normalizeCategoryToken(next) ?? next;
     } else if (key === "method" && token === "secret_passage") {
       normalized[key] = "secret_passage";
     } else if (key === "purpose" && token === "contextual") {
@@ -452,6 +466,40 @@ function normalizeCaseBibleEnums(value: unknown): unknown {
     }
   }
   return normalized;
+}
+
+function normalizeCategoryToken(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const token = value.trim().toLowerCase().replace(/[\s-]+/g, "_");
+  const aliases: Record<string, string> = {
+    suspect: "suspect",
+    suspects: "suspect",
+    person: "suspect",
+    people: "suspect",
+    culprit: "suspect",
+    who: "suspect",
+    motive: "suspect",
+    relationship: "suspect",
+    item: "item",
+    items: "item",
+    object: "item",
+    objects: "item",
+    valuable: "item",
+    valuables: "item",
+    what: "item",
+    location: "location",
+    locations: "location",
+    room: "location",
+    rooms: "location",
+    place: "location",
+    where: "location",
+    time: "time",
+    times: "time",
+    when: "time",
+    period: "time",
+    at_when: "time",
+  };
+  return aliases[token];
 }
 
 function throwForIssues(stage: MysteryStage, prefix: string, issues: string[]): void {

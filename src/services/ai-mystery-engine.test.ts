@@ -382,6 +382,9 @@ describe("AI Mystery Engine V2 orchestration", () => {
     const inferences = aliasedBible.inferences as Array<Record<string, unknown>>;
     inferences[3].importance = "critical";
     inferences[2].importance = "minor";
+    inferences[1].category = "people";
+    const blueprints = aliasedBible.clueBlueprints as Array<Record<string, unknown>>;
+    blueprints[8].answerDimensions = ["item", "location", "time"];
     const provider = sequenceProvider([
       { caseBibleJson: JSON.stringify(aliasedBible) },
       fixture.mystery,
