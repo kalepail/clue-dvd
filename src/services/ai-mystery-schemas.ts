@@ -7,40 +7,41 @@ export const AnswerSchema = z.object({
   timeId: z.string(),
 });
 
-/** The deliberately small output contract for the creativity-first engine. */
-export const CreativeMysterySchema = z.object({
+/**
+ * V3 output contracts. Deliberately small and flat: every earlier iteration
+ * that asked the model for large structured objects (CaseBible, elimination
+ * metadata, timelines) died fighting schema grammar limits and enum drift.
+ * The logic lives in deterministic code now; the model only returns prose.
+ */
+
+export const DossierSchema = z.object({
   title: z.string().min(1),
-  privateCaseSummary: z.string().min(1),
-  opening: z.string().min(1),
-  clues: z.array(z.string().min(1)).length(10),
-  inspectorNotes: z.array(z.object({
-    text: z.string().min(1),
-    relatedClues: z.array(z.number().int()),
-  })).length(2),
-  closing: z.string().min(1),
+  occasionName: z.string().min(1),
+  occasionSummary: z.string().min(1),
+  hostReason: z.string().min(1),
   mysterySignature: z.string().min(1),
 });
 
-/** Broad answer-blind playability check; intentionally no candidate quotas. */
-export const CreativeAuditSchema = z.object({
-  earlyTheory: z.object({
-    suspectId: z.string(),
-    itemId: z.string(),
-    locationId: z.string(),
-    timeId: z.string(),
-    confidence: z.enum(["low", "medium", "high"]),
-  }),
-  coherent: z.boolean(),
-  playable: z.boolean(),
-  solvable: z.boolean(),
-  answerTooObviousEarly: z.boolean(),
-  closingSupportedByClues: z.boolean(),
-  feedback: z.array(z.string()),
+export const RenderedMysterySchema = z.object({
+  opening: z.string().min(1),
+  clues: z.array(z.string().min(1)).length(10),
+  note1: z.string().min(1),
+  note2: z.string().min(1),
+});
+
+export const ClueRepairSchema = z.object({
+  text: z.string().min(1),
+});
+
+export const ClosingSchema = z.object({
+  closing: z.string().min(1),
 });
 
 export type Answer = z.infer<typeof AnswerSchema>;
-export type CreativeMystery = z.infer<typeof CreativeMysterySchema>;
-export type CreativeAudit = z.infer<typeof CreativeAuditSchema>;
+export type Dossier = z.infer<typeof DossierSchema>;
+export type RenderedMystery = z.infer<typeof RenderedMysterySchema>;
+export type ClueRepair = z.infer<typeof ClueRepairSchema>;
+export type Closing = z.infer<typeof ClosingSchema>;
 
 /** Generate Anthropic's tool schema from the same Zod runtime contract. */
 export function toToolInputSchema(schema: z.ZodType): Record<string, unknown> {

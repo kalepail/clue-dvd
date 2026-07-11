@@ -1,3 +1,13 @@
+07/11/26
+- Replaced the creative AI engine with the V3 "world-first" mystery engine (see AI_ENGINE.md)
+        - Deterministic world simulation, fact harvest, and a fair-play solver prove pacing over all 12,100 solutions before any prose exists
+        - Fair-play curve enforced: >=4 candidates everywhere after clue 5 + Note 1, >=3 after clue 7 + Note 2, two axes converged to <=3 at the end
+        - Prose model is answer-blind (never sees the solution or eliminations); few-shot on the ten original DVD mysteries in data/mysteries.json
+        - Verification failures re-render a single clue instead of revising the whole mystery
+        - 500/500 seeds schedule successfully at ~45ms each; 12/12 engine mock runs pass; golden test reproduces original mystery #1 deduction
+- Added scripts/eval-mysteries.ts metrics harness and new vitest suites (scheduler sweep, world invariants, golden corpus, verifier, engine)
+- Docs: AI_ENGINE.md is the living engine doc; AI_MYSTERY_ENGINE_V2.md, AI_REDESIGN_COMPARISON.md, PROMPT_REDESIGN_NOTES.md, V2_*.md are historical
+
 01/13/26 00:30.00
 - Added looping menu music playback on host web app with fade in/out and pause during host modals
 - Added host settings hamburger menu with a persistent music mute toggle

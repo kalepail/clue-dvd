@@ -1,24 +1,58 @@
-import { ITEMS, LOCATIONS, SUSPECTS, TIME_PERIODS } from "../data/game-elements";
+/**
+ * AI Mystery Engine V3 — "world-first"
+ *
+ * Pipeline (deterministic → AI → deterministic):
+ *
+ *   1. simulateWorld     seeded ground-truth day; theft embedded as one
+ *                        thread among many (world-sim.ts)
+ *   2. harvestFacts      every tellable TRUE fact, with joint-cell semantics
+ *                        and mention licenses (fact-harvest.ts)
+ *   3. scheduleMystery   solver picks the 10 clues + 2 notes and their order
+ *                        so the fair-play curve provably holds
+ *                        (clue-scheduler.ts) — retries are pure computation
+ *   4. dossier (AI)      answer-blind: occasion, title, signature
+ *   5. render (AI)       answer-blind: opening + 10 testimonies + 2 notes in
+ *                        Ashe's voice, few-shot on the original DVD corpus
+ *   6. closing (AI)      the ONLY answer-aware prose, grounded in the
+ *                        revealed facts
+ *   7. verify + repair   deterministic card-name discipline; failures
+ *                        re-render ONE clue, never the whole mystery
+ *
+ * The prose model never sees the answer, candidate counts, or elimination
+ * data, so it cannot telegraph the solution. The puzzle's fairness was
+ * proven before any prose existed and cannot be broken by the prose.
+ */
+
+import { requireItem, requireLocation, requireSuspect, requireTime, simulateWorld, type WorldState } from "./world-sim";
+import { harvestFacts, type Fact } from "./fact-harvest";
+import { scheduleMystery, type Schedule } from "./clue-scheduler";
 import {
-  buildCreativeAuditPrompt,
-  buildCreativeMysteryPrompt,
-  buildCreativeRevisionPrompt,
-  type MysteryWorld,
-} from "../data/ai-creative-mystery-prompts";
+  buildClosingPrompt,
+  buildClueRepairPrompt,
+  buildDossierPrompt,
+  buildRenderPrompt,
+  pickFewshots,
+  type StorySeed,
+} from "../data/ai-v3-prompts";
 import {
-  CreativeAuditSchema,
-  CreativeMysterySchema,
+  ClosingSchema,
+  ClueRepairSchema,
+  DossierSchema,
+  RenderedMysterySchema,
   toToolInputSchema,
   type Answer,
-  type CreativeAudit,
-  type CreativeMystery,
+  type Closing,
+  type Dossier,
+  type RenderedMystery,
 } from "./ai-mystery-schemas";
-import {
-  callStructured,
-  MysteryStageError,
-  type StructuredCallResult,
-} from "./ai-mystery-provider";
+import { verifyClosing, verifyClueText, verifyOpening, type TextVerification } from "./clue-verifier";
+import { callStructured, MysteryStageError, type StructuredCallResult } from "./ai-mystery-provider";
 import type { MysterySetup } from "./ai-mystery-setup";
+import { SeededRandom } from "./seeded-random";
+
+export const ENGINE_VERSION = "3.0-world";
+const MAX_WORLD_ATTEMPTS = 30;
+const MAX_REPAIRS_PER_TEXT = 2;
 
 const OCCASION_FAMILIES = [
   "charitable benefit",
@@ -74,19 +108,25 @@ type StageDebug<T> = {
 };
 
 export type MysteryEngineDebug = {
-  engineVersion: "2.1-creative";
+  engineVersion: typeof ENGINE_VERSION;
   startedAt: string;
   setup: {
     seed: number;
     answer: Answer;
     occasionFamily: string;
     recentSignatures: string[];
-    world: MysteryWorld;
   };
-  creativeDraft?: StageDebug<CreativeMystery>;
-  blindAudit?: StageDebug<CreativeAudit>;
-  revision?: StageDebug<CreativeMystery>;
-  finalPackage?: CreativeMystery;
+  world?: WorldState;
+  facts?: Fact[];
+  schedule?: Schedule & { worldAttempts: number };
+  storySeeds?: StorySeed[];
+  dossier?: StageDebug<Dossier>;
+  render?: StageDebug<RenderedMystery>;
+  closing?: StageDebug<Closing>;
+  verification?: TextVerification[];
+  repairs?: Array<{ target: string; attempt: number; problems: string[]; before: string; after: string }>;
+  unresolvedProblems?: TextVerification[];
+  finalPackage?: MysteryEngineResult;
   failure?: { stage: string; message: string; status?: number; rawResponse?: string };
 };
 
@@ -98,39 +138,6 @@ export function getLastMysteryEngineDebug(): MysteryEngineDebug | null {
   return lastMysteryEngineDebug;
 }
 
-export function buildMysteryWorld(): MysteryWorld {
-  return {
-    suspects: SUSPECTS.map((suspect) => ({
-      id: suspect.id,
-      name: suspect.displayName,
-      role: suspect.role,
-      traits: suspect.traits,
-    })),
-    items: ITEMS.map((item) => ({
-      id: item.id,
-      name: item.nameUS,
-      category: item.category,
-      description: item.description,
-    })),
-    locations: LOCATIONS.map((location) => ({
-      id: location.id,
-      name: location.name,
-      adjacentRooms: location.adjacentRooms
-        .map((name) => LOCATIONS.find((candidate) => candidate.name === name)?.id)
-        .filter((id): id is string => Boolean(id)),
-      secretPassageTo: location.secretPassageTo
-        ? LOCATIONS.find((candidate) => candidate.name === location.secretPassageTo)?.id ?? null
-        : null,
-    })),
-    times: TIME_PERIODS.map((time) => ({
-      id: time.id,
-      name: time.name,
-      order: time.order,
-      activities: time.typicalActivities,
-    })),
-  };
-}
-
 export async function generateMysteryV2(apiKey: string, params: {
   setup: MysterySetup;
   recentSignatures?: string[];
@@ -140,13 +147,12 @@ export async function generateMysteryV2(apiKey: string, params: {
   const startedAt = Date.now();
   const provider = params.provider ?? callStructured;
   const answer: Answer = { ...params.setup.solution };
-  const world = buildMysteryWorld();
   const recentSignatures = (params.recentSignatures ?? []).filter(Boolean).slice(0, 5);
   const occasionFamily = chooseOccasionFamily(params.setup.seed, recentSignatures);
   const debug: MysteryEngineDebug = {
-    engineVersion: "2.1-creative",
+    engineVersion: ENGINE_VERSION,
     startedAt: new Date(startedAt).toISOString(),
-    setup: { seed: params.setup.seed, answer, occasionFamily, recentSignatures, world },
+    setup: { seed: params.setup.seed, answer, occasionFamily, recentSignatures },
   };
   lastMysteryEngineDebug = debug;
 
@@ -155,97 +161,236 @@ export async function generateMysteryV2(apiKey: string, params: {
   };
 
   try {
-    await emit("occasion", "Creating an original Tudor Mansion mystery.", 10);
-    const creativePrompt = buildCreativeMysteryPrompt({ answer, world, occasionFamily, recentSignatures });
-    await emit("rendering", "Writing the complete mystery and story clues.", 35);
-    const draft = await provider({
+    // ---- Deterministic phase: world → facts → proven schedule ------------
+    await emit("occasion", "Reconstructing the day at Tudor Mansion.", 6);
+    let world: WorldState | null = null;
+    let facts: Fact[] = [];
+    let schedule: Schedule | null = null;
+    let worldAttempts = 0;
+    for (let attempt = 1; attempt <= MAX_WORLD_ATTEMPTS && !schedule; attempt += 1) {
+      worldAttempts = attempt;
+      const candidateWorld = simulateWorld({ seed: params.setup.seed, attempt, answer, occasionFamily });
+      const candidateFacts = harvestFacts(candidateWorld);
+      const candidateSchedule = scheduleMystery({
+        facts: candidateFacts,
+        answer,
+        seed: params.setup.seed * 31 + attempt,
+      });
+      if (candidateSchedule) {
+        world = candidateWorld;
+        facts = candidateFacts;
+        schedule = candidateSchedule;
+      }
+    }
+    if (!world || !schedule) {
+      throw new MysteryStageError(
+        "architect",
+        `No fair-play schedule found after ${MAX_WORLD_ATTEMPTS} simulated days. This should be nearly impossible — please report the seed (${params.setup.seed}).`
+      );
+    }
+    debug.world = world;
+    debug.facts = facts;
+    debug.schedule = { ...schedule, worldAttempts };
+
+    await emit("timeline", "Fair-play schedule proven against 12,100 possibilities.", 18);
+
+    const factById = new Map(facts.map((fact) => [fact.id, fact]));
+    const storySeeds: StorySeed[] = schedule.reveals.map((reveal) => {
+      const fact = factById.get(reveal.factId)!;
+      return {
+        position: reveal.position,
+        deliverAs: reveal.slot === "clue" ? "butler" : reveal.slot,
+        clueNumber: reveal.clueNumber,
+        brief: fact.writerBrief,
+        allowedNames: [
+          ...fact.mentions.suspects,
+          ...fact.mentions.items,
+          ...fact.mentions.locations,
+          ...fact.mentions.times,
+        ],
+      };
+    });
+    debug.storySeeds = storySeeds;
+
+    // ---- AI phase (answer-blind until the closing) ------------------------
+    const fewshotRng = new SeededRandom(params.setup.seed ^ 0x2c1b3c6d);
+    const fewshots = pickFewshots(fewshotRng);
+
+    await emit("relationships", "Inventing the occasion and its tensions.", 30);
+    const dossierPrompt = buildDossierPrompt({
+      occasionFamily,
+      recentSignatures,
+      cast: worldCast(),
+      colorNotes: worldColorNotes(world),
+    });
+    const dossier = await provider({
+      apiKey,
+      stage: "architect",
+      ...dossierPrompt,
+      toolName: "submit_case_dossier",
+      toolDescription: "Submit the occasion dossier for a new Tudor Mansion case.",
+      inputSchema: toToolInputSchema(DossierSchema),
+      outputSchema: DossierSchema,
+      maxTokens: 900,
+    });
+    debug.dossier = toStageDebug(dossierPrompt, dossier);
+
+    await emit("rendering", "Ashe is recalling the day, one testimony at a time.", 48);
+    const renderPrompt = buildRenderPrompt({ dossier: dossier.value, seeds: storySeeds, fewshots });
+    const render = await provider({
       apiKey,
       stage: "renderer",
-      ...creativePrompt,
-      toolName: "submit_creative_mystery",
-      toolDescription: "Submit one complete creative theft mystery with opening, hidden truth, ten clues, two notes, and closing.",
-      inputSchema: toToolInputSchema(CreativeMysterySchema),
-      outputSchema: CreativeMysterySchema,
-      maxTokens: 9_000,
+      ...renderPrompt,
+      toolName: "submit_rendered_mystery",
+      toolDescription: "Submit the opening, ten butler testimonies, and two Inspector notes.",
+      inputSchema: toToolInputSchema(RenderedMysterySchema),
+      outputSchema: RenderedMysterySchema,
+      maxTokens: 5_000,
     });
-    debug.creativeDraft = toStageDebug(creativePrompt, draft);
+    debug.render = toStageDebug(renderPrompt, render);
 
-    await emit("audit", "Blind-playtesting the mystery for coherence and fairness.", 70);
-    const auditPrompt = buildCreativeAuditPrompt({ mystery: draft.value, world });
-    const audit = await provider({
+    await emit("inspector", "Writing the final reveal.", 70);
+    const answerNames = {
+      suspect: requireSuspect(answer.suspectId).displayName,
+      item: requireItem(answer.itemId).nameUS,
+      location: requireLocation(answer.locationId).name,
+      time: requireTime(answer.timeId).name,
+    };
+    const closingPrompt = buildClosingPrompt({
+      answerNames,
+      dossierTitle: dossier.value.title,
+      caseRecap: storySeeds.map((seed) => seed.brief),
+      finalCandidates: schedule.finalCandidates,
+      fewshotClosings: fewshots.closings,
+    });
+    let closing = await provider({
       apiKey,
-      stage: "audit",
-      ...auditPrompt,
-      toolName: "submit_creative_audit",
-      toolDescription: "Judge broad coherence, playability, solvability, early answer leakage, and closing support.",
-      inputSchema: toToolInputSchema(CreativeAuditSchema),
-      outputSchema: CreativeAuditSchema,
-      maxTokens: 1_500,
+      stage: "inspector",
+      ...closingPrompt,
+      toolName: "submit_case_closing",
+      toolDescription: "Submit the closing reveal narration.",
+      inputSchema: toToolInputSchema(ClosingSchema),
+      outputSchema: ClosingSchema,
+      maxTokens: 800,
     });
-    debug.blindAudit = toStageDebug(auditPrompt, audit);
+    debug.closing = toStageDebug(closingPrompt, closing);
 
-    const answerMissingFromClosing = !closingNamesAnswer(draft.value.closing, answer, world);
-    const leakage = analyzeEarlyLeakage(draft.value, audit.value, answer, world);
-    const needsRevision = answerMissingFromClosing ||
-      leakage.openingLeak ||
-      leakage.earlyClueConvergence ||
-      leakage.auditConvergence ||
-      !audit.value.coherent ||
-      !audit.value.playable ||
-      !audit.value.solvable ||
-      audit.value.answerTooObviousEarly ||
-      !audit.value.closingSupportedByClues;
-    let finalMystery = draft.value;
+    // ---- Deterministic verification + surgical repair ---------------------
+    await emit("audit", "Checking every line against the verified card world.", 82);
+    const texts = {
+      opening: render.value.opening,
+      clues: [...render.value.clues],
+      note1: render.value.note1,
+      note2: render.value.note2,
+      closing: closing.value.closing,
+    };
+    const repairs: NonNullable<MysteryEngineDebug["repairs"]> = [];
+    debug.repairs = repairs;
 
-    if (needsRevision) {
-      const feedback = audit.value.feedback.map((entry) => entry.trim()).filter(Boolean);
-      if (answerMissingFromClosing) feedback.push("The closing must explicitly name the supplied WHO, WHAT, WHERE, and WHEN.");
-      if (leakage.openingLeak) feedback.push("The opening exposes answer-card details. Rewrite it to establish only the occasion and social atmosphere.");
-      if (leakage.earlyClueConvergence) {
-        feedback.push(`The first five clues directly converge on ${leakage.earlyMentionedDimensions} answer dimensions. Separate those facts and give innocent story threads real weight.`);
+    const seedFor = (target: string): StorySeed | undefined =>
+      storySeeds.find((seed) =>
+        seed.deliverAs === "butler" ? `clue-${seed.clueNumber}` === target : seed.deliverAs === target
+      );
+
+    const runVerification = (): TextVerification[] => {
+      const results: TextVerification[] = [verifyOpening(texts.opening)];
+      for (const seed of storySeeds) {
+        const text =
+          seed.deliverAs === "butler" ? texts.clues[(seed.clueNumber ?? 1) - 1] :
+          seed.deliverAs === "note1" ? texts.note1 : texts.note2;
+        results.push(verifyClueText(text, seed));
       }
-      if (leakage.auditConvergence) {
-        feedback.push("The answer-blind player independently reconstructed too much of the true solution after only five clues. Rebuild the early pacing and misdirection.");
+      results.push(verifyClosing(texts.closing, answer));
+      return results;
+    };
+
+    let verification = runVerification();
+    const problematic = () => verification.filter((entry) => entry.problems.length > 0);
+
+    let anyRepaired = false;
+    for (let round = 1; round <= MAX_REPAIRS_PER_TEXT && problematic().length > 0; round += 1) {
+      if (!anyRepaired) await emit("revision", "Rewriting a line or two that broke card discipline.", 88);
+      anyRepaired = true;
+      for (const entry of problematic()) {
+        if (entry.target === "closing") {
+          const retryPrompt = buildClosingPrompt({
+            answerNames,
+            dossierTitle: dossier.value.title,
+            caseRecap: storySeeds.map((seed) => seed.brief),
+            finalCandidates: schedule.finalCandidates,
+            fewshotClosings: fewshots.closings,
+          });
+          retryPrompt.prompt += `\n\nThe previous attempt had problems: ${entry.problems.join(" ")} Fix them.`;
+          closing = await provider({
+            apiKey,
+            stage: "inspector",
+            ...retryPrompt,
+            toolName: "submit_case_closing",
+            toolDescription: "Submit the corrected closing reveal narration.",
+            inputSchema: toToolInputSchema(ClosingSchema),
+            outputSchema: ClosingSchema,
+            maxTokens: 800,
+          });
+          repairs.push({ target: "closing", attempt: round, problems: entry.problems, before: texts.closing, after: closing.value.closing });
+          texts.closing = closing.value.closing;
+          continue;
+        }
+        if (entry.target === "opening") {
+          // The opening has no fact seed; re-render it via a repair seed with
+          // an empty license (no card names allowed at all).
+          const openingSeed: StorySeed = {
+            position: 0,
+            deliverAs: "butler",
+            clueNumber: null,
+            brief: `${dossier.value.occasionSummary} End on the discovery that something has been stolen, without naming any card.`,
+            allowedNames: [],
+          };
+          const repaired = await repairText(provider, apiKey, openingSeed, texts.opening, entry.problems, fewshots.clues);
+          repairs.push({ target: "opening", attempt: round, problems: entry.problems, before: texts.opening, after: repaired });
+          texts.opening = repaired;
+          continue;
+        }
+        const seed = seedFor(entry.target);
+        if (!seed) continue;
+        const current =
+          seed.deliverAs === "butler" ? texts.clues[(seed.clueNumber ?? 1) - 1] :
+          seed.deliverAs === "note1" ? texts.note1 : texts.note2;
+        const repaired = await repairText(provider, apiKey, seed, current, entry.problems, fewshots.clues);
+        repairs.push({ target: entry.target, attempt: round, problems: entry.problems, before: current, after: repaired });
+        if (seed.deliverAs === "butler") texts.clues[(seed.clueNumber ?? 1) - 1] = repaired;
+        else if (seed.deliverAs === "note1") texts.note1 = repaired;
+        else texts.note2 = repaired;
       }
-      const revisionAudit: CreativeAudit = {
-        ...audit.value,
-        answerTooObviousEarly: audit.value.answerTooObviousEarly || leakage.earlyClueConvergence || leakage.auditConvergence,
-        feedback,
-      };
-      await emit("revision", "Giving the writer one broad creative revision.", 84);
-      const revisionPrompt = buildCreativeRevisionPrompt({
-        answer,
-        world,
-        mystery: draft.value,
-        audit: revisionAudit,
-      });
-      const revision = await provider({
-        apiKey,
-        stage: "revision",
-        ...revisionPrompt,
-        toolName: "submit_revised_creative_mystery",
-        toolDescription: "Submit the complete revised mystery while preserving its strongest creative ideas.",
-        inputSchema: toToolInputSchema(CreativeMysterySchema),
-        outputSchema: CreativeMysterySchema,
-        maxTokens: 9_000,
-      });
-      debug.revision = toStageDebug(revisionPrompt, revision);
-      finalMystery = revision.value;
+      verification = runVerification();
+    }
+    debug.verification = verification;
+
+    // Never hard-fail on residual style problems: the puzzle is already
+    // sound. Log them for the diagnostics payload instead — with one
+    // exception: a closing that fails to name the answer is unusable.
+    const unresolved = problematic();
+    debug.unresolvedProblems = unresolved;
+    const closingStillBroken = unresolved.find((entry) => entry.target === "closing");
+    if (closingStillBroken) {
+      throw new MysteryStageError(
+        "inspector",
+        `The closing failed to name the full solution after retries: ${closingStillBroken.problems.join(" ")}`
+      );
     }
 
-    debug.finalPackage = finalMystery;
-    await emit("complete", "Case ready.", 100);
-    return {
-      opening: finalMystery.opening.trim(),
-      butlerClues: finalMystery.clues.map((clue) => clue.trim()),
-      inspectorNotes: finalMystery.inspectorNotes.map((note, index) => ({
-        id: index === 0 ? "N1" : "N2",
-        text: note.text.trim(),
-        relatedClues: sanitizeRelatedClues(note.relatedClues),
-      })),
-      closing: finalMystery.closing.trim(),
-      mysterySignature: finalMystery.mysterySignature.trim(),
+    const result: MysteryEngineResult = {
+      opening: texts.opening.trim(),
+      butlerClues: texts.clues.map((clue) => clue.trim()),
+      inspectorNotes: [
+        { id: "N1", text: texts.note1.trim(), relatedClues: schedule.noteRelatedClues.note1 },
+        { id: "N2", text: texts.note2.trim(), relatedClues: schedule.noteRelatedClues.note2 },
+      ],
+      closing: texts.closing.trim(),
+      mysterySignature: dossier.value.mysterySignature.trim(),
     };
+    debug.finalPackage = result;
+    await emit("complete", "Case ready.", 100);
+    return result;
   } catch (error) {
     debug.failure = {
       stage: error instanceof MysteryStageError ? error.stage : "engine",
@@ -255,6 +400,32 @@ export async function generateMysteryV2(apiKey: string, params: {
     };
     throw error;
   }
+}
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+async function repairText(
+  provider: StructuredCaller,
+  apiKey: string,
+  seed: StorySeed,
+  previousText: string,
+  problems: string[],
+  fewshotClues: string[]
+): Promise<string> {
+  const prompt = buildClueRepairPrompt({ seed, previousText, problems, fewshotClues });
+  const repaired = await provider({
+    apiKey,
+    stage: "revision",
+    ...prompt,
+    toolName: "submit_repaired_text",
+    toolDescription: "Submit the rewritten testimony or note.",
+    inputSchema: toToolInputSchema(ClueRepairSchema),
+    outputSchema: ClueRepairSchema,
+    maxTokens: 500,
+  });
+  return repaired.value.text;
 }
 
 function chooseOccasionFamily(seed: number, recentSignatures: string[]): string {
@@ -267,64 +438,32 @@ function chooseOccasionFamily(seed: number, recentSignatures: string[]): string 
   return OCCASION_FAMILIES[start];
 }
 
-function closingNamesAnswer(closing: string, answer: Answer, world: MysteryWorld): boolean {
-  const normalized = closing.toLowerCase();
-  const names = [
-    world.suspects.find(({ id }) => id === answer.suspectId)?.name,
-    world.items.find(({ id }) => id === answer.itemId)?.name,
-    world.locations.find(({ id }) => id === answer.locationId)?.name,
-    world.times.find(({ id }) => id === answer.timeId)?.name,
-  ].filter((name): name is string => Boolean(name));
-  return names.every((name) => normalized.includes(name.toLowerCase()));
+function worldCast(): Array<{ name: string; role: string; traits: string[] }> {
+  // Import here would create a cycle through world-sim; use its helpers.
+  const ids = ["S01", "S02", "S03", "S04", "S05", "S06", "S07", "S08", "S09", "S10"];
+  return ids.map((id) => {
+    const suspect = requireSuspect(id);
+    return { name: suspect.displayName, role: suspect.role, traits: suspect.traits };
+  });
 }
 
-function analyzeEarlyLeakage(
-  mystery: CreativeMystery,
-  audit: CreativeAudit,
-  answer: Answer,
-  world: MysteryWorld
-): {
-  openingLeak: boolean;
-  earlyClueConvergence: boolean;
-  auditConvergence: boolean;
-  earlyMentionedDimensions: number;
-} {
-  const names = answerNames(answer, world);
-  const opening = mystery.opening.toLowerCase();
-  const firstFive = mystery.clues.slice(0, 5).join(" ").toLowerCase();
-  const openingLeak = [
-    ...world.items.map(({ name }) => name),
-    ...world.locations.map(({ name }) => name),
-    ...world.times.map(({ name }) => name),
-  ].some((name) => opening.includes(name.toLowerCase()));
-  const earlyMentionedDimensions = [names.suspect, names.item, names.location, names.time]
-    .filter((name) => firstFive.includes(name.toLowerCase())).length;
-  const earlyClueConvergence = earlyMentionedDimensions >= 3;
-  const theory = audit.earlyTheory;
-  const theoryMatches = [
-    theory.suspectId === answer.suspectId,
-    theory.itemId === answer.itemId,
-    theory.locationId === answer.locationId,
-    theory.timeId === answer.timeId,
-  ].filter(Boolean).length;
-  const auditConvergence = theoryMatches === 4 ||
-    (theory.confidence === "high" && theoryMatches >= 2) ||
-    (theory.confidence === "medium" && theoryMatches >= 3);
-  return { openingLeak, earlyClueConvergence, auditConvergence, earlyMentionedDimensions };
-}
-
-function answerNames(answer: Answer, world: MysteryWorld) {
-  return {
-    suspect: world.suspects.find(({ id }) => id === answer.suspectId)?.name ?? answer.suspectId,
-    item: world.items.find(({ id }) => id === answer.itemId)?.name ?? answer.itemId,
-    location: world.locations.find(({ id }) => id === answer.locationId)?.name ?? answer.locationId,
-    time: world.times.find(({ id }) => id === answer.timeId)?.name ?? answer.timeId,
-  };
-}
-
-function sanitizeRelatedClues(values: number[]): number[] {
-  const valid = [...new Set(values.filter((value) => Number.isInteger(value) && value >= 1 && value <= 10))];
-  return valid.length > 0 ? valid : [1];
+function worldColorNotes(world: WorldState): string[] {
+  const notes: string[] = [];
+  notes.push(`The party mode: ${world.partyMode === "house_party" ? "a weekend house party, everyone staying over" : "a single-day affair with guests arriving and departing"}.`);
+  for (const gathering of world.gatherings) {
+    if (gathering.kind === "retired") continue;
+    notes.push(`${requireTime(gathering.timeId).name}: ${gathering.label}${gathering.locationId ? ` in the ${requireLocation(gathering.locationId).name}` : ""}.`);
+  }
+  if (world.roomClosure) {
+    notes.push(`The ${requireLocation(world.roomClosure.locationId).name} was closed off (${world.roomClosure.cause}).`);
+  }
+  for (const item of Object.values(world.items)) {
+    if (item.offsite) notes.push(`The ${requireItem(item.itemId).nameUS} was ${item.offsite.reason}.`);
+  }
+  for (const thread of world.threads) {
+    notes.push(`Background thread: ${thread.cause}.`);
+  }
+  return notes;
 }
 
 function toStageDebug<T>(

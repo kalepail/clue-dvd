@@ -11,7 +11,7 @@ npm run dev      # Development server
 
 Open the app at `http://localhost:5173` (Vite default).
 
-For AI mystery generation, put `ANTHROPIC_API_KEY=...` in `.dev.vars`. The active story system is the multi-pass Sonnet V2 engine documented in [AI_MYSTERY_ENGINE_V2.md](AI_MYSTERY_ENGINE_V2.md).
+For AI mystery generation, put `ANTHROPIC_API_KEY=...` in `.dev.vars`. The active story system is the world-first V3 engine documented in [AI_ENGINE.md](AI_ENGINE.md).
 
 ```bash
 npm run deploy   # Deploy to Cloudflare Workers
@@ -86,7 +86,7 @@ This web app acts as the **game master** for the 2006 Clue DVD Game, generating:
 | Feature | Status | Description |
 |---------|--------|-------------|
 | Scenario Generation | Complete | Random solutions with logical clues |
-| AI Mystery Engine V2 | Complete | Sonnet builds, renders, blind-tests, and optionally revises a causal case |
+| AI Mystery Engine V3 | Complete | Solver-proven fair-play schedule; answer-blind Sonnet prose; surgical per-clue repair |
 | Symbol System | Complete | Red magnifying glass card mirroring |
 | Deduction Tracking | Complete | Players track AI evidence without automatic answer-card badges |
 | Clue Reveal System | Complete | Progressive clue revelation |
@@ -414,11 +414,14 @@ src/
 │   ├── campaign-clue-generator.ts    # Phase 2: Clue text generation
 │   ├── campaign-validator.ts         # Phase 3: Validation
 │   ├── setup-generator.ts            # Symbol-based setup
-│   ├── ai-mystery-engine.ts          # V2 multi-pass orchestration
+│   ├── ai-mystery-engine.ts          # V3 orchestration (world → facts → schedule → prose)
 │   ├── ai-mystery-setup.ts           # Direct seed/answer selection + shell
 │   ├── ai-mystery-provider.ts        # Structured Sonnet provider
 │   ├── ai-mystery-schemas.ts         # Runtime output contracts
-│   ├── ai-mystery-validator.ts       # Causal/fair-play validation
+│   ├── world-sim.ts                  # Seeded ground-truth day simulation
+│   ├── fact-harvest.ts               # True facts + joint-cell semantics + licenses
+│   ├── clue-scheduler.ts             # Fair-play solver over 12,100 possibilities
+│   ├── clue-verifier.ts              # Card-name discipline + repair targets
 │   └── seeded-random.ts              # Reproducible randomization
 │
 ├── data/                             # Static game data
@@ -426,7 +429,8 @@ src/
 │   ├── card-symbols.ts               # 252 symbol positions
 │   ├── game-constants.ts             # NPCs, settings, config
 │   ├── campaign-settings.ts          # Difficulty configurations
-│   ├── ai-mystery-prompts.ts         # Compact V2 stage prompts
+│   ├── ai-v3-prompts.ts              # Dossier/render/repair/closing prompts
+│   ├── original-mysteries.ts         # The ten original DVD mysteries (few-shots)
 │   └── original-mystery-style.ts     # Distilled style principles
 │
 ├── types/                            # TypeScript definitions
@@ -708,7 +712,8 @@ npm test -- --run    # Campaign, V2 provider/engine, and route integration tests
 
 ## Reference Documents
 
-- `AI_MYSTERY_ENGINE_V2.md` - Active mystery architecture, diagnostics, and acceptance flow
+- `AI_ENGINE.md` - Active mystery architecture, diagnostics, and acceptance flow
+- `AI_ENGINE_V3_PLAN.md` - Design rationale and iteration history
 - `CARD_SYMBOLS.md` - Symbol system documentation
 - [Cluepedia - DVD Game](https://cluepedia.fandom.com/wiki/Clue_DVD_Game)
 - [Hasbro Instructions](https://instructions.hasbro.com/en-us/instruction/clue-dvd-game)

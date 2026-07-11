@@ -197,9 +197,15 @@ scenarios.get("/last-ai-stages.json", (c) => {
   }
   return new Response(JSON.stringify({
     setup: output.setup,
-    creativeDraft: output.creativeDraft ?? null,
-    blindAudit: output.blindAudit ?? null,
-    revision: output.revision ?? null,
+    world: output.world ?? null,
+    schedule: output.schedule ?? null,
+    storySeeds: output.storySeeds ?? null,
+    dossier: output.dossier ?? null,
+    render: output.render ?? null,
+    closing: output.closing ?? null,
+    verification: output.verification ?? null,
+    repairs: output.repairs ?? null,
+    unresolvedProblems: output.unresolvedProblems ?? null,
     finalPackage: output.finalPackage ?? null,
     failure: output.failure ?? null,
   }, null, 2), {
@@ -240,7 +246,7 @@ export function applyMysteryPackage(
     },
     metadata: {
       ...scenario.metadata,
-      engineVersion: "2.1-creative",
+      engineVersion: "3.0-world",
       mysterySignature: story.mysterySignature,
     },
   };
