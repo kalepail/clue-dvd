@@ -185,7 +185,11 @@ export async function generateMysteryV2(apiKey: string, params: {
     debug.blindAudit = toStageDebug(auditPrompt, audit);
 
     const answerMissingFromClosing = !closingNamesAnswer(draft.value.closing, answer, world);
+    const leakage = analyzeEarlyLeakage(draft.value, audit.value, answer, world);
     const needsRevision = answerMissingFromClosing ||
+      leakage.openingLeak ||
+      leakage.earlyClueConvergence ||
+      leakage.auditConvergence ||
       !audit.value.coherent ||
       !audit.value.playable ||
       !audit.value.solvable ||
@@ -194,9 +198,20 @@ export async function generateMysteryV2(apiKey: string, params: {
     let finalMystery = draft.value;
 
     if (needsRevision) {
-      const revisionAudit: CreativeAudit = answerMissingFromClosing
-        ? { ...audit.value, feedback: [...audit.value.feedback, "The closing must explicitly name the supplied WHO, WHAT, WHERE, and WHEN."] }
-        : audit.value;
+      const feedback = audit.value.feedback.map((entry) => entry.trim()).filter(Boolean);
+      if (answerMissingFromClosing) feedback.push("The closing must explicitly name the supplied WHO, WHAT, WHERE, and WHEN.");
+      if (leakage.openingLeak) feedback.push("The opening exposes answer-card details. Rewrite it to establish only the occasion and social atmosphere.");
+      if (leakage.earlyClueConvergence) {
+        feedback.push(`The first five clues directly converge on ${leakage.earlyMentionedDimensions} answer dimensions. Separate those facts and give innocent story threads real weight.`);
+      }
+      if (leakage.auditConvergence) {
+        feedback.push("The answer-blind player independently reconstructed too much of the true solution after only five clues. Rebuild the early pacing and misdirection.");
+      }
+      const revisionAudit: CreativeAudit = {
+        ...audit.value,
+        answerTooObviousEarly: audit.value.answerTooObviousEarly || leakage.earlyClueConvergence || leakage.auditConvergence,
+        feedback,
+      };
       await emit("revision", "Giving the writer one broad creative revision.", 84);
       const revisionPrompt = buildCreativeRevisionPrompt({
         answer,
@@ -261,6 +276,50 @@ function closingNamesAnswer(closing: string, answer: Answer, world: MysteryWorld
     world.times.find(({ id }) => id === answer.timeId)?.name,
   ].filter((name): name is string => Boolean(name));
   return names.every((name) => normalized.includes(name.toLowerCase()));
+}
+
+function analyzeEarlyLeakage(
+  mystery: CreativeMystery,
+  audit: CreativeAudit,
+  answer: Answer,
+  world: MysteryWorld
+): {
+  openingLeak: boolean;
+  earlyClueConvergence: boolean;
+  auditConvergence: boolean;
+  earlyMentionedDimensions: number;
+} {
+  const names = answerNames(answer, world);
+  const opening = mystery.opening.toLowerCase();
+  const firstFive = mystery.clues.slice(0, 5).join(" ").toLowerCase();
+  const openingLeak = [
+    ...world.items.map(({ name }) => name),
+    ...world.locations.map(({ name }) => name),
+    ...world.times.map(({ name }) => name),
+  ].some((name) => opening.includes(name.toLowerCase()));
+  const earlyMentionedDimensions = [names.suspect, names.item, names.location, names.time]
+    .filter((name) => firstFive.includes(name.toLowerCase())).length;
+  const earlyClueConvergence = earlyMentionedDimensions >= 3;
+  const theory = audit.earlyTheory;
+  const theoryMatches = [
+    theory.suspectId === answer.suspectId,
+    theory.itemId === answer.itemId,
+    theory.locationId === answer.locationId,
+    theory.timeId === answer.timeId,
+  ].filter(Boolean).length;
+  const auditConvergence = theoryMatches === 4 ||
+    (theory.confidence === "high" && theoryMatches >= 2) ||
+    (theory.confidence === "medium" && theoryMatches >= 3);
+  return { openingLeak, earlyClueConvergence, auditConvergence, earlyMentionedDimensions };
+}
+
+function answerNames(answer: Answer, world: MysteryWorld) {
+  return {
+    suspect: world.suspects.find(({ id }) => id === answer.suspectId)?.name ?? answer.suspectId,
+    item: world.items.find(({ id }) => id === answer.itemId)?.name ?? answer.itemId,
+    location: world.locations.find(({ id }) => id === answer.locationId)?.name ?? answer.locationId,
+    time: world.times.find(({ id }) => id === answer.timeId)?.name ?? answer.timeId,
+  };
 }
 
 function sanitizeRelatedClues(values: number[]): number[] {

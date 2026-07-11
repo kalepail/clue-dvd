@@ -23,6 +23,13 @@ export const CreativeMysterySchema = z.object({
 
 /** Broad answer-blind playability check; intentionally no candidate quotas. */
 export const CreativeAuditSchema = z.object({
+  earlyTheory: z.object({
+    suspectId: z.string(),
+    itemId: z.string(),
+    locationId: z.string(),
+    timeId: z.string(),
+    confidence: z.enum(["low", "medium", "high"]),
+  }),
   coherent: z.boolean(),
   playable: z.boolean(),
   solvable: z.boolean(),

@@ -40,6 +40,13 @@ function buildCreativeFixtures() {
     mysterySignature: "memorial subscription | private debt | committee rivalry | altered accounts",
   });
   const passingAudit = CreativeAuditSchema.parse({
+    earlyTheory: {
+      suspectId: "S01",
+      itemId: "I01",
+      locationId: "L02",
+      timeId: "T02",
+      confidence: "low",
+    },
     coherent: true,
     playable: true,
     solvable: true,
@@ -122,6 +129,44 @@ describe("creativity-first AI mystery engine", () => {
     expect(provider).toHaveBeenCalledTimes(3);
     expect(result.butlerClues[0]).toContain("central incident");
     expect(getLastMysteryEngineDebug()?.revision?.parsed).toEqual(revised);
+  });
+
+  it("forces a pacing rewrite when the first five clues converge on the hidden answer", async () => {
+    const fixture = buildCreativeFixtures();
+    const suspect = fixture.world.suspects.find(({ id }) => id === setup.solution.suspectId)!.name;
+    const item = fixture.world.items.find(({ id }) => id === setup.solution.itemId)!.name;
+    const location = fixture.world.locations.find(({ id }) => id === setup.solution.locationId)!.name;
+    const time = fixture.world.times.find(({ id }) => id === setup.solution.timeId)!.name;
+    const leaky: CreativeMystery = {
+      ...fixture.mystery,
+      opening: `The guests gathered in the ${location} at ${time} beside Mr. Boddy's ${item}.`,
+      clues: [
+        `${suspect} had a pressing financial motive.`,
+        `The ${item} was left unattended.`,
+        `${suspect} lingered alone in the ${location}.`,
+        `${time} gave ${suspect} an opportunity.`,
+        `An open handbag could conceal the ${item}.`,
+        ...fixture.mystery.clues.slice(5),
+      ],
+    };
+    const complacentAudit: CreativeAudit = {
+      ...fixture.passingAudit,
+      earlyTheory: {
+        suspectId: setup.solution.suspectId,
+        itemId: setup.solution.itemId,
+        locationId: setup.solution.locationId,
+        timeId: setup.solution.timeId,
+        confidence: "high",
+      },
+      answerTooObviousEarly: false,
+    };
+    const provider = sequenceProvider([leaky, complacentAudit, fixture.mystery]);
+
+    await expect(generateMysteryV2("test-key", { setup, provider })).resolves.toBeDefined();
+    expect(provider).toHaveBeenCalledTimes(3);
+    const revisionPrompt = getLastMysteryEngineDebug()?.revision?.prompt ?? "";
+    expect(revisionPrompt).toContain("first five clues directly converge");
+    expect(revisionPrompt).toContain("answer-blind player independently reconstructed");
   });
 
   it("sanitizes optional Inspector links without rejecting a usable story", async () => {
