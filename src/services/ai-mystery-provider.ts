@@ -66,6 +66,7 @@ export async function callStructured<T>(params: {
           tools: [{
             name: params.toolName,
             description: params.toolDescription,
+            strict: true,
             input_schema: params.inputSchema,
           }],
           tool_choice: { type: "tool", name: params.toolName },
@@ -100,6 +101,23 @@ export async function callStructured<T>(params: {
       stop_reason?: string;
       usage?: { input_tokens?: number; output_tokens?: number };
     };
+    if (data.stop_reason === "max_tokens") {
+      throw new MysteryStageError(
+        params.stage,
+        `Model reached the ${params.maxTokens}-token output limit before completing ${params.toolName}.`,
+        undefined,
+        JSON.stringify(data, null, 2)
+      );
+    }
+    if (data.stop_reason === "refusal") {
+      throw new MysteryStageError(
+        params.stage,
+        `Model refused while producing ${params.toolName}.`,
+        undefined,
+        JSON.stringify(data, null, 2)
+      );
+    }
+
     const toolInput = data.content?.find(
       (content) => content.type === "tool_use" && content.name === params.toolName
     )?.input;

@@ -190,5 +190,37 @@ export type RevisedPackage = z.infer<typeof RevisedPackageSchema>;
 export function toToolInputSchema(schema: z.ZodType): Record<string, unknown> {
   const jsonSchema = z.toJSONSchema(schema) as Record<string, unknown>;
   const { $schema: _dialect, ...inputSchema } = jsonSchema;
-  return inputSchema;
+  return transformForAnthropicStrictSchema(inputSchema) as Record<string, unknown>;
+}
+
+const ANTHROPIC_UNSUPPORTED_CONSTRAINTS = new Set([
+  "minimum",
+  "maximum",
+  "exclusiveMinimum",
+  "exclusiveMaximum",
+  "multipleOf",
+  "minLength",
+  "maxLength",
+  "minItems",
+  "maxItems",
+  "uniqueItems",
+]);
+
+/**
+ * Anthropic strict tools support a constrained JSON Schema subset. Their SDK
+ * removes unsupported validation keywords before grammar compilation and then
+ * validates the original schema locally; this project follows the same model.
+ */
+function transformForAnthropicStrictSchema(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(transformForAnthropicStrictSchema);
+  if (!value || typeof value !== "object") return value;
+
+  const input = value as Record<string, unknown>;
+  const transformed: Record<string, unknown> = {};
+  for (const [key, child] of Object.entries(input)) {
+    if (ANTHROPIC_UNSUPPORTED_CONSTRAINTS.has(key)) continue;
+    transformed[key] = transformForAnthropicStrictSchema(child);
+  }
+  if (transformed.type === "object") transformed.additionalProperties = false;
+  return transformed;
 }

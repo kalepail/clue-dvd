@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod/v4";
 import { callStructured } from "./ai-mystery-provider";
+import { CaseBibleSchema, toToolInputSchema } from "./ai-mystery-schemas";
 
 const OutputSchema = z.object({ value: z.string() });
 
@@ -18,7 +19,7 @@ describe("structured Anthropic provider", () => {
   });
 
   it("parses forced tool output through the runtime schema", async () => {
-    const fetchImpl = vi.fn(async () => successResponse({ value: "valid" }));
+    const fetchImpl = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) => successResponse({ value: "valid" }));
     const result = await callStructured({
       apiKey: "test",
       stage: "renderer",
@@ -33,6 +34,8 @@ describe("structured Anthropic provider", () => {
     });
     expect(result.value).toEqual({ value: "valid" });
     expect(result.usage).toEqual({ inputTokens: 12, outputTokens: 4 });
+    const requestBody = JSON.parse(String(fetchImpl.mock.calls[0][1]?.body));
+    expect(requestBody.tools[0].strict).toBe(true);
   });
 
   it("retries a transient provider failure and then succeeds", async () => {
@@ -75,5 +78,25 @@ describe("structured Anthropic provider", () => {
       name: "MysteryStageError",
       rawResponse: expect.stringContaining('"value": 42'),
     }));
+  });
+
+  it("removes unsupported constraints before strict grammar compilation", () => {
+    const schema = toToolInputSchema(CaseBibleSchema);
+    const serialized = JSON.stringify(schema);
+    for (const keyword of ["minimum", "maximum", "minLength", "maxLength", "minItems", "maxItems"]) {
+      expect(serialized).not.toContain(`\"${keyword}\":`);
+    }
+
+    const visit = (value: unknown) => {
+      if (!value || typeof value !== "object") return;
+      if (Array.isArray(value)) {
+        value.forEach(visit);
+        return;
+      }
+      const object = value as Record<string, unknown>;
+      if (object.type === "object") expect(object.additionalProperties).toBe(false);
+      Object.values(object).forEach(visit);
+    };
+    visit(schema);
   });
 });

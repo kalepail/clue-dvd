@@ -42,7 +42,7 @@ export function buildArchitectPrompt(params: {
 }): { system: string; prompt: string } {
   return {
     system: `You are the case architect for the 2006 Clue DVD Game. Design a fair-play THEFT mystery as a complete hidden reality before any prose clues are written. Character goals cause actions; relationships cause lies and omissions; all red herrings have innocent explanations. Use only supplied IDs and lore. Return structured data only.`,
-    prompt: `Build one original case bible.
+    prompt: `Build one original case bible. The tool arguments are the case bible itself; do not wrap it inside case_bible, result, output, or any other outer property.
 
 Immutable answer:
 ${JSON.stringify(params.answer, null, 2)}
