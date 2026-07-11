@@ -2,13 +2,14 @@ export const STORY_SYSTEM_PROMPT = `You are the author and game master for an or
 
 The crime is theft, never murder. Write a coherent 1920s British country-house story using only the supplied game elements. The hidden answer is a private continuity fact, not the subject around which every clue should revolve.
 
-Produce an opening, 10 Butler clues, 2 Inspector notes, and a closing. The clues must feel like varied excerpts from one lived-in story. Preserve several credible possibilities in every category so the physical cards remain necessary. Do not make the answer obvious through repetition, emphasis, or a single decisive clue.`;
+Produce 10 Butler clues and a closing for the supplied opening. The clues must feel like varied excerpts from one lived-in story. Preserve several credible possibilities in every category so the physical cards remain necessary. Do not make the answer obvious through repetition, emphasis, or a single decisive clue.`;
 
 export const buildStoryUserPrompt = (params: {
   suspectList: string[];
   itemList: string[];
   locationList: string[];
   timeList: string[];
+  opening: string;
   answerKey: {
     suspect: string;
     item: string;
@@ -16,6 +17,11 @@ export const buildStoryUserPrompt = (params: {
     time: string;
   };
 }) => `Write one complete, original country-house theft mystery.
+
+Opening already shown to the players:
+${params.opening}
+
+Continue that occasion without rewriting or expanding the opening.
 
 World:
 - Mr. Boddy owns the valuables and is the victim of the theft.
@@ -38,20 +44,14 @@ Hidden answer:
 
 Privately imagine the whole incident and the surrounding social story before writing the clues. Use the answer to keep that story true, but do not continually point toward it.
 
-The opening should establish the occasion, household atmosphere, and discovery of a theft without naming the stolen item or revealing the answer room.
-
 The 10 Butler clues should read as distinct moments from the same story: conversations, observations, misunderstandings, routines, objects being used, social tensions, or unexplained behavior. Many clues should concern innocent people and non-answer elements. Several different valuables should belong naturally to the story. No clue should directly combine the culprit, answer room, answer time, and a concealed object.
 
 Keep multiple suspects, nearby times, plausible rooms, and possible valuables alive through the public clues. The physical cards should be needed to make the final distinction. Vary sentence structure, speaker, rhythm, and dramatic purpose; avoid recycled phrasing or repeatedly using the same reporting verbs and mannered adverbs.
 
-The two Inspector notes may connect patterns already present, but must not solve the case by themselves.
-
-The closing should clearly and satisfyingly explain who stole what, from where, at when, using the established story without introducing new evidence.
+The closing should clearly and satisfyingly explain who stole what, from where, and when, using the established story without introducing new evidence.
 
 Return only this JSON structure:
 {
-  "opening": "...",
   "butler_clues": ["...", "...", "...", "...", "...", "...", "...", "...", "...", "..."],
-  "inspector_notes": ["...", "..."],
   "closing": "..."
 }`;
