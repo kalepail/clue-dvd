@@ -127,6 +127,13 @@ export const CaseBibleSchema = z.object({
   }),
 });
 
+// The full CaseBible is intentionally validated locally. Anthropic's strict
+// grammar compiler receives this small envelope instead of the deeply nested
+// CaseBible grammar, which keeps strict transport reliable.
+export const ArchitectEnvelopeSchema = z.object({
+  caseBibleJson: z.string().min(100),
+});
+
 export const RenderedMysterySchema = z.object({
   opening: z.string().min(1),
   clues: z.array(z.object({

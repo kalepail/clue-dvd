@@ -41,8 +41,8 @@ export function buildArchitectPrompt(params: {
   recentSignatures: string[];
 }): { system: string; prompt: string } {
   return {
-    system: `You are the case architect for the 2006 Clue DVD Game. Design a fair-play THEFT mystery as a complete hidden reality before any prose clues are written. Character goals cause actions; relationships cause lies and omissions; all red herrings have innocent explanations. Use only supplied IDs and lore. Return structured data only.`,
-    prompt: `Build one original case bible. The tool arguments are the case bible itself; do not wrap it inside case_bible, result, output, or any other outer property.
+    system: `You are the case architect for the 2006 Clue DVD Game. Design a fair-play THEFT mystery as a complete hidden reality before any prose clues are written. Character goals cause actions; relationships cause lies and omissions; all red herrings have innocent explanations. Use only supplied IDs and lore. Return the required serialized CaseBible tool envelope only.`,
+    prompt: `Build one original case bible. The tool arguments must be exactly one property named caseBibleJson. Put the complete CaseBible JSON serialized as the value of that string property. Do not add any other outer property. The application will parse and validate the serialized CaseBible after receiving it.
 
 Immutable answer:
 ${JSON.stringify(params.answer, null, 2)}
@@ -72,7 +72,7 @@ Design requirements:
 - Every important inference must combine evidence exposed on at least two different clues or notes.
 - Closing evidence must already exist in evidenceAtoms and every closing evidence atom must be exposed by a clue or Inspector note.
 
-Return exactly this shape (with complete arrays, not the abbreviated sample):
+The serialized caseBibleJson must contain exactly this inner shape (with complete arrays, not the abbreviated sample):
 ${CASE_BIBLE_CONTRACT}`,
   };
 }

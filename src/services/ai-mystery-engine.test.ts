@@ -348,7 +348,7 @@ describe("AI Mystery Engine V2 validation", () => {
 describe("AI Mystery Engine V2 orchestration", () => {
   it("uses four calls when the first blind audit passes", async () => {
     const fixture = buildFixtures();
-    const provider = sequenceProvider([fixture.bible, fixture.mystery, fixture.inspector, fixture.audit]);
+    const provider = sequenceProvider([{ caseBibleJson: JSON.stringify(fixture.bible) }, fixture.mystery, fixture.inspector, fixture.audit]);
     const progress: string[] = [];
     const result = await generateMysteryV2("test-key", {
       setup: fixture.setup,
@@ -367,7 +367,7 @@ describe("AI Mystery Engine V2 orchestration", () => {
 
   it("requires the architect to honor the code-selected non-repeating occasion", async () => {
     const fixture = buildFixtures();
-    const provider = sequenceProvider([fixture.bible]);
+    const provider = sequenceProvider([{ caseBibleJson: JSON.stringify(fixture.bible) }]);
     await expect(generateMysteryV2("test-key", {
       setup: fixture.setup,
       provider,
@@ -385,7 +385,7 @@ describe("AI Mystery Engine V2 orchestration", () => {
     };
     const revised = { ...fixture.mystery, notes: fixture.inspector.notes };
     const provider = sequenceProvider([
-      fixture.bible,
+      { caseBibleJson: JSON.stringify(fixture.bible) },
       fixture.mystery,
       fixture.inspector,
       failedAudit,
@@ -406,7 +406,7 @@ describe("AI Mystery Engine V2 orchestration", () => {
     };
     const revised = { ...fixture.mystery, notes: fixture.inspector.notes };
     const provider = sequenceProvider([
-      fixture.bible,
+      { caseBibleJson: JSON.stringify(fixture.bible) },
       fixture.mystery,
       fixture.inspector,
       failedAudit,

@@ -14,6 +14,7 @@ import {
 } from "../data/ai-mystery-prompts";
 import {
   BlindAuditSchema,
+  ArchitectEnvelopeSchema,
   CaseBibleSchema,
   InspectorPackageSchema,
   RenderedMysterySchema,
@@ -206,26 +207,27 @@ export async function generateMysteryV2(apiKey: string, params: {
     await emit("occasion", "Designing the occasion.", 8);
     const architectPrompt = buildArchitectPrompt({ answer, world, occasionFamily, recentSignatures });
     await emit("relationships", "Building motives and relationships.", 18);
-    const architect = await provider({
+    const architectEnvelope = await provider({
       apiKey,
       stage: "architect",
       ...architectPrompt,
-      toolName: "submit_case_bible",
-      toolDescription: "Submit the complete private causal case bible.",
-      inputSchema: toToolInputSchema(CaseBibleSchema),
-      outputSchema: CaseBibleSchema,
-      maxTokens: 10_000,
+      toolName: "submit_case_bible_envelope",
+      toolDescription: "Submit exactly one caseBibleJson string containing the complete private causal case bible as valid JSON.",
+      inputSchema: toToolInputSchema(ArchitectEnvelopeSchema),
+      outputSchema: ArchitectEnvelopeSchema,
+      maxTokens: 16_000,
     });
-    debug.caseBible = toStageDebug(architectPrompt, architect);
+    const caseBible = parseEmbeddedCaseBible(architectEnvelope.value.caseBibleJson);
+    debug.caseBible = toStageDebug(architectPrompt, { ...architectEnvelope, value: caseBible });
 
     await emit("timeline", "Simulating and validating the hidden timeline.", 36);
-    debug.deterministicIssues.caseBible = validateCaseBible(architect.value, answer, world, {
+    debug.deterministicIssues.caseBible = validateCaseBible(caseBible, answer, world, {
       occasionFamily,
       recentSignatures,
     });
     throwForIssues("architect", "Case bible failed deterministic validation", debug.deterministicIssues.caseBible);
 
-    const rendererPrompt = buildRendererPrompt({ bible: architect.value, world });
+    const rendererPrompt = buildRendererPrompt({ bible: caseBible, world });
     await emit("rendering", "Writing witness fragments.", 46);
     const rendered = await provider({
       apiKey,
@@ -239,7 +241,7 @@ export async function generateMysteryV2(apiKey: string, params: {
     });
     debug.renderedDraft = toStageDebug(rendererPrompt, rendered);
 
-    const inspectorPrompt = buildInspectorPrompt({ bible: architect.value, mystery: rendered.value, world });
+    const inspectorPrompt = buildInspectorPrompt({ bible: caseBible, mystery: rendered.value, world });
     await emit("inspector", "Preparing Inspector evidence.", 62);
     const inspector = await provider({
       apiKey,
@@ -253,7 +255,7 @@ export async function generateMysteryV2(apiKey: string, params: {
     });
     debug.inspectorEvidence = toStageDebug(inspectorPrompt, inspector);
     debug.deterministicIssues.publicDraft = validatePublicPackage({
-      bible: architect.value,
+      bible: caseBible,
       mystery: rendered.value,
       inspector: inspector.value,
       world,
@@ -284,7 +286,7 @@ export async function generateMysteryV2(apiKey: string, params: {
     if (draftIssues.length > 0) {
       await emit("revision", "Revising the public mystery package.", 84);
       const revisionPrompt = buildRevisionPrompt({
-        bible: architect.value,
+        bible: caseBible,
         mystery: rendered.value,
         inspector: inspector.value,
         audit: audit.value,
@@ -309,7 +311,7 @@ export async function generateMysteryV2(apiKey: string, params: {
       finalInspector = { notes: revision.value.notes };
       debug.revision = toStageDebug(revisionPrompt, revision);
       debug.deterministicIssues.publicFinal = validatePublicPackage({
-        bible: architect.value,
+        bible: caseBible,
         mystery: finalMystery,
         inspector: finalInspector,
         world,
@@ -333,7 +335,7 @@ export async function generateMysteryV2(apiKey: string, params: {
       throwForIssues("audit", "Final blind audit rejected the mystery", debug.deterministicIssues.auditFinal);
     }
 
-    const mysterySignature = formatMysterySignature(architect.value);
+    const mysterySignature = formatMysterySignature(caseBible);
     debug.finalPackage = {
       opening: finalMystery.opening,
       clues: finalMystery.clues,
@@ -385,6 +387,35 @@ function formatMysterySignature(bible: CaseBible): string {
   return [signature.occasion, signature.motive, signature.relationship, signature.deception]
     .map((part) => part.trim().replace(/\s+/g, " "))
     .join(" | ");
+}
+
+function parseEmbeddedCaseBible(serialized: string): CaseBible {
+  const cleaned = serialized
+    .trim()
+    .replace(/^```(?:json)?\s*/i, "")
+    .replace(/\s*```$/i, "")
+    .trim();
+  let candidate: unknown;
+  try {
+    candidate = JSON.parse(cleaned);
+    if (typeof candidate === "string") candidate = JSON.parse(candidate);
+  } catch (error) {
+    throw new MysteryStageError(
+      "architect",
+      `caseBibleJson was not valid JSON: ${error instanceof Error ? error.message : "parse failure"}`,
+      undefined,
+      serialized
+    );
+  }
+  const parsed = CaseBibleSchema.safeParse(candidate);
+  if (!parsed.success) {
+    const issueText = parsed.error.issues
+      .slice(0, 8)
+      .map((issue) => `${issue.path.join(".") || "caseBible"}: ${issue.message}`)
+      .join("; ");
+    throw new MysteryStageError("architect", `Embedded caseBibleJson failed validation: ${issueText}`, undefined, serialized);
+  }
+  return parsed.data;
 }
 
 function throwForIssues(stage: MysteryStage, prefix: string, issues: string[]): void {
