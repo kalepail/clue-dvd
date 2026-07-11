@@ -29,6 +29,7 @@ export type StructuredCallResult<T> = {
   durationMs: number;
   usage?: { inputTokens?: number; outputTokens?: number };
   stopReason?: string;
+  strictSchema?: boolean;
 };
 
 export async function callStructured<T>(params: {
@@ -41,12 +42,14 @@ export async function callStructured<T>(params: {
   inputSchema: Record<string, unknown>;
   outputSchema: z.ZodType<T>;
   maxTokens: number;
+  allowNonStrictFallback?: boolean;
   fetchImpl?: typeof fetch;
 }): Promise<StructuredCallResult<T>> {
   const fetchImpl = params.fetchImpl ?? fetch;
   const startedAt = Date.now();
   let lastError = "Unknown provider failure";
   let lastStatus: number | undefined;
+  let strictSchema = true;
 
   for (let attempt = 0; attempt < 3; attempt += 1) {
     let response: Response;
@@ -66,7 +69,7 @@ export async function callStructured<T>(params: {
           tools: [{
             name: params.toolName,
             description: params.toolDescription,
-            strict: true,
+            strict: strictSchema,
             input_schema: params.inputSchema,
           }],
           tool_choice: { type: "tool", name: params.toolName },
@@ -84,13 +87,23 @@ export async function callStructured<T>(params: {
     lastStatus = response.status;
     if (!response.ok) {
       lastError = await response.text();
+      if (
+        strictSchema &&
+        params.allowNonStrictFallback !== false &&
+        response.status === 400 &&
+        /compiled grammar is too large|grammar.*performance issues/i.test(lastError) &&
+        attempt < 2
+      ) {
+        strictSchema = false;
+        continue;
+      }
       if (RETRYABLE_STATUSES.has(response.status) && attempt < 2) {
         await waitForRetry(attempt);
         continue;
       }
       throw new MysteryStageError(
         params.stage,
-        `Anthropic request failed (${response.status}): ${lastError}`,
+        `Anthropic request failed during ${params.toolName} (${response.status}): ${lastError}`,
         response.status,
         lastError
       );
@@ -154,6 +167,7 @@ export async function callStructured<T>(params: {
         outputTokens: data.usage?.output_tokens,
       },
       stopReason: data.stop_reason,
+      strictSchema,
     };
   }
 

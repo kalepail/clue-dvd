@@ -279,7 +279,13 @@ function buildFixtures() {
     noveltySignature: bible.noveltySignature,
   });
   const trackedItemIds = selectTrackedItemIds(setup.seed, answer, world);
-  const regularEvent = (index: number, timeId: string, itemIds: string[] = []) => ({
+  const regularEvent = (
+    index: number,
+    timeId: string,
+    phase: "before_theft" | "theft" | "between" | "discovery" | "after_discovery",
+    itemIds: string[] = []
+  ) => ({
+    phase,
     timeId,
     locationId: nonLocations[index % nonLocations.length],
     participantIds: [world.suspects[index].id],
@@ -295,27 +301,22 @@ function buildFixtures() {
   });
   const extraTrackedItems = trackedItemIds.filter((id) => id !== answer.itemId);
   const timelineDraft = CausalTimelineSchema.parse({
-    beforeTheftEvents: [
-      regularEvent(0, "T01", extraTrackedItems[0] ? [extraTrackedItems[0]] : []),
-      regularEvent(1, "T02", extraTrackedItems[1] ? [extraTrackedItems[1]] : []),
-      regularEvent(2, "T03", extraTrackedItems[2] ? [extraTrackedItems[2]] : []),
-      regularEvent(3, "T04", extraTrackedItems.slice(3)),
-    ],
-    theftEvent: {
-      participantIds: [answer.suspectId],
-      itemIds: [answer.itemId],
-      actualEvent: "The culprit removes the valuable during the planned diversion.",
-      witnessIds: [],
-      arrivals: [],
-    },
-    betweenTheftAndDiscoveryEvents: [
-      regularEvent(5, "T09"),
-      regularEvent(6, "T09"),
-    ],
-    discoveryEvent: regularEvent(7, "T10"),
-    afterDiscoveryEvents: [
-      regularEvent(8, "T10"),
-      regularEvent(9, "T10"),
+    events: [
+      regularEvent(0, "T01", "before_theft", extraTrackedItems[0] ? [extraTrackedItems[0]] : []),
+      regularEvent(1, "T02", "before_theft", extraTrackedItems[1] ? [extraTrackedItems[1]] : []),
+      regularEvent(2, "T03", "before_theft", extraTrackedItems[2] ? [extraTrackedItems[2]] : []),
+      regularEvent(3, "T04", "before_theft", extraTrackedItems.slice(3)),
+      {
+        ...regularEvent(4, "T09", "theft", [answer.itemId]),
+        participantIds: [answer.suspectId],
+        actualEvent: "The culprit removes the valuable during the planned diversion.",
+        witnessIds: [],
+      },
+      regularEvent(5, "T09", "between"),
+      regularEvent(6, "T09", "between"),
+      regularEvent(7, "T10", "discovery"),
+      regularEvent(8, "T10", "after_discovery"),
+      regularEvent(9, "T10", "after_discovery"),
     ],
     itemRoles: trackedItemIds.map((itemId, index) => ({
       itemId,
@@ -344,21 +345,18 @@ function buildFixtures() {
       { evidenceKeys: ["fact_7", "fact_8"], conclusion: "Two events must occur in that order.", category: "time", importance: "important" },
     ],
   });
-  const clueAssignments = Object.fromEntries(Array.from({ length: 10 }, (_, index) => [
-    `clue${index + 1}`,
-    {
+  const clueAssignments = Array.from({ length: 10 }, (_, index) => ({
       source: index % 2 === 0 ? "Ashe's observation" : "A named guest's account",
       evidenceKeys: [`fact_${index + 1}`],
       threadId: "committee-ledger",
       purpose: index === 0 ? "setup" : index === 9 ? "payoff" : index % 3 === 0 ? "contradiction" : "testimony",
-    },
-  ]));
+  }));
   const cluePlan = CluePlanSchema.parse({
     clues: clueAssignments,
-    inspector: {
-      note1: { fact: bible.inspectorEvidence[0].fact, evidenceKeys: ["fact_11"], relatedCluePositions: [2, 5] },
-      note2: { fact: bible.inspectorEvidence[1].fact, evidenceKeys: ["fact_12"], relatedCluePositions: [4, 7] },
-    },
+    inspectorNotes: [
+      { fact: bible.inspectorEvidence[0].fact, evidenceKeys: ["fact_11"], relatedCluePositions: [2, 5] },
+      { fact: bible.inspectorEvidence[1].fact, evidenceKeys: ["fact_12"], relatedCluePositions: [4, 7] },
+    ],
     closingEvidenceKeys: ["fact_1", "fact_6", "fact_9", "fact_10"],
   });
 
@@ -385,7 +383,7 @@ describe("AI Mystery Engine V2 validation", () => {
   it("keeps strict architecture grammars small and fixed mechanics out of model outputs", () => {
     const schemas = [StoryFoundationSchema, CausalTimelineSchema, EvidenceDesignSchema, CluePlanSchema]
       .map((schema) => JSON.stringify(toToolInputSchema(schema)));
-    expect(Math.max(...schemas.map((schema) => schema.length))).toBeLessThan(6_000);
+    expect(Math.max(...schemas.map((schema) => schema.length))).toBeLessThan(2_000);
     expect(schemas.join(" ")).not.toContain("availableAfterClue");
     expect(schemas.join(" ")).not.toContain("answerDimensions");
     expect(schemas.join(" ")).not.toContain("caseBibleJson");

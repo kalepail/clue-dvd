@@ -60,6 +60,36 @@ describe("structured Anthropic provider", () => {
     expect(fetchImpl).toHaveBeenCalledTimes(2);
   });
 
+  it("falls back to locally validated tool output when strict grammar compilation is refused", async () => {
+    const grammarError = new Response(JSON.stringify({
+      type: "error",
+      error: { type: "invalid_request_error", message: "The compiled grammar is too large, which would cause performance issues." },
+    }), { status: 400 });
+    const fetchImpl = vi.fn()
+      .mockResolvedValueOnce(grammarError)
+      .mockResolvedValueOnce(successResponse({ value: "fallback-valid" }));
+
+    const result = await callStructured({
+      apiKey: "test",
+      stage: "architect",
+      system: "system",
+      prompt: "prompt",
+      toolName: "submit_test",
+      toolDescription: "test",
+      inputSchema: { type: "object" },
+      outputSchema: OutputSchema,
+      maxTokens: 100,
+      fetchImpl,
+    });
+
+    expect(result.value).toEqual({ value: "fallback-valid" });
+    expect(result.strictSchema).toBe(false);
+    const firstBody = JSON.parse(String(fetchImpl.mock.calls[0][1]?.body));
+    const secondBody = JSON.parse(String(fetchImpl.mock.calls[1][1]?.body));
+    expect(firstBody.tools[0].strict).toBe(true);
+    expect(secondBody.tools[0].strict).toBe(false);
+  });
+
   it("reports schema errors with the failed stage", async () => {
     const fetchImpl = vi.fn(async () => successResponse({ value: 42 }));
     await expect(callStructured({

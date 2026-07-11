@@ -104,6 +104,7 @@ type StageDebug<T> = {
   durationMs: number;
   usage?: { inputTokens?: number; outputTokens?: number };
   stopReason?: string;
+  strictSchema?: boolean;
 };
 
 export type MysteryEngineDebug = {
@@ -506,6 +507,7 @@ function toStageDebug<T>(
     durationMs: result.durationMs,
     usage: result.usage,
     stopReason: result.stopReason,
+    strictSchema: result.strictSchema,
   };
 }
 

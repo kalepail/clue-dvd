@@ -87,14 +87,14 @@ Tracked items selected by application code (use every one, invent no others):
 ${params.trackedItemIds.join(", ")}
 
 Requirements:
-- Events are divided into explicit phases. Keep every event in chronological printed-time order within and across phases.
-- Application code fixes the theft event at ${params.answer.timeId} in ${params.answer.locationId} and automatically includes culprit ${params.answer.suspectId} and item ${params.answer.itemId}; do not repeat those two fixed fields in the theft object.
+- Return one events array in chronological order. Label exactly one event phase=theft and exactly one later event phase=discovery; use before_theft, between, and after_discovery for the rest.
+- Application code fixes the phase=theft event at ${params.answer.timeId} in ${params.answer.locationId} and automatically includes culprit ${params.answer.suspectId} and item ${params.answer.itemId}.
 - The discovery event must occur later than the theft. The between and after phases must use times at or after ${params.answer.timeId}.
 - Make every suspect participate in at least one event. Witnesses must truly be able to observe the stated event.
 - An arrival means its actor ends at that event's location. List the actor among participants and every carried item among event items; code reinforces those memberships.
 - Whenever a tracked item next appears in a different location, include an arrival at that destination carrying it from its previous location. Use secret_passage only for a verified pair.
 - Give each tracked item exactly one item role. Build all events from the supplied foundation rather than adding unrelated incidents.
-- Do not create event IDs, movement IDs, cast action lists, or item-thread event lists. Application code derives them from this structure.`,
+- Supply ten to eighteen total events. Do not create event IDs, movement IDs, cast action lists, or item-thread event lists. Application code derives them from this structure.`,
   };
 }
 
@@ -159,10 +159,10 @@ Code-selected candidate-accounting targets:
 ${JSON.stringify(params.candidatePlan, null, 2)}
 
 Requirements:
-- Fill clue1 through clue10 exactly. Use only evidence marked surface=clue in clue slots.
+- Return exactly ten clue entries in reveal order. Their array indexes become clue positions 1–10. Use only evidence marked surface=clue.
 - Most clues must belong to a thread used by another clue. Every payoff needs an earlier setup. Spread important-inference evidence across different slots.
 - Each clue should expose one useful story fragment and should naturally support its assigned candidate targets without naming mechanical eliminations.
-- note1 may use only inspector_1 evidence and relate only to clues 1–5. note2 may use only inspector_2 evidence and relate only to clues 1–7.
+- Return exactly two Inspector-note entries in order. The first may use only inspector_1 evidence and relate only to clues 1–5; the second may use only inspector_2 evidence and relate only to clues 1–7.
 - Inspector evidence must be new, factual, and connected to already available clues; it must not announce a theory.
 - Closing keys must all be exposed by a clue or Inspector slot and collectively support WHO, WHAT, WHERE, and WHEN without introducing new facts.
 - Do not output clue numbers, note IDs, reveal timing, rulesOut arrays, answerDimensions, or final evidence IDs. Application code owns those mechanics.`,

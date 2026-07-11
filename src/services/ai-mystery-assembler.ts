@@ -113,34 +113,33 @@ export function assembleCaseNarrative(params: {
   const { foundation, timelineDraft, answer, world, occasionFamily, trackedItemIds } = params;
   const timeOrder = new Map(world.times.map(({ id, order }) => [id, order]));
 
-  type DraftEvent = CausalTimeline["beforeTheftEvents"][number] & { marker: "ordinary" | "theft" | "discovery"; phase: number };
-  const theftDraft: DraftEvent = {
-    ...timelineDraft.theftEvent,
-    timeId: answer.timeId,
-    locationId: answer.locationId,
-    marker: "theft",
-    phase: 1,
-  };
-  const marked: DraftEvent[] = [
-    ...timelineDraft.beforeTheftEvents.map((event) => ({ ...event, marker: "ordinary" as const, phase: 0 })),
-    theftDraft,
-    ...timelineDraft.betweenTheftAndDiscoveryEvents.map((event) => ({ ...event, marker: "ordinary" as const, phase: 2 })),
-    { ...timelineDraft.discoveryEvent, marker: "discovery" as const, phase: 3 },
-    ...timelineDraft.afterDiscoveryEvents.map((event) => ({ ...event, marker: "ordinary" as const, phase: 4 })),
-  ];
+  const theftEvents = timelineDraft.events.filter(({ phase }) => phase === "theft");
+  const discoveryEvents = timelineDraft.events.filter(({ phase }) => phase === "discovery");
+  if (theftEvents.length !== 1) throw new Error(`Timeline must contain exactly one theft event; found ${theftEvents.length}.`);
+  if (discoveryEvents.length !== 1) throw new Error(`Timeline must contain exactly one discovery event; found ${discoveryEvents.length}.`);
+  const phaseOrder = new Map([
+    ["before_theft", 0],
+    ["theft", 1],
+    ["between", 2],
+    ["discovery", 3],
+    ["after_discovery", 4],
+  ]);
+  const marked = timelineDraft.events.map((event) => event.phase === "theft"
+    ? { ...event, timeId: answer.timeId, locationId: answer.locationId }
+    : event);
 
   const ordered = marked
     .map((event, originalIndex) => ({ event, originalIndex }))
     .sort((left, right) => {
       const timeDifference = (timeOrder.get(left.event.timeId) ?? 999) - (timeOrder.get(right.event.timeId) ?? 999);
       if (timeDifference !== 0) return timeDifference;
-      const phaseDifference = left.event.phase - right.event.phase;
+      const phaseDifference = (phaseOrder.get(left.event.phase) ?? 99) - (phaseOrder.get(right.event.phase) ?? 99);
       return phaseDifference !== 0 ? phaseDifference : left.originalIndex - right.originalIndex;
     });
 
   const timeline = ordered.map(({ event }, index) => {
-    const fixedParticipants = event.marker === "theft" ? [answer.suspectId] : [];
-    const fixedItems = event.marker === "theft" ? [answer.itemId] : [];
+    const fixedParticipants = event.phase === "theft" ? [answer.suspectId] : [];
+    const fixedItems = event.phase === "theft" ? [answer.itemId] : [];
     return {
       id: eventId(index),
       timeId: event.timeId,
@@ -152,8 +151,8 @@ export function assembleCaseNarrative(params: {
     };
   });
 
-  const theftIndex = ordered.findIndex(({ event }) => event.marker === "theft");
-  const discoveryIndex = ordered.findIndex(({ event }) => event.marker === "discovery");
+  const theftIndex = ordered.findIndex(({ event }) => event.phase === "theft");
+  const discoveryIndex = ordered.findIndex(({ event }) => event.phase === "discovery");
   const movements: CaseBible["movements"] = [];
   ordered.forEach(({ event }, eventIndex) => {
     event.arrivals.forEach((arrival) => {
@@ -213,7 +212,7 @@ export function assembleCaseBible(params: {
   evidence.evidenceAtoms.forEach((atom, index) => evidenceIds.set(atom.key, `A${String(index + 1).padStart(2, "0")}`));
   const evidenceByKey = new Map(evidence.evidenceAtoms.map((atom) => [atom.key, atom]));
   const idFor = (key: string): string => evidenceIds.get(key) ?? `UNKNOWN:${key}`;
-  const clueSlots = Object.values(cluePlan.clues);
+  const clueSlots = cluePlan.clues;
 
   const clueBlueprints: CaseBible["clueBlueprints"] = clueSlots.map((slot, index) => {
     const position = index + 1;
@@ -230,7 +229,7 @@ export function assembleCaseBible(params: {
     };
   });
 
-  const noteDrafts = [cluePlan.inspector.note1, cluePlan.inspector.note2] as const;
+  const noteDrafts = cluePlan.inspectorNotes;
   const inspectorEvidence: CaseBible["inspectorEvidence"] = noteDrafts.map((note, index) => {
     const mechanical = candidatePlan.inspector[index];
     return {

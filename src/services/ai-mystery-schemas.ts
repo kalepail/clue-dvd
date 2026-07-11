@@ -66,6 +66,7 @@ const ArrivalDraftSchema = z.object({
 });
 
 const TimelineEventDraftSchema = z.object({
+  phase: z.enum(["before_theft", "theft", "between", "discovery", "after_discovery"]),
   timeId: z.string(),
   locationId: z.string(),
   participantIds: z.array(z.string()).min(1),
@@ -75,20 +76,8 @@ const TimelineEventDraftSchema = z.object({
   arrivals: z.array(ArrivalDraftSchema),
 });
 
-const FixedTheftEventDraftSchema = z.object({
-  participantIds: z.array(z.string()),
-  itemIds: z.array(z.string()),
-  actualEvent: z.string().min(1),
-  witnessIds: z.array(z.string()),
-  arrivals: z.array(ArrivalDraftSchema),
-});
-
 export const CausalTimelineSchema = z.object({
-  beforeTheftEvents: z.array(TimelineEventDraftSchema).min(4).max(8),
-  theftEvent: FixedTheftEventDraftSchema,
-  betweenTheftAndDiscoveryEvents: z.array(TimelineEventDraftSchema).min(2).max(4),
-  discoveryEvent: TimelineEventDraftSchema,
-  afterDiscoveryEvents: z.array(TimelineEventDraftSchema).min(2).max(4),
+  events: z.array(TimelineEventDraftSchema).min(10).max(18),
   itemRoles: z.array(z.object({
     itemId: z.string(),
     storyFunction: z.string().min(1),
@@ -133,38 +122,13 @@ const ClueAssignmentSchema = z.object({
   purpose: z.enum(["setup", "testimony", "contradiction", "payoff", "context"]),
 });
 
-const NoteOnePositionSchema = z.union([
-  z.literal(1), z.literal(2), z.literal(3), z.literal(4), z.literal(5),
-]);
-const NoteTwoPositionSchema = z.union([
-  z.literal(1), z.literal(2), z.literal(3), z.literal(4), z.literal(5), z.literal(6), z.literal(7),
-]);
-
 export const CluePlanSchema = z.object({
-  clues: z.object({
-    clue1: ClueAssignmentSchema,
-    clue2: ClueAssignmentSchema,
-    clue3: ClueAssignmentSchema,
-    clue4: ClueAssignmentSchema,
-    clue5: ClueAssignmentSchema,
-    clue6: ClueAssignmentSchema,
-    clue7: ClueAssignmentSchema,
-    clue8: ClueAssignmentSchema,
-    clue9: ClueAssignmentSchema,
-    clue10: ClueAssignmentSchema,
-  }),
-  inspector: z.object({
-    note1: z.object({
-      fact: z.string().min(1),
-      evidenceKeys: z.array(EvidenceKeySchema).min(1),
-      relatedCluePositions: z.array(NoteOnePositionSchema).min(1),
-    }),
-    note2: z.object({
-      fact: z.string().min(1),
-      evidenceKeys: z.array(EvidenceKeySchema).min(1),
-      relatedCluePositions: z.array(NoteTwoPositionSchema).min(1),
-    }),
-  }),
+  clues: z.array(ClueAssignmentSchema).length(10),
+  inspectorNotes: z.array(z.object({
+    fact: z.string().min(1),
+    evidenceKeys: z.array(EvidenceKeySchema).min(1),
+    relatedCluePositions: z.array(z.number().int()).min(1),
+  })).length(2),
   closingEvidenceKeys: z.array(EvidenceKeySchema).min(4),
 });
 
