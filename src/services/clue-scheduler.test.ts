@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { SeededRandom } from "./seeded-random";
 import { ITEMS, LOCATIONS, SUSPECTS, TIME_PERIODS } from "../data/game-elements";
 import { requireTime, simulateWorld, STAFF_SUSPECT_IDS } from "./world-sim";
-import { factMentionsAnswer, harvestFacts, isMentionOnly } from "./fact-harvest";
+import { factSpotlightsAnswer, harvestFacts, isMentionOnly } from "./fact-harvest";
 import { FINAL_TARGET, scheduleMystery, type Schedule } from "./clue-scheduler";
 import type { Answer } from "./ai-mystery-schemas";
 
@@ -70,11 +70,14 @@ describe("clue scheduler fair-play guarantees (seed sweep)", () => {
     }
   });
 
-  it("never lets a constraining answer-mention appear before position 7", () => {
+  it("never lets a constraining answer-SPOTLIGHT appear before position 7", () => {
+    // Spotlight = names the answer item/location/hour, or the answer suspect
+    // alone or in a pair. Naming the culprit among 3+ others is chorus and
+    // may appear early — that is where the people-texture comes from.
     for (const { schedule, answer, factIds } of results) {
       for (const reveal of schedule.reveals) {
         const fact = factIds.get(reveal.factId)!;
-        if (!isMentionOnly(fact) && factMentionsAnswer(fact, answer)) {
+        if (!isMentionOnly(fact) && factSpotlightsAnswer(fact, answer)) {
           expect(reveal.position).toBeGreaterThanOrEqual(7);
         }
       }

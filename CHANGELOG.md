@@ -1,3 +1,13 @@
+07/11/26 (3)
+- People-first clue generation (from live playtest of ai-last):
+        - Selection now weighs facts by what a mystery is about: company, absences, and comings-and-goings outrank item bookkeeping wherever both would do; redundant tallies are pruned and their slots refilled with people facts
+        - Ashe opens with the day itself; item/room tallies drift to the back half and, 93% of the time, into the Inspector's dry notes where lists belong
+        - Spotlight-vs-chorus rule: naming the culprit among 3+ others (or the theft hour mid-span) no longer banishes a clue to the late positions - that unlocked the C6-style company clues for the early game
+        - First-five clue mix flipped from 169 people / 274 item to 240 people / 229 item across 110 seeds; 100% scheduling held
+        - Removed the "After that hour, nobody can say" tell from the last-seen anchor
+        - Group clues get four distinct sentence skeletons with a no-repeat cycler; same-company repeats nudged away; quarrel moments no longer leak their cause as a chummy "activity"
+        - Suspicious threads report and stop (no more "in truth, they were..." self-resolution)
+
 07/11/26
 - Replaced the creative AI engine with the V3 "world-first" mystery engine (see AI_ENGINE.md)
         - Deterministic world simulation, fact harvest, and a fair-play solver prove pacing over all 12,100 solutions before any prose exists

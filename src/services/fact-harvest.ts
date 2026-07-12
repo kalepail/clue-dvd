@@ -135,6 +135,28 @@ export function factMentionsAnswer(fact: Fact, answer: Answer): boolean {
   );
 }
 
+/**
+ * A fact SPOTLIGHTS the answer when it names an answer card conspicuously:
+ * the answer item, location, or hour at all, or the answer suspect alone or
+ * in a pair. Naming the culprit among three-plus others is chorus, not
+ * spotlight — "Scarlet, Mustard, Plum and Azure played bridge all morning"
+ * points at nobody, and gating it late would starve the early clues of
+ * exactly the people-texture the case should open with.
+ */
+export function factSpotlightsAnswer(fact: Fact, answer: Answer): boolean {
+  const itemName = requireItem(answer.itemId).nameUS;
+  const locationName = requireLocation(answer.locationId).name;
+  if (fact.mentions.items.includes(itemName)) return true;
+  if (fact.mentions.locations.includes(locationName)) return true;
+  // The chorus principle applies to hours too: "from Lunch straight through
+  // to Dusk" names the theft hour mid-span without pointing at it, while a
+  // fact dated to that hour alone (or one other) is a spotlight.
+  const timeName = requireTime(answer.timeId).name;
+  if (fact.mentions.times.includes(timeName) && fact.mentions.times.length < 3) return true;
+  const suspectName = requireSuspect(answer.suspectId).displayName;
+  return fact.mentions.suspects.includes(suspectName) && fact.mentions.suspects.length < 3;
+}
+
 export function answerNameSet(answer: Answer): Set<string> {
   return new Set([
     requireSuspect(answer.suspectId).displayName,
@@ -161,6 +183,20 @@ export function harvestFacts(world: WorldState): Fact[] {
   const facts: Fact[] = [];
   let counter = 0;
   const nextId = (): string => `F${String(++counter).padStart(3, "0")}`;
+  // Seeded phrasing for brief templates, so the same fact kind reads
+  // differently from game to game and within one game. The cycler never
+  // repeats a variant until its whole family has been used once.
+  const phraseRng = new SeededRandom(hashLocal(world.seed, world.attempt, 202));
+  const phraseCycles = new Map<string, number[]>();
+  const pickPhrase = (family: string, variants: string[]): string => {
+    let cycle = phraseCycles.get(family);
+    if (!cycle || cycle.length === 0) {
+      cycle = phraseRng.shuffle(variants.map((_, index) => index));
+      phraseCycles.set(family, cycle);
+    }
+    const index = cycle.shift()!;
+    return variants[index % variants.length];
+  };
   const names = {
     suspect: (id: string) => requireSuspect(id).displayName,
     item: (id: string) => requireItem(id).nameUS,
@@ -207,6 +243,11 @@ export function harvestFacts(world: WorldState): Fact[] {
   // the strongest natural suspect-clearing facts in the original games.
   type RawGroup = { members: string[]; locationId: string; activity: string; timeIds: string[] };
   const rawGroups: RawGroup[] = [];
+  const threadMoments = new Set(
+    world.threads
+      .filter((thread) => thread.timeId)
+      .map((thread) => `${thread.timeId}|${thread.suspectIds.slice().sort().join("+")}`)
+  );
   for (const slot of world.slots) {
     const placements = world.movement[slot.id];
     if (!placements) continue;
@@ -219,6 +260,9 @@ export function harvestFacts(world: WorldState): Fact[] {
         if (seenGroups.has(key)) continue;
         seenGroups.add(key);
         if (!placement.locationId) continue;
+        // A quarrel or errand moment is the thread's story to tell — a group
+        // fact here would leak its cause as a chummy "activity".
+        if (threadMoments.has(`${slot.id}|${key}`)) continue;
         const merged = rawGroups.find(
           (candidate) =>
             candidate.locationId === placement.locationId &&
@@ -265,6 +309,26 @@ export function harvestFacts(world: WorldState): Fact[] {
     const memberNames = group.members.map(names.suspect);
     const timeNames = group.timeIds.map(names.time);
     const multiSlot = group.timeIds.length > 1;
+    const roomName = names.location(group.locationId);
+    const namesList = listNames(memberNames);
+    const first = timeNames[0];
+    const last = timeNames[timeNames.length - 1];
+    // Company clues are the heart of the case — people, what they were doing,
+    // and who can vouch for whom. Several distinct sentence skeletons (led by
+    // the activity, the people, the room, or the stretch of time) so two of
+    // these in one case never read as the same clue twice.
+    const multiVariants = [
+      `From ${first} straight through ${last}, ${namesList} were together in the ${roomName}, ${group.activity}. None of them left the room in all that while.`,
+      `The ${group.activity} in the ${roomName} went on from ${first} until well past ${last} — ${namesList} the whole party of it, and nobody stirred.`,
+      `${namesList} claimed the ${roomName} for themselves from ${first} to ${last}; whoever looked in found them still at it, ${group.activity}.`,
+      `Between ${first} and ${last} the ${roomName} echoed with ${namesList} ${group.activity} — each of them can answer for the others through that whole stretch.`,
+    ];
+    const singleVariants = [
+      `During ${first}, ${namesList} were together in the ${roomName}, ${group.activity}. They kept one another company the whole while.`,
+      `The ${roomName} had its own little party during ${first}: ${namesList}, ${group.activity}, none of them going anywhere.`,
+      `${namesList} fell in together over ${group.activity} in the ${roomName} during ${first}, and stayed with it to the end of the hour.`,
+      `Anyone passing the ${roomName} during ${first} found ${namesList} ${group.activity} — all present, all occupied.`,
+    ];
     facts.push({
       id: nextId(),
       kind: "group_presence",
@@ -276,12 +340,10 @@ export function harvestFacts(world: WorldState): Fact[] {
       mentions: {
         suspects: memberNames,
         items: [],
-        locations: [names.location(group.locationId)],
+        locations: [roomName],
         times: timeNames,
       },
-      writerBrief: multiSlot
-        ? `From ${timeNames[0]} straight through ${timeNames[timeNames.length - 1]}, ${listNames(memberNames)} were together in the ${names.location(group.locationId)}, ${group.activity}. None of them left the room in all that while.`
-        : `During ${timeNames[0]}, ${listNames(memberNames)} were together in the ${names.location(group.locationId)}, ${group.activity}. They kept one another company the whole while.`,
+      writerBrief: multiSlot ? pickPhrase("group-multi", multiVariants) : pickPhrase("group-single", singleVariants),
       noteSuitable: true,
     });
   }
@@ -395,7 +457,7 @@ export function harvestFacts(world: WorldState): Fact[] {
           times: [names.time(sighting.timeId)],
         },
         writerBrief: isAnswerAnchor && bundledIds.length > 1
-          ? `As late as ${names.time(sighting.timeId)}, the ${listNames(bundledNames)} were all still where they belonged — ${sighting.witness === "staff" ? "Mrs. White is certain of it from her rounds" : "several guests remember admiring them"}. After that hour, nobody can say.`
+          ? `As late as ${names.time(sighting.timeId)}, the ${listNames(bundledNames)} were all still where they belonged — ${sighting.witness === "staff" ? "Mrs. White is certain of it from her rounds" : "several guests remember admiring them"}.`
           : `As late as ${names.time(sighting.timeId)}, the ${item.nameUS} was still sitting in its place in the ${names.location(state.homeLocationId)} — ${sighting.witness === "staff" ? "Mrs. White saw it during her rounds" : "several guests admired it there"}.`,
         noteSuitable: true,
       });
@@ -523,7 +585,11 @@ export function harvestFacts(world: WorldState): Fact[] {
       locationIds: bundle.map((location) => location.id),
       timeIds: [],
       mentions: { suspects: [], items: [], locations: bundle.map((location) => location.name), times: [] },
-      writerBrief: `The ${listNames(bundle.map((location) => location.name))} were each gone over carefully afterward: nothing out of place in any of them, and nothing missing.`,
+      writerBrief: pickPhrase("room-bundle", [
+        `The ${listNames(bundle.map((location) => location.name))} were each gone over carefully afterward: nothing out of place in any of them, and nothing missing.`,
+        `The Inspector's men went through the ${listNames(bundle.map((location) => location.name))} and came away satisfied — everything in those rooms accounted for.`,
+        `Nothing in the ${listNames(bundle.map((location) => location.name))} had been disturbed at all; each was checked with care.`,
+      ]),
       noteSuitable: true,
     });
   }
@@ -563,7 +629,11 @@ export function harvestFacts(world: WorldState): Fact[] {
         locations: [],
         times: [roundTime.name],
       },
-      writerBrief: `On the rounds during ${roundTime.name}, the ${listNames(bundle.map((item) => item.nameUS))} were each seen still in their proper places — every one present and accounted for at that hour.`,
+      writerBrief: pickPhrase("item-sweep", [
+        `On the rounds during ${roundTime.name}, the ${listNames(bundle.map((item) => item.nameUS))} were each seen still in their proper places — every one present and accounted for at that hour.`,
+        `Nothing had touched the ${listNames(bundle.map((item) => item.nameUS))} as of ${roundTime.name}; each sat just where Mr. Boddy keeps it.`,
+        `When the ${roundTime.name} rounds were made, the ${listNames(bundle.map((item) => item.nameUS))} were each in their usual spots — all quite undisturbed.`,
+      ]),
       noteSuitable: true,
     });
     // Late-repeat sweep: the same pieces seen again on the night rounds
@@ -585,7 +655,11 @@ export function harvestFacts(world: WorldState): Fact[] {
           locations: [],
           times: [nightRound.name],
         },
-        writerBrief: `On the last look round during ${nightRound.name}, the ${listNames(bundle.map((item) => item.nameUS))} were all still exactly where they belonged, every piece accounted for before the house went quiet.`,
+        writerBrief: pickPhrase("night-repeat", [
+          `On the last look round during ${nightRound.name}, the ${listNames(bundle.map((item) => item.nameUS))} were all still exactly where they belonged, every piece accounted for before the house went quiet.`,
+          `Locking up during ${nightRound.name} took me past the ${listNames(bundle.map((item) => item.nameUS))} — all present, all in their places, as the lamps went down.`,
+          `By the end of ${nightRound.name} nothing had moved: the ${listNames(bundle.map((item) => item.nameUS))} sat exactly as they had all day.`,
+        ]),
         noteSuitable: true,
       });
     }
@@ -621,7 +695,7 @@ export function harvestFacts(world: WorldState): Fact[] {
       locationIds: [],
       timeIds: [],
       mentions: { suspects: [], items: [item.nameUS], locations: [], times: [] },
-      writerBrief: `About the ${item.nameUS}: it is ${history.note}. Mr. Boddy tells the story to anyone who will listen.`,
+      writerBrief: `About the ${item.nameUS}: ${history.note} — Mr. Boddy tells the story to anyone who will listen.`,
       noteSuitable: false,
     });
   }
@@ -635,13 +709,13 @@ export function harvestFacts(world: WorldState): Fact[] {
     const when = thread.timeId ? ` around ${names.time(thread.timeId)}` : "";
     let brief: string;
     if (thread.kind === "quarrel") {
-      brief = `${listNames(mentionSuspects)} were heard having sharp words${where}${when} — over ${thread.cause}, as it turned out. They took pains not to be overheard.`;
+      brief = `${listNames(mentionSuspects)} were heard having sharp words${where}${when} — they broke off the moment the door opened, and neither has said a word about it since.`;
     } else if (thread.kind === "borrowed_item") {
-      brief = `${mentionSuspects[0]} had the ${mentionItems[0]} in hand more than once that day — ${thread.cause}.`;
+      brief = `${mentionSuspects[0]} was seen with the ${mentionItems[0]} in hand more than once that day; at the time, nobody thought to ask why.`;
     } else if (thread.kind === "surprise_task") {
-      brief = `${mentionSuspects[0]} kept disappearing toward the ${mentionLocations[0] ?? "service side of the house"}${when}, being rather cagey about why. In truth: ${thread.cause}.`;
+      brief = `${mentionSuspects[0]} kept disappearing toward the ${mentionLocations[0] ?? "service side of the house"}${when}, and was oddly short with anyone who asked why.`;
     } else {
-      brief = `${mentionSuspects[0]} slipped away${where}${when} and was cagey about it afterward. In truth they were ${thread.cause}.`;
+      brief = `${mentionSuspects[0]} slipped away${where}${when} and was evasive about it afterward.`;
     }
     facts.push({
       id: nextId(),

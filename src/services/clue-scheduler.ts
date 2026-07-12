@@ -30,7 +30,7 @@ import type { Answer } from "./ai-mystery-schemas";
 import {
   DIMS,
   factKillsCell,
-  factMentionsAnswer,
+  factSpotlightsAnswer,
   isMentionOnly,
   type Fact,
 } from "./fact-harvest";
@@ -95,6 +95,30 @@ export const FINAL_TARGET = {
   locations: { min: 2, max: 6 },
   times: { min: 1, max: 4 },
 } as const;
+
+/**
+ * Selection weights by fact kind, encoding what a mystery is ABOUT:
+ * suspects and their day first (company, absences, comings and goings),
+ * then places, then item bookkeeping. Feasibility phases override taste
+ * where a category genuinely needs its facts.
+ */
+const PEOPLE_BIAS: Record<string, number> = {
+  gathering: 1.3,
+  group_presence: 1.3,
+  solo_presence: 1.25,
+  departure: 1.25,
+  guests_arrived: 1.2,
+  discovery: 1.1,
+  room_closed: 1.0,
+  room_undisturbed: 0.95,
+  item_home: 0.85,
+  item_intact: 0.8,
+  items_secured: 0.8,
+  item_offsite: 0.85,
+  object_history: 1.0,
+  personal_remark: 1.0,
+  thread_color: 1.0,
+};
 
 /** At least this many of items/locations/times must end at ≤ 3 candidates. */
 export const CONVERGED_AXES_REQUIRED = 2;
@@ -488,9 +512,11 @@ function selectFacts(
     times: Math.max(0, counts.times - FINAL_TARGET.times.max),
   });
 
+  const chosenMemberships = new Set<string>();
   const add = (fact: Fact): void => {
     used.add(fact.id);
     chosen.push(fact);
+    if (fact.kind === "group_presence") chosenMemberships.add(fact.suspectIds.slice().sort().join("+"));
     grid.apply(killLists.get(fact.id)!);
   };
 
@@ -520,7 +546,16 @@ function selectFacts(
         // A heavy sweep laying 30+ pairs of groundwork legitimately outbids
         // a redundant single-death fact — this is what lets three staff
         // rounds quietly account for most of the day.
-        const score = evaluated.axisDeaths * 120 + evaluated.pairProgress * 10;
+        // People bias: a mystery is about people first — who kept whose
+        // company, who slipped off, who left early. When a people-fact and
+        // an item tally would both do the job, the people-fact wins; item
+        // facts still get picked wherever they are genuinely needed.
+        // The same four people twice reads stale even in fresh words — nudge
+        // toward different company when the coverage value is comparable.
+        const membershipKey = fact.suspectIds.slice().sort().join("+");
+        const repeatNudge =
+          fact.kind === "group_presence" && chosenMemberships.has(membershipKey) ? 0.75 : 1;
+        const score = (evaluated.axisDeaths * 120 + evaluated.pairProgress * 10) * PEOPLE_BIAS[fact.kind] * repeatNudge;
         if (score > 0) scored.push({ fact, score });
       }
       if (scored.length === 0) return false;
@@ -571,7 +606,7 @@ function selectFacts(
   // down to ≤ 3 candidates — every original mystery pins two or three
   // dimensions hard and leaves the rest to the dealt cards.
   const convergeOrder = (["items", "locations", "times"] as const)
-    .map((axis) => ({ axis, count: grid.counts()[axis] }))
+    .map((axis) => ({ axis, count: grid.counts()[axis] + (axis === "items" ? 2 : 0) }))
     .sort((a, b) => a.count - b.count);
   let converged = convergeOrder.filter((entry) => entry.count <= CONVERGED_MAX).length;
   for (const entry of convergeOrder) {
@@ -586,7 +621,65 @@ function selectFacts(
   if (finalNeed.suspects + finalNeed.items + finalNeed.locations + finalNeed.times > 0) return null;
   if (chosen.length > maxConstraining) return null;
 
-  // Pad to 12 with color facts (pure narrative texture; they kill nothing).
+  // Redundancy prune: the greedy overbuys bookkeeping because item facts
+  // overlap heavily (sweeps, night repeats, lockups all vouching for the
+  // same pieces). Any item/room fact whose removal still leaves every final
+  // window and the converged-axes requirement intact is dead weight — drop
+  // it, and let the freed slot go to people instead. This is what tilts the
+  // case toward WHO was where over WHAT was dusted, without banning anything.
+  const BOOKKEEPING = new Set(["item_intact", "items_secured", "item_offsite", "item_home", "room_undisturbed"]);
+  const meetsAll = (): boolean => {
+    const counts = grid.counts();
+    const need = needs(counts);
+    if (need.suspects + need.items + need.locations + need.times > 0) return false;
+    if (counts.suspects < FINAL_TARGET.suspects.min || counts.items < FINAL_TARGET.items.min ||
+        counts.locations < FINAL_TARGET.locations.min || counts.times < FINAL_TARGET.times.min) return false;
+    const convergedNow =
+      (counts.items <= CONVERGED_MAX ? 1 : 0) +
+      (counts.locations <= CONVERGED_MAX ? 1 : 0) +
+      (counts.times <= CONVERGED_MAX ? 1 : 0);
+    return convergedNow >= CONVERGED_AXES_REQUIRED;
+  };
+  const rebuildGrid = (): void => {
+    grid.reset();
+    for (const fact of chosen) grid.apply(killLists.get(fact.id)!);
+  };
+  for (const candidate of [...chosen].filter((fact) => BOOKKEEPING.has(fact.kind))) {
+    const index = chosen.indexOf(candidate);
+    if (index === -1) continue;
+    chosen.splice(index, 1);
+    rebuildGrid();
+    if (meetsAll()) {
+      used.delete(candidate.id);
+    } else {
+      chosen.splice(index, 0, candidate);
+      rebuildGrid();
+    }
+  }
+
+  // Refill freed slots with PEOPLE first — company, absences, comings and
+  // goings that add texture (and only safe, above-floor eliminations).
+  if (chosen.length < REVEAL_COUNT) {
+    const peoplePads = rng.shuffle(
+      constraining.filter(
+        (fact) => !used.has(fact.id) && fact.suspectIds.length > 0 && fact.kind !== "gathering"
+      )
+    );
+    const evaluatorForPads = new VirtualEvaluator(grid);
+    for (const fact of peoplePads) {
+      if (chosen.length >= Math.min(REVEAL_COUNT - 1, maxConstraining)) break; // keep ≥1 slot for color
+      const evaluated = evaluatorForPads.evaluate(killLists.get(fact.id)!, "suspects");
+      if (evaluated.belowMin) continue;
+      add(fact);
+      if (!meetsAll()) {
+        chosen.pop();
+        used.delete(fact.id);
+        rebuildGrid();
+      }
+    }
+  }
+
+  // Then color facts (pure narrative texture; they kill nothing).
   const pads = rng.shuffle(colorFacts.filter((fact) => !used.has(fact.id)));
   while (chosen.length < REVEAL_COUNT && pads.length > 0) add(pads.shift()!);
   if (chosen.length < REVEAL_COUNT) {
@@ -636,7 +729,7 @@ function orderReveals(
 ): ScheduledReveal[] | null {
   const isAnswerSolo = (fact: Fact): boolean =>
     fact.kind === "solo_presence" && fact.suspectIds[0] === answer.suspectId && fact.timeIds[0] === answer.timeId;
-  const needsLate = (fact: Fact): boolean => !isMentionOnly(fact) && factMentionsAnswer(fact, answer);
+  const needsLate = (fact: Fact): boolean => !isMentionOnly(fact) && factSpotlightsAnswer(fact, answer);
 
   outer: for (let round = 0; round < 40; round += 1) {
     const remaining = rng.shuffle([...selected]);
@@ -685,6 +778,21 @@ function orderReveals(
       }
       if (viable.length === 0) continue outer;
       viable.sort((a, b) => (afterCheckpoints ? b.kills - a.kills : a.kills - b.kills));
+      if (isNote) {
+        // The Inspector's notes are dry tallies by nature — give them the
+        // list-shaped bookkeeping facts, freeing Ashe's testimonies for
+        // people and events.
+        viable.sort((a, b) => bundleSize(b.fact) - bundleSize(a.fact));
+      } else if (position <= CHECKPOINT_B.position) {
+        // Early and mid testimony leads with the day itself: who was where,
+        // who kept whose company, who slipped off. Item bookkeeping drifts
+        // to the back half, where an investigation would tally things up.
+        viable.sort(
+          (a, b) =>
+            Number(b.fact.suspectIds.length > 0) - Number(a.fact.suspectIds.length > 0) ||
+            a.kills - b.kills
+        );
+      }
       const pickWindow = Math.min(3, viable.length);
       const fact = viable[rng.nextInt(0, pickWindow - 1)].fact;
 
@@ -698,6 +806,15 @@ function orderReveals(
         factId: fact.id,
       });
     }
+
+    // Variety cap: Ashe reads at most two multi-item tallies and one
+    // multi-room check aloud; further list-shaped facts belong to the notes.
+    const clueFactsChosen = reveals
+      .filter((reveal) => reveal.slot === "clue")
+      .map((reveal) => factById.get(reveal.factId)!);
+    const itemLists = clueFactsChosen.filter((fact) => fact.kind === "item_intact" && fact.itemIds.length >= 3).length;
+    const roomLists = clueFactsChosen.filter((fact) => fact.kind === "room_undisturbed" && fact.locationIds.length >= 2).length;
+    if (itemLists > 2 || roomLists > 1) continue outer;
 
     // Assign clue numbers 1..10 in order.
     let clueNumber = 0;
@@ -715,6 +832,12 @@ function orderReveals(
 /**
  * Reserve note-suitable facts when only just enough remain to fill N1/N2.
  */
+function bundleSize(fact: Fact): number {
+  if (fact.kind === "item_intact" || fact.kind === "items_secured") return fact.itemIds.length;
+  if (fact.kind === "room_undisturbed") return fact.locationIds.length;
+  return 0;
+}
+
 function needsNoteSlot(remaining: Fact[], fact: Fact, position: number, notesAssigned: number): boolean {
   if (!fact.noteSuitable) return false;
   const notesLeft = 2 - notesAssigned;
