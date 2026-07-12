@@ -17,9 +17,10 @@
  * checkpoints are the fairness floor, and discretion lives in the wording
  * (the theft hour is described by the day's rhythm, never named; the culprit
  * appears in choruses like anyone else). Statements ("claims") are mention-
- * only and a lying claim is dealt only alongside the true fact that exposes
- * it. Because candidate counts only ever decrease, the checkpoint rules
- * bound all earlier positions too — early clues cannot converge.
+ * only — including the thief's false alibi, which is simply allowed to lie;
+ * the players' own cards and wits are the counterweight. Because candidate
+ * counts only ever decrease, the checkpoint rules bound all earlier
+ * positions too — early clues cannot converge.
  *
  * Selection is a coverage-driven greedy (not blind sampling): kill times to
  * the target window first, then cover suspects at the surviving times, then
@@ -78,17 +79,11 @@ const NOTE2_POSITION = 9;
 const CHECKPOINT_A = { position: NOTE1_POSITION, min: 4 };
 const CHECKPOINT_B = { position: NOTE2_POSITION, min: 3 };
 /**
- * Final candidate windows after all public evidence.
- *
- * The original mysteries never squeeze all four categories at once: each case
- * converges hard on two or three dimensions (a time pinned by a key gone
- * missing, an item pinned by "the piece displayed in the Hall…") and leaves
- * the rest honestly open for the dealt physical cards to close. We encode the
- * same shape: every category lands inside its window, and at least TWO of
- * items/locations/times converge to ≤ 3 candidates (which two varies with the
- * seed and the theft hour — that variety is part of replayability).
- * Times may collapse to a single hour, as the originals do ("all of the
- * Jewelry had been locked up by Midnight…").
+ * Final candidate windows after all public evidence. Times and locations
+ * narrow; suspects stay socially contested; the item field stays broad
+ * (4-7) because item cards are dealt like every other card — the hands
+ * close what the clues leave open. Times may collapse to a single hour,
+ * as the originals do ("all of the Jewelry had been locked up…").
  */
 export const FINAL_TARGET = {
   suspects: { min: 3, max: 7 },
@@ -661,14 +656,10 @@ function selectFacts(
   }
 
   // Then texture: motives, half-memories, statements — the fog of the day.
-  // A CLAIM (someone's alibi in their own words) is only dealt when the true
-  // fact that can expose it is already on the table: lies must be catchable.
-  const hasLieContradiction = chosen.some((fact) => fact.threadId === "LIE" && !isMentionOnly(fact));
-  const pads = rng.shuffle(
-    colorFacts.filter(
-      (fact) => !used.has(fact.id) && (fact.kind !== "claim" || hasLieContradiction)
-    )
-  );
+  // Claims are dealt freely: statements eliminate nothing, their uncertain
+  // wording marks them as somebody's word rather than Ashe's observation,
+  // and the players hold the truth in their hands. Let the liar lie.
+  const pads = rng.shuffle(colorFacts.filter((fact) => !used.has(fact.id)));
   // Texture priority: a catchable lie first (the best texture there is),
   // then a motive whisper, then the rest of the day's color.
   const textureRank = (fact: Fact): number =>
@@ -799,9 +790,8 @@ function orderReveals(
     const clueFactsChosen = reveals
       .filter((reveal) => reveal.slot === "clue")
       .map((reveal) => factById.get(reveal.factId)!);
-    const itemLists = clueFactsChosen.filter((fact) => fact.kind === "item_intact" && fact.itemIds.length >= 3).length;
     const roomLists = clueFactsChosen.filter((fact) => fact.kind === "room_undisturbed" && fact.locationIds.length >= 2).length;
-    if (itemLists > 2 || roomLists > 1) continue outer;
+    if (roomLists > 2) continue outer;
 
     // Assign clue numbers 1..10 in order.
     let clueNumber = 0;

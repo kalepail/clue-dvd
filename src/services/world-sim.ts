@@ -113,10 +113,10 @@ export type WorldState = {
   motives: Array<{ suspectId: string; motive: string }>;
   /**
    * The thief's FALSE alibi: they claim to have been in claimedLocationId
-   * during the theft hour. The claim itself eliminates nothing (statements
-   * are not evidence), but the world guarantees a TRUE fact exists that
-   * contradicts it — the group that actually held that room. Catching the
-   * lie is deduction the sharp table earns.
+   * during the theft hour. The claim eliminates nothing (statements are not
+   * evidence) and is dealt freely — the liar simply lies. The claimed room
+   * genuinely held other people at that hour, so the truth is out there in
+   * the world (and in the players' hands) for whoever cross-references it.
    */
   falseAlibi: { claimedLocationId: string } | null;
 };
@@ -415,7 +415,7 @@ export function simulateWorld(params: {
     securedSet = {
       itemIds: ITEMS.filter(
         (item) => item.category === securedCategory && item.id !== answer.itemId && !decoyItemIds.includes(item.id)
-      ).map((item) => item.id),
+      ).map((item) => item.id).slice(0, 2),
       label: securedCategory === "jewelry" ? "the jewelry" : securedCategory === "desk" ? "the desk pieces" : "the antiques",
       fromTimeId: timeAtOrder(fromOrder).id,
     };

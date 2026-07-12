@@ -1,3 +1,10 @@
+07/12/26 (2)
+- Polish from the best playtest yet:
+        - The liar lies freely: removed the pairing rule that guaranteed a contradicting clue - uncertain wording marks statements, and the players' hands are the truth baseline (claims now appear in ~half of games)
+        - Foggy memories read plain ("thinks they noticed") - the player decides the emphasis
+        - List-shaped clues eliminate at most TWO things each (item sweeps, room checks, secured pairs); the answer-anchor may run wider since it eliminates no item outright
+        - Answer-hour naming audit: 0 strays across 80 seeds; 110/110 scheduling; engine mocks 12/12
+
 07/12/26
 - Story-first texture round (from live playtest + design direction):
         - Decoys now 3-5 across all categories: the item field stays broad (4-7 by game's end) and the dealt cards close it, like every other card type

@@ -619,8 +619,7 @@ export function harvestFacts(world: WorldState): Fact[] {
   }
   const shuffledRooms = bundleRng.shuffle([...undisturbedRooms]);
   while (shuffledRooms.length >= 2) {
-    const size = Math.min(shuffledRooms.length, bundleRng.nextInt(2, 3));
-    const bundle = shuffledRooms.splice(0, size);
+    const bundle = shuffledRooms.splice(0, 2);
     facts.push({
       id: nextId(),
       kind: "room_undisturbed",
@@ -654,8 +653,10 @@ export function harvestFacts(world: WorldState): Fact[] {
   const nightRound = TIME_PERIODS.find((slot) => slot.order === 9)!;
   while (roundItems.length > 0 && roundIndex < roundTimes.length) {
     // Spread ALL eligible items across the rounds — an item nobody vouches
-    // for late in the day would keep early times alive forever.
-    const size = Math.ceil(roundItems.length / (roundTimes.length - roundIndex));
+    // for late in the day would keep early times alive forever. Each round
+    // names at most two pieces: short lists read as recollection, long ones
+    // as inventory.
+    const size = Math.min(2, Math.ceil(roundItems.length / (roundTimes.length - roundIndex)));
     const bundle = roundItems.splice(0, size);
     const roundTime = roundTimes[roundIndex];
     roundIndex += 1;
@@ -759,8 +760,8 @@ export function harvestFacts(world: WorldState): Fact[] {
     if (thread.kind === "foggy_memory") {
       const foggyWhen = threadTimeRef?.text ?? "some point in the day";
       brief = pickPhrase("foggy", [
-        `${mentionSuspects[0]} thinks — thinks — they noticed ${thread.cause} somewhere around ${foggyWhen}, but with all the fuss since, they couldn't swear to any of it.`,
-        `${mentionSuspects[0]} keeps coming back to something half-remembered: ${thread.cause}, around ${foggyWhen}, perhaps. Memory is a slippery thing on a day like this.`,
+        `${mentionSuspects[0]} thinks they noticed ${thread.cause} somewhere around ${foggyWhen}, but couldn't swear to it.`,
+        `${mentionSuspects[0]} keeps coming back to something half-remembered: ${thread.cause}, around ${foggyWhen}, perhaps.`,
       ]);
     } else if (thread.kind === "quarrel") {
       brief = `${listNames(mentionSuspects)} were heard having sharp words${where}${when} — they broke off the moment the door opened, and neither has said a word about it since.`;

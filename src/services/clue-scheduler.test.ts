@@ -67,14 +67,23 @@ describe("clue scheduler fair-play guarantees (seed sweep)", () => {
     }
   });
 
-  it("only deals a lying claim alongside the true fact that exposes it", () => {
-    for (const { schedule, factIds } of results) {
-      const chosenFacts = schedule.reveals.map((reveal) => factIds.get(reveal.factId)!);
-      const claim = chosenFacts.find((fact) => fact.kind === "claim");
-      if (claim) {
-        expect(
-          chosenFacts.some((fact) => fact.threadId === "LIE" && !isMentionOnly(fact))
-        ).toBe(true);
+  it("keeps every list-shaped clue to at most two eliminations", () => {
+    for (const { schedule, answer, factIds } of results) {
+      for (const reveal of schedule.reveals) {
+        const fact = factIds.get(reveal.factId)!;
+        // Item sweeps name at most two pieces (the answer-anchor bundle may
+        // be wider, but it eliminates no item outright — the answer is in it).
+        if (fact.kind === "item_intact" && !fact.itemIds.includes(answer.itemId)) {
+          expect(fact.itemIds.length).toBeLessThanOrEqual(2);
+        }
+        if (fact.kind === "room_undisturbed") {
+          expect(fact.locationIds.length).toBeLessThanOrEqual(2);
+        }
+        // Secured sets name at most two; only the Midnight grand-lockup is
+        // wider, and it enumerates nothing (generic "the cases were locked").
+        if (fact.kind === "items_secured" && fact.itemIds.length > 2) {
+          expect(fact.locationIds.length).toBe(0);
+        }
       }
     }
   });
