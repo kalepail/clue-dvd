@@ -256,11 +256,17 @@ export async function generateMysteryV2(apiKey: string, params: {
       location: requireLocation(answer.locationId).name,
       time: requireTime(answer.timeId).name,
     };
+    const thiefMotive = world.motives.find((entry) => entry.suspectId === answer.suspectId)?.motive;
+    const lieReveal = world.falseAlibi
+      ? `${answerNames.suspect} claimed to have been in the ${requireLocation(world.falseAlibi.claimedLocationId).name} at the fatal hour — but the party actually in that room never saw them`
+      : undefined;
     const closingPrompt = buildClosingPrompt({
       answerNames,
       dossierTitle: dossier.value.title,
       caseRecap: storySeeds.map((seed) => seed.brief),
       finalCandidates: schedule.finalCandidates,
+      thiefMotive,
+      lieReveal,
       fewshotClosings: fewshots.closings,
     });
     let closing = await provider({
@@ -318,6 +324,8 @@ export async function generateMysteryV2(apiKey: string, params: {
             dossierTitle: dossier.value.title,
             caseRecap: storySeeds.map((seed) => seed.brief),
             finalCandidates: schedule.finalCandidates,
+            thiefMotive,
+            lieReveal,
             fewshotClosings: fewshots.closings,
           });
           retryPrompt.prompt += `\n\nThe previous attempt had problems: ${entry.problems.join(" ")} Fix them.`;
@@ -462,6 +470,9 @@ function worldColorNotes(world: WorldState): string[] {
   }
   for (const thread of world.threads) {
     notes.push(`Background thread: ${thread.cause}.`);
+  }
+  for (const entry of world.motives.slice(0, 3)) {
+    notes.push(`Whispered about ${requireSuspect(entry.suspectId).displayName}: ${entry.motive}.`);
   }
   return notes;
 }

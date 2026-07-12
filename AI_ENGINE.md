@@ -32,12 +32,18 @@ Three Sonnet calls in the typical case; +1 small call per repaired line.
 
 ## Fair-play guarantees (machine-proven per generation)
 
-- After clue 5 + Note 1: **≥ 4 candidates in every category**.
-- After clue 7 + Note 2: **≥ 3 candidates in every category**.
-- After all 10 clues: suspects 3–6, items 2–5, locations 2–6, times 1–4, and **at least two of items/locations/times converged to ≤ 3** (which two varies by seed — early thefts pin times via discovery, evening thefts pin items via sweeps and lockups, exactly like the original mysteries).
+- After clue 5 + Note 1: **≥ 4 candidates in every category**. After clue 7 + Note 2: **≥ 3**.
+- After all 10 clues: suspects 3–7, items 4–7 (three-to-five decoy items keep the field broad — dealt cards close it), locations 3–5, times 1–3.
 - The answer is **never** eliminated — true facts cannot rule out the world they came from, and the engine asserts it anyway.
-- Constraining facts that mention an answer card appear at position ≥ 7; the thief's unexplained absence appears only in the last two clues.
-- Decoy items (1–2 pieces nobody accounts for) hold the item category honestly open; the physical dealt cards make the final distinctions, as in the real game.
+- There are NO placement gates: the checkpoints are the fairness floor, and discretion lives in the wording — the theft hour is described by the day's rhythm ("the lull after lunch"), never named, with rhythm phrasing used for innocent hours too so it is house style, not a fingerprint.
+- Statements are not evidence: claims and half-memories eliminate nothing. The thief's false alibi is dealt only alongside the true testimony that exposes it.
+
+## Texture (why consecutive games read differently)
+
+- Clue selection is people-first: company, absences, and comings-and-goings outrank item bookkeeping wherever either would do; redundant tallies are pruned; the Inspector's notes carry the lists.
+- Even story reveal: each clue carries roughly its fair share of the day's information — no whisper-whisper-thunder pacing.
+- Every game seeds motives for several suspects (the thief's is revealed in the closing), size-aware social reasons for pairs through parties, dispersal hours where guests are ordinarily alone, and sometimes a catchable lie or a foggy memory.
+- Few-shot lines are drawn across all ten original disc mysteries, plus a per-game narrative register for Ashe (fond, clipped, wry, flustered, confiding).
 
 ## Main files
 
@@ -69,7 +75,7 @@ Manual acceptance stays human: generate several seeds, compare signatures, play 
 
 ## Tuning knobs (all data, no prompt surgery)
 
-- `FINAL_TARGET` and `CONVERGED_AXES_REQUIRED` in clue-scheduler.ts — final candidate windows.
+- `FINAL_TARGET` in clue-scheduler.ts — final candidate windows; `PEOPLE_BIAS` — the people-vs-bookkeeping lean.
 - Checkpoint bounds (≥4 at position 6, ≥3 at position 9) in clue-scheduler.ts.
-- World texture catalogs (gathering options, activities, thread causes) in world-sim.ts.
+- World texture catalogs (gathering options, pair/group reasons, motives, foggy sensations, thread causes) in world-sim.ts; `HOUR_STANDINS` rhythm phrases in fact-harvest.ts.
 - Few-shot rotation count in ai-v3-prompts.ts `pickFewshots`.

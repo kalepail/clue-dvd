@@ -147,8 +147,8 @@ describe("world-first AI mystery engine V3", () => {
     }
     const final = debug.schedule!.finalCounts;
     expect(final.suspects).toBeGreaterThanOrEqual(3);
-    expect(final.suspects).toBeLessThanOrEqual(6);
-    expect(final.items).toBeGreaterThanOrEqual(2);
+    expect(final.suspects).toBeLessThanOrEqual(7);
+    expect(final.items).toBeGreaterThanOrEqual(4);
     expect(final.times).toBeGreaterThanOrEqual(1);
   });
 

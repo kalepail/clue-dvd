@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { SeededRandom } from "./seeded-random";
 import { ITEMS, LOCATIONS, SUSPECTS, TIME_PERIODS } from "../data/game-elements";
 import { requireTime, simulateWorld, STAFF_SUSPECT_IDS } from "./world-sim";
-import { factSpotlightsAnswer, harvestFacts, isMentionOnly } from "./fact-harvest";
+import { harvestFacts, isMentionOnly } from "./fact-harvest";
 import { FINAL_TARGET, scheduleMystery, type Schedule } from "./clue-scheduler";
 import type { Answer } from "./ai-mystery-schemas";
 
@@ -53,7 +53,7 @@ describe("clue scheduler fair-play guarantees (seed sweep)", () => {
     }
   });
 
-  it("lands every category inside its final window with two converged axes", () => {
+  it("lands every category inside its final window", () => {
     for (const { schedule } of results) {
       const final = schedule.finalCounts;
       expect(final.suspects).toBeGreaterThanOrEqual(FINAL_TARGET.suspects.min);
@@ -64,22 +64,17 @@ describe("clue scheduler fair-play guarantees (seed sweep)", () => {
       expect(final.locations).toBeLessThanOrEqual(FINAL_TARGET.locations.max);
       expect(final.times).toBeGreaterThanOrEqual(FINAL_TARGET.times.min);
       expect(final.times).toBeLessThanOrEqual(FINAL_TARGET.times.max);
-      const converged =
-        (final.items <= 3 ? 1 : 0) + (final.locations <= 3 ? 1 : 0) + (final.times <= 3 ? 1 : 0);
-      expect(converged).toBeGreaterThanOrEqual(2);
     }
   });
 
-  it("never lets a constraining answer-SPOTLIGHT appear before position 7", () => {
-    // Spotlight = names the answer item/location/hour, or the answer suspect
-    // alone or in a pair. Naming the culprit among 3+ others is chorus and
-    // may appear early — that is where the people-texture comes from.
-    for (const { schedule, answer, factIds } of results) {
-      for (const reveal of schedule.reveals) {
-        const fact = factIds.get(reveal.factId)!;
-        if (!isMentionOnly(fact) && factSpotlightsAnswer(fact, answer)) {
-          expect(reveal.position).toBeGreaterThanOrEqual(7);
-        }
+  it("only deals a lying claim alongside the true fact that exposes it", () => {
+    for (const { schedule, factIds } of results) {
+      const chosenFacts = schedule.reveals.map((reveal) => factIds.get(reveal.factId)!);
+      const claim = chosenFacts.find((fact) => fact.kind === "claim");
+      if (claim) {
+        expect(
+          chosenFacts.some((fact) => fact.threadId === "LIE" && !isMentionOnly(fact))
+        ).toBe(true);
       }
     }
   });

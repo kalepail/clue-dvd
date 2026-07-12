@@ -37,19 +37,30 @@ export type DossierInput = {
 
 const CAST_WHITELIST_NOTE = `People who exist: the ten suspects, Mr. Boddy (the host and victim of the theft), Ashe the butler, and Inspector Brown. Mrs. White is the housekeeper and Rusty the gardener — they are suspects and the ONLY household staff. Never invent maids, footmen, valets, cooks, drivers, visitors, or named outsiders.`;
 
-export function pickFewshots(rng: SeededRandom): { openings: string[]; clues: string[]; notes: string[]; closings: string[] } {
-  const picks = rng.pickMultiple(ORIGINAL_MYSTERIES, 3);
-  const clues: string[] = [];
-  for (const mystery of picks) {
-    for (const clue of rng.pickMultiple(mystery.butlerClues, Math.min(3, mystery.butlerClues.length))) {
-      clues.push(clue);
-    }
-  }
+/**
+ * A per-game voice for Ashe — same butler, different mood, so ten mysteries
+ * feel like ten evenings rather than one script re-run.
+ */
+const NARRATIVE_REGISTERS = [
+  "fond and unhurried — a butler who has served this family thirty years and forgives them everything",
+  "clipped and precise — a butler who notices everything and editorializes nothing",
+  "gently wry — a butler whose every observation carries one raised eyebrow",
+  "flustered but dutiful — a butler still rattled by the whole affair, apologizing for his own digressions",
+  "confiding — a butler who leans in slightly, as if each testimony were between friends",
+];
+
+export function pickFewshots(rng: SeededRandom): { openings: string[]; clues: string[]; notes: string[]; closings: string[]; register: string } {
+  // Draw example lines from across ALL ten original mysteries — a wider
+  // stylistic gene pool per game — and pick a narrative register that
+  // colors this case's whole telling.
+  const allClues = rng.shuffle(ORIGINAL_MYSTERIES.flatMap((mystery) => mystery.butlerClues));
+  const allNotes = rng.shuffle(ORIGINAL_MYSTERIES.flatMap((mystery) => mystery.inspectorNotes));
   return {
-    openings: picks.slice(0, 2).map((mystery) => mystery.opening),
-    clues,
-    notes: picks.flatMap((mystery) => mystery.inspectorNotes.slice(0, 2)).slice(0, 4),
-    closings: picks.slice(0, 2).map((mystery) => mystery.closing),
+    openings: rng.pickMultiple(ORIGINAL_MYSTERIES, 2).map((mystery) => mystery.opening),
+    clues: allClues.slice(0, 12),
+    notes: allNotes.slice(0, 4),
+    closings: rng.pickMultiple(ORIGINAL_MYSTERIES, 2).map((mystery) => mystery.closing),
+    register: rng.pick(NARRATIVE_REGISTERS),
   };
 }
 
@@ -91,13 +102,13 @@ Produce:
 export function buildRenderPrompt(params: {
   dossier: { title: string; occasionName: string; occasionSummary: string; hostReason: string };
   seeds: StorySeed[];
-  fewshots: { openings: string[]; clues: string[]; notes: string[] };
+  fewshots: { openings: string[]; clues: string[]; notes: string[]; register: string };
 }): { system: string; prompt: string } {
   const butlerSeeds = params.seeds.filter((seed) => seed.deliverAs === "butler");
   const note1 = params.seeds.find((seed) => seed.deliverAs === "note1");
   const note2 = params.seeds.find((seed) => seed.deliverAs === "note2");
   return {
-    system: `You are Ashe, butler of Tudor Mansion, giving testimony after a theft — and the Inspector's clerk recording two case notes. You do NOT know who the thief is, what was taken, from where, or at what hour; you only recount what you and the household actually observed. Never speculate about guilt, never say a fact "rules out" or "clears" anyone, never address the players or the puzzle. Return structured data only.`,
+    system: `You are Ashe, butler of Tudor Mansion, giving testimony after a theft — and the Inspector's clerk recording two case notes. You do NOT know who the thief is, what was taken, from where, or at what hour; you only recount what you and the household actually observed. Never speculate about guilt, never say a fact "rules out" or "clears" anyone, never address the players or the puzzle. Tonight your manner is ${params.fewshots.register}. Return structured data only.`,
     prompt: `A theft was discovered at Mr. Boddy's gathering: ${params.dossier.occasionName}.
 ${params.dossier.occasionSummary}
 
@@ -133,7 +144,13 @@ Note 2: ${note2?.brief ?? ""}
 Construction habits from the original cases:
 ${ORIGINAL_MYSTERY_STYLE_GUIDE.map((rule) => `- ${rule}`).join("\n")}
 
-Card-name discipline is absolute: each testimony may name ONLY the card names listed for it (other proper names allowed: Mr. Boddy, Ashe, Inspector Brown, Dr. Black). Vary sentence shapes and greetings across testimonies so no two feel stamped from one mould.`,
+Card-name discipline is absolute: each testimony may name ONLY the card names listed for it (other proper names allowed: Mr. Boddy, Ashe, Inspector Brown, Dr. Black).
+
+Rules of craft, strictly:
+- No two testimonies in this case may share a sentence skeleton. If one opens "During X, so-and-so were together in the Y…", no other may. Recast lists, vary openings, move the time to the middle or end of the sentence.
+- When an event says someone slipped off, was evasive, was seen with something, or was heard arguing, report it and STOP. Never supply their innocent explanation, never soften it with "it turned out…" — suspicion is the point, and the reveal at game's end settles it.
+- Some events describe an hour by the day's rhythm ("the lull after lunch", "the tail of the evening"). Keep that rhythm — do NOT sharpen it into a named hour.
+- Some events are STATEMENTS — what a guest says or half-remembers, not what you saw. Keep them attributed and exactly as uncertain as given ("she says…", "he thinks he heard…"). You report the claim; you do not vouch for it.`,
   };
 }
 
@@ -178,6 +195,11 @@ export function buildClosingPrompt(params: {
   dossierTitle: string;
   caseRecap: string[]; // ordered briefs of the revealed facts
   finalCandidates?: { suspects: string[]; items: string[]; locations: string[]; times: string[] };
+  /** The thief's true motive — the WHY the closing finally supplies. */
+  thiefMotive?: string;
+  /** If the thief told a false alibi during the case, describe it here so
+   * the closing can relish catching the lie. */
+  lieReveal?: string;
   fewshotClosings: string[];
 }): { system: string; prompt: string } {
   const field = params.finalCandidates;
@@ -202,7 +224,8 @@ After all of that evidence, the field still standing was:
 - hours: ${field.times.join(", ")}
 The detectives' own dealt cards settled those final distinctions, as always.
 ` : ""}
-Write the closing narration, 3-5 sentences: congratulate the detectives briefly, then explain how the evidence pointed toward ${params.answerNames.suspect} taking the ${params.answerNames.item} from the ${params.answerNames.location} at ${params.answerNames.time}. Name all four explicitly. Ground the explanation ONLY in the evidence listed above — cite two or three of its strongest threads. Be honest about scope: the clues narrowed the field and the detectives' cards and wits closed it; never claim a card was "the only" remaining possibility unless the field above shows exactly that. Do not invent new facts.`,
+${params.thiefMotive ? `The thief's true motive, revealed only now: ${params.thiefMotive}.\n` : ""}${params.lieReveal ? `And the lie worth savoring: ${params.lieReveal}.\n` : ""}
+Write the closing narration, 4-6 sentences: congratulate the detectives briefly, then explain how the evidence pointed toward ${params.answerNames.suspect} taking the ${params.answerNames.item} from the ${params.answerNames.location} at ${params.answerNames.time} — and WHY${params.lieReveal ? ", including how their story failed to hold" : ""}. Name all four explicitly. Ground the explanation ONLY in the evidence listed above — cite two or three of its strongest threads. Be honest about scope: the clues narrowed the field and the detectives' cards and wits closed it; never claim a card was "the only" remaining possibility unless the field above shows exactly that. Do not invent new facts.`,
   };
 }
 

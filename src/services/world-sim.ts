@@ -69,7 +69,7 @@ export type RoomClosure = {
 
 export type InnocentThread = {
   id: string;
-  kind: "private_errand" | "borrowed_item" | "quarrel" | "surprise_task";
+  kind: "private_errand" | "borrowed_item" | "quarrel" | "surprise_task" | "foggy_memory";
   suspectIds: string[];
   locationId?: string;
   timeId?: string;
@@ -105,6 +105,20 @@ export type WorldState = {
   threads: InnocentThread[];
   /** 2-3 items with colorful provenance (may include the answer item). */
   objectHistories: Array<{ itemId: string; note: string }>;
+  /**
+   * Motives — one per several suspects, always including the thief's real
+   * one. Innocent motives are honest red herrings: plenty of people had a
+   * reason, only one acted on it. The closing reveals the thief's.
+   */
+  motives: Array<{ suspectId: string; motive: string }>;
+  /**
+   * The thief's FALSE alibi: they claim to have been in claimedLocationId
+   * during the theft hour. The claim itself eliminates nothing (statements
+   * are not evidence), but the world guarantees a TRUE fact exists that
+   * contradicts it — the group that actually held that room. Catching the
+   * lie is deduction the sharp table earns.
+   */
+  falseAlibi: { claimedLocationId: string } | null;
 };
 
 // ---------------------------------------------------------------------------
@@ -135,6 +149,65 @@ const ROOM_ACTIVITIES: Record<string, string[]> = {
   L10: ["strolling among the roses", "cutting blooms for the table", "taking photographs"],
   L11: ["feeding the goldfish", "taking the air", "admiring the stonework"],
 };
+
+/**
+ * Why two-to-five people keep company — the social texture of alibis. Drawn
+ * alongside the room flavor so a pair in the Library reads differently from
+ * a pair in the Rose Garden, and no two games lean on the same three reasons.
+ */
+const PAIR_REASONS = [
+  "deep in a game of chess",
+  "catching up on years of family news",
+  "comparing notes on the racing form",
+  "rehearsing a toast neither would let the other hear",
+  "arguing amiably over a crossword",
+  "trading investment advice neither will follow",
+  "swapping stories about Mr. Boddy's younger days",
+  "mending the hem of an evening coat between them",
+  "conspiring over the menu for a future dinner of their own",
+  "teaching one another a card trick",
+];
+const SMALL_GROUP_REASONS = [
+  "three-handed whist with running commentary",
+  "a heated round of charades practice",
+  "debating the merits of Mr. Boddy's port",
+  "planning a subscription none of them will pay for",
+  "taking turns reading the society pages aloud",
+  "a gramophone recital of dubious quality",
+  "comparing photographs from past summers",
+  "an impromptu committee on the evening's entertainment",
+];
+const LARGE_GROUP_REASONS = [
+  "a noisy parlor game that kept score in laughter",
+  "listening to Professor Plum hold forth at length",
+  "a sing-along around the piano",
+  "a tournament of anagrams that nearly came to blows",
+];
+
+/** Motives — every good suspect has one; only one acted on it. */
+const MOTIVE_CATALOG = [
+  "gambling debts that have grown past politeness",
+  "a business teetering on the edge of the receivers",
+  "an inheritance dispute that never quite healed",
+  "a collector's envy sharpened by years of wanting",
+  "whispers of blackmail that need paying off",
+  "a sister's dowry still unfunded",
+  "an old wager with Mr. Boddy never settled to satisfaction",
+  "quiet resentment over a slight at last year's party",
+  "a taste for luxury that outruns the family allowance",
+  "creditors in town who have stopped writing politely",
+  "a failed venture Mr. Boddy declined to rescue",
+  "the simple conviction that the piece was promised to them once",
+];
+
+const FOGGY_SENSATIONS = [
+  "footsteps hurrying past the door",
+  "a door standing ajar that should have been shut",
+  "a figure crossing the end of the corridor",
+  "the creak of the display case hinge",
+  "someone moving in the shrubbery",
+  "a light where no light should have been",
+];
 
 const SOLO_ACTIVITIES = [
   "resting with a headache",
@@ -234,7 +307,9 @@ export function simulateWorld(params: {
     // A couple of guests may slip away early. Leaving before the theft is
     // legitimate — it clears them. Only the thief must stay through the theft.
     let remaining = [...guestIds];
-    const earlyOptions = [6, 7].filter((order) => order > requireTime(arrival!.timeId).order && order < breakupOrder);
+    const earlyOptions = [6, 7].filter(
+      (order) => order > requireTime(arrival!.timeId).order && order < breakupOrder && order !== answerTime.order
+    );
     if (earlyOptions.length > 0 && rng.nextBool(0.5)) {
       const earlyOrder = rng.pick(earlyOptions);
       const eligible = remaining.filter((id) => id !== answer.suspectId);
@@ -253,9 +328,11 @@ export function simulateWorld(params: {
         cause: "the motorcars came round and the party broke up",
       });
     }
-  } else if (rng.nextBool(0.35)) {
-    // House parties can still lose a guest or two to an evening engagement.
-    const departOptions = [7, 8, 9];
+  } else if (rng.nextBool(0.5)) {
+    // House parties lose a guest or two during the day — a departure is the
+    // strongest natural suspect-clearer there is. Never dated to the theft
+    // hour itself (that naming is exactly the tell we avoid).
+    const departOptions = [5, 6, 7, 8, 9].filter((order) => order !== answerTime.order);
     const departOrder = rng.pick(departOptions);
     const eligible = guestIds.filter((id) => id !== answer.suspectId);
     const leavers = rng.pickMultiple(eligible, rng.nextInt(1, 2));
@@ -314,24 +391,31 @@ export function simulateWorld(params: {
 
   // Decoy items: 1-2 pieces from one non-answer category whose whereabouts
   // simply never come up. They hold the item candidates at 2-3 to the end.
+  // Decoys 3-5, drawn from ALL categories: with item cards dealt to players
+  // like every other card, the public clues keep a broad item field and the
+  // hands close it — no more single obvious on-theme piece by the end.
   const answerCategory = requireItem(answer.itemId).category;
-  const decoyCategory = rng.pick((["antique", "desk", "jewelry"] as const).filter((c) => c !== answerCategory));
   const decoyCandidates = ITEMS.filter(
-    (item) => item.category === decoyCategory && item.id !== answer.itemId && !items[item.id]?.offsite
+    (item) => item.id !== answer.itemId && !items[item.id]?.offsite
   );
   const decoyItemIds = rng
-    .pickMultiple(decoyCandidates, Math.min(decoyCandidates.length, rng.nextInt(1, 2)))
+    .pickMultiple(decoyCandidates, Math.min(decoyCandidates.length, rng.nextInt(3, 5)))
     .map((item) => item.id);
 
-  // Secured set: the remaining category (never the answer's, never the decoys').
+  // Secured set: a category's remaining members (never the answer's, never decoys).
   let securedSet: SecuredSet = null;
-  const securedCategory = (["antique", "desk", "jewelry"] as const).find(
-    (category) => category !== answerCategory && category !== decoyCategory
+  const securableCategories = (["antique", "desk", "jewelry"] as const).filter(
+    (category) =>
+      category !== answerCategory &&
+      ITEMS.filter((item) => item.category === category && item.id !== answer.itemId && !decoyItemIds.includes(item.id)).length >= 2
   );
-  if (securedCategory && rng.nextBool(0.7)) {
-    const fromOrder = rng.pick([6, 7, 8]);
+  if (securableCategories.length > 0 && rng.nextBool(0.7)) {
+    const securedCategory = rng.pick(securableCategories);
+    const fromOrder = rng.pick([6, 7, 8].filter((order) => order !== answerTime.order));
     securedSet = {
-      itemIds: ITEMS.filter((item) => item.category === securedCategory && item.id !== answer.itemId).map((item) => item.id),
+      itemIds: ITEMS.filter(
+        (item) => item.category === securedCategory && item.id !== answer.itemId && !decoyItemIds.includes(item.id)
+      ).map((item) => item.id),
       label: securedCategory === "jewelry" ? "the jewelry" : securedCategory === "desk" ? "the desk pieces" : "the antiques",
       fromTimeId: timeAtOrder(fromOrder).id,
     };
@@ -344,11 +428,15 @@ export function simulateWorld(params: {
     const location = rng.pick(candidates);
     roomClosure = rng.nextBool(0.6)
       ? { locationId: location.id, timeIds: "all", cause: rng.pick(CLOSURE_CAUSES) }
-      : {
-          locationId: location.id,
-          timeIds: slots.filter((slot) => slot.order <= rng.nextInt(4, 7)).map((slot) => slot.id),
-          cause: rng.pick(CLOSURE_CAUSES),
-        };
+      : (() => {
+          let cap = rng.nextInt(4, 7);
+          if (cap === answerTime.order) cap = cap > 4 ? cap - 1 : cap + 1;
+          return {
+            locationId: location.id,
+            timeIds: slots.filter((slot) => slot.order <= cap).map((slot) => slot.id),
+            cause: rng.pick(CLOSURE_CAUSES),
+          };
+        })();
   }
 
   // --- Discovery ------------------------------------------------------------
@@ -362,6 +450,36 @@ export function simulateWorld(params: {
       timeId: timeAtOrder(discoveryOrder).id,
       noticedBy: rng.nextBool(0.5) ? "Ashe" : "Mr. Boddy",
     };
+  }
+
+  // --- Motives ---------------------------------------------------------------
+  // The thief always has one (the closing will cite it); several innocents
+  // have one too — plenty of reasons in the room, only one acted upon.
+  const motiveCount = rng.nextInt(3, 5);
+  const motiveSuspects = [
+    answer.suspectId,
+    ...rng.pickMultiple(SUSPECTS.map((s) => s.id).filter((id) => id !== answer.suspectId), motiveCount - 1),
+  ];
+  const motivePool = rng.shuffle([...MOTIVE_CATALOG]);
+  const motives = motiveSuspects.map((suspectId, index) => ({
+    suspectId,
+    motive: motivePool[index % motivePool.length],
+  }));
+
+  // --- The thief's false alibi -------------------------------------------------
+  // They claim a room that a group ACTUALLY held during the theft hour — so
+  // the group's own true testimony quietly gives the lie away.
+  let falseAlibi: WorldState["falseAlibi"] = null;
+  if (rng.nextBool(0.6)) {
+    const placementsAtTheft = movement[answer.timeId] ?? {};
+    const groupRooms = [...new Set(
+      Object.values(placementsAtTheft)
+        .filter((placement) => placement.social === "group" && placement.locationId)
+        .map((placement) => placement.locationId as string)
+    )].filter((locationId) => locationId !== answer.locationId);
+    if (groupRooms.length > 0) {
+      falseAlibi = { claimedLocationId: rng.pick(groupRooms) };
+    }
   }
 
   // --- Object histories ------------------------------------------------------
@@ -389,6 +507,8 @@ export function simulateWorld(params: {
     discovery,
     threads,
     objectHistories,
+    motives,
+    falseAlibi,
   };
 }
 
@@ -425,6 +545,18 @@ function buildMovementGrid(
 
   /** Groups from the previous non-gathering slot, for sticky carry-over. */
   let previousGroups: Array<{ members: string[]; locationId: string; activity: string }> = [];
+
+  // Dispersal hours: once or twice a day the party naturally scatters — a
+  // rest after lunch, dressing before dinner — and several guests are simply
+  // alone. Being unaccounted for is ordinary, which is what keeps suspicion
+  // spread wide rather than pinned on whoever lacks an alibi.
+  const gatheringTimeIds = new Set(gatherings.map((gathering) => gathering.timeId));
+  const dispersalCandidates = slots.filter(
+    (slot) => !gatheringTimeIds.has(slot.id) && slot.order >= 3 && slot.order <= 9
+  );
+  const dispersalTimeIds = new Set(
+    rng.pickMultiple(dispersalCandidates, Math.min(dispersalCandidates.length, rng.nextInt(1, 2))).map((slot) => slot.id)
+  );
 
   for (const slot of slots) {
     const placements: Record<string, Placement> = {};
@@ -492,8 +624,27 @@ function buildMovementGrid(
       unplaced = unplaced.filter((id) => !stillHere.includes(id));
     }
 
-    // Occasionally one extra innocent solo for texture (never in the answer room).
-    if (unplaced.length > 4 && rng.nextBool(0.25)) {
+    // Dispersal hour: several guests drift off alone to different corners.
+    if (dispersalTimeIds.has(slot.id)) {
+      const wanderCount = Math.min(rng.nextInt(2, 3), Math.max(0, unplaced.length - 4));
+      const wanderers = rng.pickMultiple(
+        unplaced.filter((id) => id !== answer.suspectId),
+        Math.min(wanderCount, unplaced.filter((id) => id !== answer.suspectId).length)
+      );
+      const wanderRooms = rng.shuffle(
+        socialRooms.filter((room) => !(slot.id === answer.timeId && room.id === answer.locationId))
+      );
+      wanderers.forEach((wanderer, index) => {
+        placements[wanderer] = {
+          locationId: wanderRooms[index % wanderRooms.length].id,
+          social: "solo",
+          companions: [wanderer],
+          activity: rng.pick(SOLO_ACTIVITIES),
+        };
+      });
+      unplaced = unplaced.filter((id) => !wanderers.includes(id));
+    } else if (unplaced.length > 4 && rng.nextBool(0.25)) {
+      // Occasionally one extra innocent solo for texture (never in the answer room).
       const soloCandidates = unplaced.filter((id) => id !== answer.suspectId);
       if (soloCandidates.length > 0) {
         const soloSuspect = rng.pick(soloCandidates);
@@ -531,7 +682,7 @@ function buildMovementGrid(
         circleActivities.set(circleIndex, pickActivity(rng, roomId));
       }
       occupiedRooms.add(roomId);
-      const activity = circleActivities.get(circleIndex) ?? pickActivity(rng, roomId);
+      const activity = circleActivities.get(circleIndex) ?? pickGroupActivity(rng, roomId, members.length);
       for (const member of members) {
         placements[member] = {
           locationId: roomId,
@@ -637,7 +788,7 @@ function buildThreads(
 ): InnocentThread[] {
   const threads: InnocentThread[] = [];
   const count = rng.nextInt(2, 3);
-  const kinds = rng.shuffle(["private_errand", "borrowed_item", "quarrel", "surprise_task"] as const).slice(0, count);
+  const kinds = rng.shuffle(["private_errand", "borrowed_item", "quarrel", "surprise_task", "foggy_memory"] as const).slice(0, count);
   const eligibleSuspects = SUSPECTS.map((s) => s.id).filter((id) => id !== answer.suspectId);
   const usedSuspects = new Set<string>();
   const pickSuspects = (n: number): string[] => {
@@ -673,6 +824,18 @@ function buildThreads(
         timeId,
         cause: rng.pick(QUARREL_CAUSES),
       });
+    } else if (kind === "foggy_memory") {
+      // Fog of the day: an honest witness half-remembers something — at
+      // whatever hour their memory insists on, right or wrong. It is a
+      // statement, not evidence; it eliminates nothing and points nowhere
+      // reliable, exactly like real testimony after a shock.
+      threads.push({
+        id,
+        kind,
+        suspectIds: pickSuspects(1),
+        timeId: rng.pick(TIME_PERIODS).id,
+        cause: rng.pick(FOGGY_SENSATIONS),
+      });
     } else {
       const timeId = rng.pick(TIME_PERIODS.filter((slot) => isSlotAttendedStrict(slot.id, arrival, departures))).id;
       threads.push({
@@ -702,6 +865,16 @@ function hashSeed(seed: number, attempt: number): number {
 function pickActivity(rng: SeededRandom, locationId: string): string {
   const options = ROOM_ACTIVITIES[locationId] ?? ["passing the time"];
   return rng.pick(options);
+}
+
+/**
+ * Group activities blend room flavor with size-appropriate social reasons —
+ * a pair reads as a tête-à-tête, four reads as a card table, six as a party.
+ */
+function pickGroupActivity(rng: SeededRandom, locationId: string, size: number): string {
+  const roomFlavor = ROOM_ACTIVITIES[locationId] ?? ["passing the time"];
+  const social = size <= 2 ? PAIR_REASONS : size <= 4 ? SMALL_GROUP_REASONS : LARGE_GROUP_REASONS;
+  return rng.nextBool(0.55) ? rng.pick(social) : rng.pick(roomFlavor);
 }
 
 export function presentSuspects(

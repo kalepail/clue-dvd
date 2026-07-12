@@ -10,14 +10,16 @@
  * Hard fair-play targets (per-category candidate projections):
  *  - after position 6  (5 clues + Note 1): every category has ≥ 4 candidates
  *  - after position 9  (7 clues + both notes): every category has ≥ 3
- *  - after position 12: suspects 2–4, items 2–3, locations 2–3, times 2–3
+ *  - after position 12: every category inside its FINAL_TARGET window
  *  - the answer cell is alive at every step (asserted; true facts cannot kill it)
- *  - constraining facts that mention an answer card appear at position ≥ 7
- *  - a solo sighting of the answer suspect at the answer time appears only as
- *    one of the last two clues, at most once
  *
- * Because candidate counts only ever decrease, the checkpoint rules bound all
- * earlier positions too — early clues cannot converge on the answer.
+ * There are deliberately NO placement gates on answer-mentions: the numeric
+ * checkpoints are the fairness floor, and discretion lives in the wording
+ * (the theft hour is described by the day's rhythm, never named; the culprit
+ * appears in choruses like anyone else). Statements ("claims") are mention-
+ * only and a lying claim is dealt only alongside the true fact that exposes
+ * it. Because candidate counts only ever decrease, the checkpoint rules
+ * bound all earlier positions too — early clues cannot converge.
  *
  * Selection is a coverage-driven greedy (not blind sampling): kill times to
  * the target window first, then cover suspects at the surviving times, then
@@ -30,7 +32,6 @@ import type { Answer } from "./ai-mystery-schemas";
 import {
   DIMS,
   factKillsCell,
-  factSpotlightsAnswer,
   isMentionOnly,
   type Fact,
 } from "./fact-harvest";
@@ -90,10 +91,10 @@ const CHECKPOINT_B = { position: NOTE2_POSITION, min: 3 };
  * Jewelry had been locked up by Midnight…").
  */
 export const FINAL_TARGET = {
-  suspects: { min: 3, max: 6 },
-  items: { min: 2, max: 5 },
-  locations: { min: 2, max: 6 },
-  times: { min: 1, max: 4 },
+  suspects: { min: 3, max: 7 },
+  items: { min: 4, max: 7 },
+  locations: { min: 3, max: 5 },
+  times: { min: 1, max: 3 },
 } as const;
 
 /**
@@ -118,11 +119,14 @@ const PEOPLE_BIAS: Record<string, number> = {
   object_history: 1.0,
   personal_remark: 1.0,
   thread_color: 1.0,
+  claim: 1.0,
 };
 
-/** At least this many of items/locations/times must end at ≤ 3 candidates. */
-export const CONVERGED_AXES_REQUIRED = 2;
-const CONVERGED_MAX = 3;
+// Convergence now lives in the windows themselves: times and locations
+// narrow (the dealt cards and the table's wits do the rest), while the item
+// field stays deliberately broad — item cards are dealt like everything
+// else, so the clues no longer hand over a near-certain item.
+
 
 // ---------------------------------------------------------------------------
 // Joint grid with precomputed kill lists
@@ -461,16 +465,7 @@ function meetsFinalTarget(counts: CategoryCounts): boolean {
     counts.suspects >= FINAL_TARGET.suspects.min && counts.suspects <= FINAL_TARGET.suspects.max &&
     counts.items >= FINAL_TARGET.items.min && counts.items <= FINAL_TARGET.items.max &&
     counts.locations >= FINAL_TARGET.locations.min && counts.locations <= FINAL_TARGET.locations.max &&
-    counts.times >= FINAL_TARGET.times.min && counts.times <= FINAL_TARGET.times.max &&
-    convergedAxes(counts) >= CONVERGED_AXES_REQUIRED
-  );
-}
-
-function convergedAxes(counts: CategoryCounts): number {
-  return (
-    (counts.items <= CONVERGED_MAX ? 1 : 0) +
-    (counts.locations <= CONVERGED_MAX ? 1 : 0) +
-    (counts.times <= CONVERGED_MAX ? 1 : 0)
+    counts.times >= FINAL_TARGET.times.min && counts.times <= FINAL_TARGET.times.max
   );
 }
 
@@ -602,21 +597,10 @@ function selectFacts(
   if (!runPhase("items")) return null;
   if (!runPhase("locations")) return null;
 
-  // Convergence top-up: drive the two most tractable of items/locations/times
-  // down to ≤ 3 candidates — every original mystery pins two or three
-  // dimensions hard and leaves the rest to the dealt cards.
-  const convergeOrder = (["items", "locations", "times"] as const)
-    .map((axis) => ({ axis, count: grid.counts()[axis] + (axis === "items" ? 2 : 0) }))
-    .sort((a, b) => a.count - b.count);
-  let converged = convergeOrder.filter((entry) => entry.count <= CONVERGED_MAX).length;
-  for (const entry of convergeOrder) {
-    if (converged >= CONVERGED_AXES_REQUIRED) break;
-    if (entry.count <= CONVERGED_MAX) continue;
-    if (runPhase(entry.axis, CONVERGED_MAX)) converged += 1;
-    else if (grid.counts()[entry.axis] <= CONVERGED_MAX) converged += 1;
-  }
-  if (converged < CONVERGED_AXES_REQUIRED) return null;
-
+// Convergence now lives in the windows themselves: times and locations
+// narrow (the dealt cards and the table's wits do the rest), while the item
+// field stays deliberately broad — item cards are dealt like everything
+// else, so the clues no longer hand over a near-certain item.
   const finalNeed = needs(grid.counts());
   if (finalNeed.suspects + finalNeed.items + finalNeed.locations + finalNeed.times > 0) return null;
   if (chosen.length > maxConstraining) return null;
@@ -632,13 +616,10 @@ function selectFacts(
     const counts = grid.counts();
     const need = needs(counts);
     if (need.suspects + need.items + need.locations + need.times > 0) return false;
-    if (counts.suspects < FINAL_TARGET.suspects.min || counts.items < FINAL_TARGET.items.min ||
-        counts.locations < FINAL_TARGET.locations.min || counts.times < FINAL_TARGET.times.min) return false;
-    const convergedNow =
-      (counts.items <= CONVERGED_MAX ? 1 : 0) +
-      (counts.locations <= CONVERGED_MAX ? 1 : 0) +
-      (counts.times <= CONVERGED_MAX ? 1 : 0);
-    return convergedNow >= CONVERGED_AXES_REQUIRED;
+    return (
+      counts.suspects >= FINAL_TARGET.suspects.min && counts.items >= FINAL_TARGET.items.min &&
+      counts.locations >= FINAL_TARGET.locations.min && counts.times >= FINAL_TARGET.times.min
+    );
   };
   const rebuildGrid = (): void => {
     grid.reset();
@@ -667,7 +648,7 @@ function selectFacts(
     );
     const evaluatorForPads = new VirtualEvaluator(grid);
     for (const fact of peoplePads) {
-      if (chosen.length >= Math.min(REVEAL_COUNT - 1, maxConstraining)) break; // keep ≥1 slot for color
+      if (chosen.length >= Math.min(REVEAL_COUNT - 2, maxConstraining)) break; // keep 2 slots for texture
       const evaluated = evaluatorForPads.evaluate(killLists.get(fact.id)!, "suspects");
       if (evaluated.belowMin) continue;
       add(fact);
@@ -679,8 +660,20 @@ function selectFacts(
     }
   }
 
-  // Then color facts (pure narrative texture; they kill nothing).
-  const pads = rng.shuffle(colorFacts.filter((fact) => !used.has(fact.id)));
+  // Then texture: motives, half-memories, statements — the fog of the day.
+  // A CLAIM (someone's alibi in their own words) is only dealt when the true
+  // fact that can expose it is already on the table: lies must be catchable.
+  const hasLieContradiction = chosen.some((fact) => fact.threadId === "LIE" && !isMentionOnly(fact));
+  const pads = rng.shuffle(
+    colorFacts.filter(
+      (fact) => !used.has(fact.id) && (fact.kind !== "claim" || hasLieContradiction)
+    )
+  );
+  // Texture priority: a catchable lie first (the best texture there is),
+  // then a motive whisper, then the rest of the day's color.
+  const textureRank = (fact: Fact): number =>
+    fact.kind === "claim" ? 0 : fact.threadId === "MOTIVE" || fact.threadId === "FOG" ? 1 : 2;
+  pads.sort((a, b) => textureRank(a) - textureRank(b));
   while (chosen.length < REVEAL_COUNT && pads.length > 0) add(pads.shift()!);
   if (chosen.length < REVEAL_COUNT) {
     // Not enough color facts: fill with harmless leftovers that stay in range.
@@ -727,10 +720,9 @@ function orderReveals(
   factById: Map<string, Fact>,
   answer: Answer
 ): ScheduledReveal[] | null {
-  const isAnswerSolo = (fact: Fact): boolean =>
-    fact.kind === "solo_presence" && fact.suspectIds[0] === answer.suspectId && fact.timeIds[0] === answer.timeId;
-  const needsLate = (fact: Fact): boolean => !isMentionOnly(fact) && factSpotlightsAnswer(fact, answer);
-
+  // No placement gates by answer-mention: the checkpoints are the fairness
+  // floor, and the wording (rhythm-of-the-day hours, chorus naming) carries
+  // the discretion. The story is told in whatever order tells it best.
   outer: for (let round = 0; round < 40; round += 1) {
     const remaining = rng.shuffle([...selected]);
     const grid = new JointGrid();
@@ -746,11 +738,6 @@ function orderReveals(
       const legal = remaining.filter((fact) => {
         if (isNote && !fact.noteSuitable) return false;
         if (!isNote && needsNoteSlot(remaining, fact, position, noteAssigned)) return false;
-        if (needsLate(fact) && position < 7) return false;
-        if (isAnswerSolo(fact) && position < 11) return false;
-        // Late-only facts must still fit in remaining legal slots.
-        const lateOnly = remaining.filter((candidate) => candidate.id !== fact.id && isAnswerSolo(candidate)).length;
-        if (lateOnly > Math.max(0, 12 - Math.max(position, 10))) return false;
         return true;
       });
       if (legal.length === 0) continue outer;
@@ -777,20 +764,20 @@ function orderReveals(
         viable.push({ fact, kills });
       }
       if (viable.length === 0) continue outer;
-      viable.sort((a, b) => (afterCheckpoints ? b.kills - a.kills : a.kills - b.kills));
       if (isNote) {
         // The Inspector's notes are dry tallies by nature — give them the
         // list-shaped bookkeeping facts, freeing Ashe's testimonies for
         // people and events.
         viable.sort((a, b) => bundleSize(b.fact) - bundleSize(a.fact));
-      } else if (position <= CHECKPOINT_B.position) {
-        // Early and mid testimony leads with the day itself: who was where,
-        // who kept whose company, who slipped off. Item bookkeeping drifts
-        // to the back half, where an investigation would tally things up.
+      } else {
+        // Even story reveal: each clue carries roughly its fair share of the
+        // day's information rather than whispers early and thunder late.
+        // People-facts lead within that budget.
+        const meanKills = viable.reduce((sum, entry) => sum + entry.kills, 0) / viable.length;
         viable.sort(
           (a, b) =>
             Number(b.fact.suspectIds.length > 0) - Number(a.fact.suspectIds.length > 0) ||
-            a.kills - b.kills
+            Math.abs(a.kills - meanKills) - Math.abs(b.kills - meanKills)
         );
       }
       const pickWindow = Math.min(3, viable.length);

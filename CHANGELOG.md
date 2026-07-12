@@ -1,3 +1,13 @@
+07/12/26
+- Story-first texture round (from live playtest + design direction):
+        - Decoys now 3-5 across all categories: the item field stays broad (4-7 by game's end) and the dealt cards close it, like every other card type
+        - Motives for several suspects each game (thief's revealed in the closing); size-aware social reasons for pairs/groups; dispersal hours where being alone is ordinary
+        - The thief can now LIE: an attributed false alibi that eliminates nothing, dealt only when the true testimony that exposes it is also in play; foggy half-memories add fog without breaking logic
+        - Removed the spotlight and last-two-clues placement gates and the gentle-then-heavy pacing; replaced with even story reveal (checkpoints remain the fairness floor)
+        - The theft hour is never NAMED: described by the day's rhythm, with the same rhythm phrasing used for innocent hours so it cannot be fingerprinted (2 stray namings per 80 games, was ~5 per game)
+        - Few-shots drawn across all ten original mysteries + a per-game narrative register for Ashe
+        - Verified: 110/110 scheduling at ~45ms; butler clues 53% people-facts; first-five mix 169 people : 23 items; engine mocks 12/12; typecheck clean
+
 07/11/26 (3)
 - People-first clue generation (from live playtest of ai-last):
         - Selection now weighs facts by what a mystery is about: company, absences, and comings-and-goings outrank item bookkeeping wherever both would do; redundant tallies are pruned and their slots refilled with people facts
