@@ -257,7 +257,11 @@ export async function generateMysteryV2(apiKey: string, params: {
       time: requireTime(answer.timeId).name,
     };
     const thiefMotive = world.motives.find((entry) => entry.suspectId === answer.suspectId)?.motive;
-    const lieReveal = world.falseAlibi
+    const lieWasDealt = schedule.reveals.some((reveal) => {
+      const fact = factById.get(reveal.factId);
+      return fact?.kind === "claim" && fact.threadId === "LIE";
+    });
+    const lieReveal = world.falseAlibi && lieWasDealt
       ? `${answerNames.suspect} claimed to have been in the ${requireLocation(world.falseAlibi.claimedLocationId).name} at the fatal hour — but the party actually in that room never saw them`
       : undefined;
     const closingPrompt = buildClosingPrompt({

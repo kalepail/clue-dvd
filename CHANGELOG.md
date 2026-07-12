@@ -1,3 +1,9 @@
+07/12/26 (3)
+- Statements are truth-ambiguous (anti-meta-gaming):
+        - Innocents make TRUE claims in the identical wrapper as the thief's lie; the thief sometimes truthfully accounts for an innocent hour
+        - Measured mixture: a statement appears in ~98% of games, ~31% are the lie, ~63% come from innocents - "X says..." marks nothing
+        - Foggy memories can come from anyone (thief included) and are anchored to the real theft hour ~30% of the time - fog that happens to be true
+        - At most one claim per game; the closing reveals the lie only when it was actually dealt
 07/12/26 (2)
 - Polish from the best playtest yet:
         - The liar lies freely: removed the pairing rule that guaranteed a contradicting clue - uncertain wording marks statements, and the players' hands are the truth baseline (claims now appear in ~half of games)

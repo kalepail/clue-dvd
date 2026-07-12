@@ -787,34 +787,55 @@ export function harvestFacts(world: WorldState): Fact[] {
     });
   }
 
-  // The thief's false alibi — an attributed statement, eliminating nothing.
-  // Its contradicting group fact carries threadId "LIE"; the scheduler only
-  // deals this card when that true testimony is also on the table.
-  if (world.falseAlibi) {
-    const thiefName = names.suspect(world.answer.suspectId);
-    const claimedRoom = names.location(world.falseAlibi.claimedLocationId);
-    const claimRef = refName(world.answer.timeId);
-    facts.push({
-      id: nextId(),
-      kind: "claim",
-      primaryAxis: "color",
-      suspectIds: [world.answer.suspectId],
-      itemIds: [],
-      locationIds: [world.falseAlibi.claimedLocationId],
-      timeIds: [],
-      mentions: {
-        suspects: [thiefName],
-        items: [],
-        locations: [claimedRoom],
-        times: [],
-      },
-      writerBrief: pickPhrase("claim", [
-        `For what it is worth, ${thiefName} says they were in the ${claimedRoom} through ${claimRef.text} — though I cannot say I saw them there myself.`,
-        `${thiefName} was quick to mention having spent ${claimRef.text} in the ${claimedRoom}. Nobody has yet said otherwise in my hearing.`,
-      ]),
-      noteSuitable: false,
-      threadId: "LIE",
-    });
+  // Attributed statements — ALL in the same wrapper, drawn from the same
+  // phrase families, whether true or false. Innocents say (truthfully)
+  // where they were; the thief may truthfully account for an innocent hour;
+  // and the thief's false alibi hides among them indistinguishably. "X
+  // says…" must never be a lie-marker or a culprit-marker: the identical
+  // clue could be honest in the next game, and often is in this one.
+  {
+    type Statement = { suspectId: string; locationId: string; timeId: string; lie: boolean };
+    const statements: Statement[] = world.trueStatements.map((statement) => ({
+      suspectId: statement.suspectId,
+      locationId: statement.locationId,
+      timeId: statement.timeId,
+      lie: false,
+    }));
+    if (world.falseAlibi) {
+      statements.push({
+        suspectId: world.answer.suspectId,
+        locationId: world.falseAlibi.claimedLocationId,
+        timeId: world.answer.timeId,
+        lie: true,
+      });
+    }
+    for (const statement of phraseRng.shuffle(statements)) {
+      const who = names.suspect(statement.suspectId);
+      const room = names.location(statement.locationId);
+      const hourRef = refName(statement.timeId);
+      facts.push({
+        id: nextId(),
+        kind: "claim",
+        primaryAxis: "color",
+        suspectIds: [statement.suspectId],
+        itemIds: [],
+        locationIds: [statement.locationId],
+        timeIds: [],
+        mentions: {
+          suspects: [who],
+          items: [],
+          locations: [room],
+          times: hourRef.mention ? [hourRef.mention] : [],
+        },
+        writerBrief: pickPhrase("claim", [
+          `For what it is worth, ${who} says they were in the ${room} through ${hourRef.text} — though I cannot say I saw them there myself.`,
+          `${who} was quick to mention having spent ${hourRef.text} in the ${room}. Nobody has yet said otherwise in my hearing.`,
+          `Asked about ${hourRef.text}, ${who} answers readily enough: the ${room}, they say, the whole while.`,
+        ]),
+        noteSuitable: false,
+        threadId: statement.lie ? "LIE" : undefined,
+      });
+    }
   }
 
   // Motives — statements about circumstances, not evidence. Several people

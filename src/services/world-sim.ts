@@ -119,6 +119,13 @@ export type WorldState = {
    * the world (and in the players' hands) for whoever cross-references it.
    */
   falseAlibi: { claimedLocationId: string } | null;
+  /**
+   * TRUE statements in the very same wrapper — innocents saying where they
+   * were, and sometimes the thief truthfully accounting for an innocent
+   * hour. These exist so "X says…" is never a lie-marker: the identical
+   * clue shape must have a realistic chance of being honest.
+   */
+  trueStatements: Array<{ suspectId: string; timeId: string; locationId: string; corroborated: boolean }>;
 };
 
 // ---------------------------------------------------------------------------
@@ -482,6 +489,32 @@ export function simulateWorld(params: {
     }
   }
 
+  // --- True statements (same wrapper as the lie) -------------------------------
+  const trueStatements: WorldState["trueStatements"] = [];
+  {
+    const speakerPool = rng.shuffle(SUSPECTS.map((s) => s.id));
+    for (const speakerId of speakerPool) {
+      if (trueStatements.length >= 3) break;
+      // The thief may speak too — truthfully, about an hour that is not the
+      // theft hour. Everyone else may speak about any hour, including the
+      // theft hour (they were innocently elsewhere, after all).
+      const slotPool = slots.filter((slot) => {
+        if (speakerId === answer.suspectId && slot.id === answer.timeId) return false;
+        const placement = movement[slot.id]?.[speakerId];
+        return Boolean(placement && placement.locationId && placement.social !== "away");
+      });
+      if (slotPool.length === 0) continue;
+      const slot = rng.pick(slotPool);
+      const placement = movement[slot.id][speakerId];
+      trueStatements.push({
+        suspectId: speakerId,
+        timeId: slot.id,
+        locationId: placement.locationId as string,
+        corroborated: placement.social !== "solo",
+      });
+    }
+  }
+
   // --- Object histories ------------------------------------------------------
   const historyItems = rng.pickMultiple(ITEMS, rng.nextInt(2, 3));
   const objectHistories = historyItems.map((item) => ({
@@ -509,6 +542,7 @@ export function simulateWorld(params: {
     objectHistories,
     motives,
     falseAlibi,
+    trueStatements,
   };
 }
 
@@ -825,15 +859,19 @@ function buildThreads(
         cause: rng.pick(QUARREL_CAUSES),
       });
     } else if (kind === "foggy_memory") {
-      // Fog of the day: an honest witness half-remembers something — at
-      // whatever hour their memory insists on, right or wrong. It is a
-      // statement, not evidence; it eliminates nothing and points nowhere
-      // reliable, exactly like real testimony after a shock.
+      // Fog of the day: a witness half-remembers something — at whatever
+      // hour their memory insists on. It is a statement, not evidence; it
+      // eliminates nothing. ANYONE may be the rememberer, the thief
+      // included, and about a third of the time the memory is anchored to
+      // the real theft hour — fog that happens to be true. No clue shape is
+      // reliably honest or reliably wrong.
+      const rememberer = rng.nextBool(0.15) ? answer.suspectId : pickSuspects(1)[0];
+      const memoryTimeId = rng.nextBool(0.3) ? answer.timeId : rng.pick(TIME_PERIODS).id;
       threads.push({
         id,
         kind,
-        suspectIds: pickSuspects(1),
-        timeId: rng.pick(TIME_PERIODS).id,
+        suspectIds: [rememberer],
+        timeId: memoryTimeId,
         cause: rng.pick(FOGGY_SENSATIONS),
       });
     } else {

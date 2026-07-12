@@ -659,13 +659,30 @@ function selectFacts(
   // Claims are dealt freely: statements eliminate nothing, their uncertain
   // wording marks them as somebody's word rather than Ashe's observation,
   // and the players hold the truth in their hands. Let the liar lie.
+  // Texture priority: one attributed statement first (true or false — the
+  // wrapper is identical and the mixture is the point), then a motive
+  // whisper or half-memory, then the rest of the day's color. At most ONE
+  // claim per game, so paired alibi-statements never become a pattern.
   const pads = rng.shuffle(colorFacts.filter((fact) => !used.has(fact.id)));
-  // Texture priority: a catchable lie first (the best texture there is),
-  // then a motive whisper, then the rest of the day's color.
+  // When the thief's false alibi exists, deal it half the time it competes —
+  // the lie stays a live threat (~1 game in 3) without ever being the rule.
+  if (rng.nextBool(0.5)) {
+    const lieIndex = pads.findIndex((fact) => fact.kind === "claim" && fact.threadId === "LIE");
+    if (lieIndex > 0) {
+      const [lie] = pads.splice(lieIndex, 1);
+      pads.unshift(lie);
+    }
+  }
   const textureRank = (fact: Fact): number =>
     fact.kind === "claim" ? 0 : fact.threadId === "MOTIVE" || fact.threadId === "FOG" ? 1 : 2;
   pads.sort((a, b) => textureRank(a) - textureRank(b));
-  while (chosen.length < REVEAL_COUNT && pads.length > 0) add(pads.shift()!);
+  let claimsDealt = 0;
+  while (chosen.length < REVEAL_COUNT && pads.length > 0) {
+    const fact = pads.shift()!;
+    if (fact.kind === "claim" && claimsDealt >= 1) continue;
+    if (fact.kind === "claim") claimsDealt += 1;
+    add(fact);
+  }
   if (chosen.length < REVEAL_COUNT) {
     // Not enough color facts: fill with harmless leftovers that stay in range.
     const leftovers = rng.shuffle(constraining.filter((fact) => !used.has(fact.id)));
