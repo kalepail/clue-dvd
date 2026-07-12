@@ -1,6 +1,6 @@
 import type { z } from "zod/v4";
 
-export const AI_MYSTERY_MODEL = "claude-sonnet-5";
+export const AI_MYSTERY_MODEL = "claude-opus-4-8";
 const ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages";
 const RETRYABLE_STATUSES = new Set([429, 500, 502, 503, 529]);
 

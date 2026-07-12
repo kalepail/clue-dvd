@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod/v4";
-import { callStructured } from "./ai-mystery-provider";
+import { AI_MYSTERY_MODEL, callStructured } from "./ai-mystery-provider";
 import { toToolInputSchema } from "./ai-mystery-schemas";
 
 const OutputSchema = z.object({ value: z.string() });
@@ -35,6 +35,8 @@ describe("structured Anthropic provider", () => {
     expect(result.value).toEqual({ value: "valid" });
     expect(result.usage).toEqual({ inputTokens: 12, outputTokens: 4 });
     const requestBody = JSON.parse(String(fetchImpl.mock.calls[0][1]?.body));
+    expect(requestBody.model).toBe("claude-opus-4-8");
+    expect(AI_MYSTERY_MODEL).toBe("claude-opus-4-8");
     expect(requestBody.tools[0].strict).toBe(true);
   });
 
