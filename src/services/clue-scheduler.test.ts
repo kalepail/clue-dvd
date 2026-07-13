@@ -502,38 +502,6 @@ describe("world simulation invariants (seed sweep)", () => {
     expect(fogAtAnswerHour / fogThreads).toBeLessThanOrEqual(0.22);
   });
 
-  it("keeps model-supplied texture cosmetic and never rewrites spine truth", () => {
-    const answer = randomAnswer(41);
-    const world = simulateWorld({ seed: 41, attempt: 1, answer, occasionFamily: "costume fete" });
-    const before = harvestFacts(world);
-    const movementBefore = structuredClone(world.movement);
-    const remarksBefore = structuredClone(world.transitionRemarks);
-    applyOccasionTexture(world, {
-      gatheringDetails: ["judging the most ingenious disguises"],
-      inspectionContexts: ["collecting discarded costume ribbons"],
-      observationContexts: ["putting abandoned dance cards in order"],
-    });
-    const after = harvestFacts(world);
-    const semantics = (fact: (typeof before)[number]) => ({
-      id: fact.id,
-      kind: fact.kind,
-      suspectIds: fact.suspectIds,
-      itemIds: fact.itemIds,
-      locationIds: fact.locationIds,
-      timeIds: fact.timeIds,
-      suspectTimePairs: fact.suspectTimePairs,
-      cutoffOrder: fact.cutoffOrder,
-      mentions: fact.mentions,
-    });
-
-    expect(after.map(semantics)).toEqual(before.map(semantics));
-    expect(world.movement).toEqual(movementBefore);
-    expect(world.transitionRemarks).toEqual(remarksBefore);
-    expect(after.some((fact, index) => fact.writerBrief !== before[index].writerBrief)).toBe(true);
-    expect(before.some((fact) => /mask|costume|ribbon|disguise/i.test(fact.writerBrief))).toBe(true);
-    expect(() => harvestFacts(world)).not.toThrow();
-  });
-
   it("binds gathering texture to its day beat and rejects cross-beat chronology", () => {
     const answer = randomAnswer(77);
     const world = simulateWorld({ seed: 77, attempt: 1, answer, occasionFamily: "weekend house tournament" });

@@ -237,6 +237,11 @@ export function harvestFacts(world: WorldState): Fact[] {
   // differently from game to game and within one game. The cycler never
   // repeats a variant until its whole family has been used once.
   const phraseRng = new SeededRandom(hashLocal(world.seed, world.attempt, 202));
+  // Dossier texture is cosmetic. Keep its cycling RNG completely separate
+  // from time-reference and fact-template phrasing so applying model-supplied
+  // vocabulary cannot alter mention licenses, fact order, or any semantics.
+  const textureRng = new SeededRandom(hashLocal(world.seed, world.attempt, 303));
+  const textureCycles = new Map<string, number[]>();
   const answerHourId = world.answer.timeId;
   const beatCycles = new Map<string, string[]>();
   type TimeReference = { point: string; clause: string; mention: string | null };
@@ -365,7 +370,12 @@ export function harvestFacts(world: WorldState): Fact[] {
     // no-replacement cycler as prose families so every available setting gets
     // a turn before one repeats. The salt remains in the signature to keep
     // call sites documenting which observation they are decorating.
-    return pickPhrase(`occasion-texture:${field}`, values);
+    let cycle = textureCycles.get(field);
+    if (!cycle || cycle.length === 0) {
+      cycle = textureRng.shuffle(values.map((_, index) => index));
+      textureCycles.set(field, cycle);
+    }
+    return values[cycle.shift()! % values.length];
   };
   // Occasion texture describes what Ashe was doing when a fact became
   // observable. Keep it separate from the fact at this layer: mechanically
