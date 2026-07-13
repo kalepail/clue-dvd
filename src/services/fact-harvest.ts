@@ -14,6 +14,7 @@
  */
 
 import { ITEMS, LOCATIONS, SUSPECTS, TIME_PERIODS } from "../data/game-elements";
+import type { EvidenceCapsule, EvidenceKind } from "../shared/evidence";
 import { SeededRandom } from "./seeded-random";
 import type { Answer } from "./ai-mystery-schemas";
 import {
@@ -28,22 +29,7 @@ import {
 // Types
 // ---------------------------------------------------------------------------
 
-export type FactKind =
-  | "gathering"        // suspects S were assembled in L during T      → kills (s∈S, t=T)
-  | "group_presence"   // suspects S (2+) together in L during T       → kills (s∈S, t=T)
-  | "solo_presence"    // suspect s was alone in L during T            → kills (s, t=T, l≠L)
-  | "departure"        // suspects S left at end of T                  → kills (s∈S, t>T)
-  | "guests_arrived"   // guests arrived at T                          → kills (guest s, t<T)
-  | "item_intact"      // item i seen in place in L during T           → kills (i, t≤T)
-  | "item_offsite"     // item i never in the mansion that day         → kills (i)
-  | "items_secured"    // items I locked away from T onward            → kills (i∈I, t>T)
-  | "room_closed"      // location l inaccessible (times or all day)   → kills (l, t∈set)
-  | "room_undisturbed" // nothing missing/amiss in location l          → kills (l)
-  | "item_home"        // item i was kept in location L that day       → kills (i, l≠L)
-  | "discovery"        // theft noticed during T                       → kills (t≥T)
-  | "object_history"   // provenance color                             → mention-only
-  | "personal_remark"  // relationship/behavior color                  → mention-only
-  | "thread_color";    // innocent-thread color                        → mention-only
+export type FactKind = EvidenceKind;
 
 export type MentionLicense = {
   suspects: string[];
@@ -66,6 +52,8 @@ export type Fact = {
   mentions: MentionLicense;
   /** Neutral world-event description handed to the answer-blind writer. */
   writerBrief: string;
+  /** Exact deterministic proposition for context beats with structured payload. */
+  canonicalStatement?: string;
   /** Suitable to be delivered as a formal Inspector note. */
   noteSuitable: boolean;
   threadId?: string;
@@ -115,14 +103,17 @@ export function factKillsCell(fact: Fact, s: string, i: string, l: string, t: st
     case "discovery":
       return order >= (fact.cutoffOrder ?? 11);
     case "object_history":
+    case "item_handling":
     case "personal_remark":
+    case "thread_setup":
+    case "thread_resolution":
     case "thread_color":
       return false;
   }
 }
 
 export function isMentionOnly(fact: Fact): boolean {
-  return fact.kind === "object_history" || fact.kind === "personal_remark" || fact.kind === "thread_color";
+  return fact.kind === "object_history" || fact.kind === "item_handling" || fact.kind === "personal_remark" || fact.kind === "thread_setup" || fact.kind === "thread_resolution" || fact.kind === "thread_color";
 }
 
 export function factMentionsAnswer(fact: Fact, answer: Answer): boolean {
@@ -151,6 +142,95 @@ export function assertFactsSpareAnswer(facts: Fact[], answer: Answer): void {
       throw new Error(`Fact ${fact.id} (${fact.kind}) rules out the answer — world/harvest bug.`);
     }
   }
+}
+
+/**
+ * Converts a structured fact into the exact player-facing proposition. This
+ * intentionally does not use writerBrief: the brief is creative material,
+ * while the capsule is the stable truth boundary.
+ */
+export function buildEvidenceCapsule(fact: Fact): EvidenceCapsule {
+  const suspects = fact.suspectIds.map((id) => requireSuspect(id).displayName);
+  const items = fact.itemIds.map((id) => requireItem(id).nameUS);
+  const locations = fact.locationIds.map((id) => requireLocation(id).name);
+  const times = fact.timeIds.map((id) => requireTime(id).name);
+  const during = listNames(times);
+  let statement: string;
+
+  if (fact.canonicalStatement) {
+    return {
+      factId: fact.id,
+      kind: fact.kind,
+      role: isMentionOnly(fact) ? "context" : "formal",
+      statement: fact.canonicalStatement,
+      suspectIds: [...fact.suspectIds],
+      itemIds: [...fact.itemIds],
+      locationIds: [...fact.locationIds],
+      timeIds: [...fact.timeIds],
+    };
+  }
+
+  switch (fact.kind) {
+    case "gathering":
+    case "group_presence":
+      statement = `${listNames(suspects)} were together${locations[0] ? ` in the ${locations[0]}` : ""} during ${during}.`;
+      break;
+    case "solo_presence":
+      statement = `${suspects[0]} was alone in the ${locations[0]} during ${during}.`;
+      break;
+    case "departure":
+      statement = `${listNames(suspects)} left after ${times[0]} and did not return.`;
+      break;
+    case "guests_arrived":
+      statement = `${listNames(suspects)} arrived at ${times[0]}; they were not in the mansion before then.`;
+      break;
+    case "item_intact":
+      statement = `The ${listNames(items)} ${items.length === 1 ? "was" : "were"} still present${locations[0] ? ` in the ${locations[0]}` : ""} during ${times[0]}.`;
+      break;
+    case "item_offsite":
+      statement = `The ${listNames(items)} ${items.length === 1 ? "was" : "were"} not in Tudor Mansion that day.`;
+      break;
+    case "items_secured":
+      statement = `The ${listNames(items)} ${items.length === 1 ? "was" : "were"} secured after ${times[0]} and remained secured.`;
+      break;
+    case "room_closed":
+      statement = `The ${listNames(locations)} ${locations.length === 1 ? "was" : "were"} inaccessible${times.length > 0 ? ` during ${during}` : " all day"}.`;
+      break;
+    case "room_undisturbed":
+      statement = `The ${listNames(locations)} ${locations.length === 1 ? "was" : "were"} searched after the discovery; nothing there was missing or disturbed.`;
+      break;
+    case "item_home":
+      statement = `The ${items[0]} was kept in the ${locations[0]} that day.`;
+      break;
+    case "discovery":
+      statement = `The theft was first discovered during ${times[0]}; it had already happened by then.`;
+      break;
+    case "item_handling":
+      statement = `Witnessed handling involving ${listNames([...suspects, ...items, ...locations, ...times])}; context only, with no claim about what happened later.`;
+      break;
+    case "thread_setup":
+      statement = `Unresolved lead involving ${listNames([...suspects, ...items, ...locations, ...times])}; it has no formal deduction effect yet.`;
+      break;
+    case "thread_resolution":
+      statement = `Innocent explanation recorded for the lead involving ${listNames([...suspects, ...items, ...locations, ...times])}; it has no formal deduction effect.`;
+      break;
+    case "object_history":
+    case "personal_remark":
+    case "thread_color":
+      statement = `Background context involving ${listNames([...suspects, ...items, ...locations, ...times])}; it has no formal deduction effect.`;
+      break;
+  }
+
+  return {
+    factId: fact.id,
+    kind: fact.kind,
+    role: isMentionOnly(fact) ? "context" : "formal",
+    statement,
+    suspectIds: [...fact.suspectIds],
+    itemIds: [...fact.itemIds],
+    locationIds: [...fact.locationIds],
+    timeIds: [...fact.timeIds],
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -608,6 +688,26 @@ export function harvestFacts(world: WorldState): Fact[] {
   }
 
   // Mention-only color ------------------------------------------------------------
+  for (const event of world.itemHandlingEvents) {
+    const suspect = names.suspect(event.suspectId);
+    const item = names.item(event.itemId);
+    const location = names.location(event.locationId);
+    const time = names.time(event.timeId);
+    facts.push({
+      id: nextId(),
+      kind: "item_handling",
+      primaryAxis: "color",
+      suspectIds: [event.suspectId],
+      itemIds: [event.itemId],
+      locationIds: [event.locationId],
+      timeIds: [event.timeId],
+      mentions: { suspects: [suspect], items: [item], locations: [location], times: [time] },
+      writerBrief: `During ${time}, ${suspect} ${event.action} the ${item} in the ${location}. This was witnessed handling, not a claim about what happened later.`,
+      canonicalStatement: `During ${time}, ${suspect} ${event.action} the ${item} in the ${location}. This is context only and makes no claim about what happened later.`,
+      noteSuitable: false,
+    });
+  }
+
   for (const history of world.objectHistories) {
     const item = requireItem(history.itemId);
     const state = world.items[history.itemId];
@@ -633,28 +733,45 @@ export function harvestFacts(world: WorldState): Fact[] {
     const mentionTimes = thread.timeId ? [names.time(thread.timeId)] : [];
     const where = thread.locationId ? ` in the ${names.location(thread.locationId)}` : "";
     const when = thread.timeId ? ` around ${names.time(thread.timeId)}` : "";
-    let brief: string;
+    let setupBrief: string;
+    let resolutionBrief: string;
     if (thread.kind === "quarrel") {
-      brief = `${listNames(mentionSuspects)} were heard having sharp words${where}${when} — over ${thread.cause}, as it turned out. They took pains not to be overheard.`;
+      setupBrief = `${listNames(mentionSuspects)} were heard having sharp words${where}${when}. They stopped when anyone came near, and the subject was not then known.`;
+      resolutionBrief = `Inspector Brown later established that the sharp words between ${listNames(mentionSuspects)} concerned ${thread.cause}, not the missing property.`;
     } else if (thread.kind === "borrowed_item") {
-      brief = `${mentionSuspects[0]} had the ${mentionItems[0]} in hand more than once that day — ${thread.cause}.`;
+      setupBrief = `${mentionSuspects[0]} was seen with the ${mentionItems[0]} more than once that day, without explaining why.`;
+      resolutionBrief = `Mr. Boddy confirmed that ${mentionSuspects[0]} had the ${mentionItems[0]} ${thread.cause}.`;
     } else if (thread.kind === "surprise_task") {
-      brief = `${mentionSuspects[0]} kept disappearing toward the ${mentionLocations[0] ?? "service side of the house"}${when}, being rather cagey about why. In truth: ${thread.cause}.`;
+      setupBrief = `${mentionSuspects[0]} kept disappearing toward the ${mentionLocations[0] ?? "service side of the house"}${when}, and was cagey about why.`;
+      resolutionBrief = `The unexplained trips by ${mentionSuspects[0]} were eventually accounted for: they were ${thread.cause}.`;
     } else {
-      brief = `${mentionSuspects[0]} slipped away${where}${when} and was cagey about it afterward. In truth they were ${thread.cause}.`;
+      setupBrief = `${mentionSuspects[0]} slipped away${where}${when} and was cagey about it afterward.`;
+      resolutionBrief = `Inspector Brown accounted for ${mentionSuspects[0]}'s private errand: they were ${thread.cause}.`;
     }
-    facts.push({
-      id: nextId(),
-      kind: thread.kind === "quarrel" ? "personal_remark" : "thread_color",
-      primaryAxis: "color",
+    const shared = {
+      primaryAxis: "color" as const,
       suspectIds: [...thread.suspectIds],
       itemIds: thread.itemId ? [thread.itemId] : [],
       locationIds: thread.locationId ? [thread.locationId] : [],
       timeIds: thread.timeId ? [thread.timeId] : [],
       mentions: { suspects: mentionSuspects, items: mentionItems, locations: mentionLocations, times: mentionTimes },
-      writerBrief: brief,
-      noteSuitable: false,
       threadId: thread.id,
+    };
+    facts.push({
+      id: nextId(),
+      kind: "thread_setup",
+      ...shared,
+      writerBrief: setupBrief,
+      canonicalStatement: `${setupBrief} This is an unresolved lead with no formal deduction effect.`,
+      noteSuitable: false,
+    });
+    facts.push({
+      id: nextId(),
+      kind: "thread_resolution",
+      ...shared,
+      writerBrief: resolutionBrief,
+      canonicalStatement: `${resolutionBrief} This resolves the lead but has no formal deduction effect.`,
+      noteSuitable: true,
     });
   }
 

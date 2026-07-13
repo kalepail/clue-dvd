@@ -8,6 +8,13 @@ const seed = (allowedNames: string[], deliverAs: StorySeed["deliverAs"] = "butle
   clueNumber: deliverAs === "butler" ? 3 : null,
   brief: "test brief",
   allowedNames,
+  evidence: {
+    factId: "TEST",
+    kind: "thread_color",
+    role: "context",
+    statement: "Test context; it has no formal deduction effect.",
+    suspectIds: [], itemIds: [], locationIds: [], timeIds: [],
+  },
 });
 
 describe("card mention scanning", () => {
@@ -61,5 +68,21 @@ describe("clue verification", () => {
     expect(good.problems).toEqual([]);
     const bad = verifyClosing("Mrs. Peacock took something somewhere.", answer);
     expect(bad.problems.length).toBeGreaterThanOrEqual(3);
+  });
+
+  it("matches answer cards exactly and rejects clearing the true answer", () => {
+    const midnightAnswer = { suspectId: "S05", itemId: "I07", locationId: "L07", timeId: "T10" };
+    const wrongHour = verifyClosing(
+      "Mrs. Peacock took the Letter Opener from the Billiard Room at Night.",
+      midnightAnswer
+    );
+    expect(wrongHour.problems).toContain('The closing must explicitly name "Midnight".');
+
+    const answer = { suspectId: "S05", itemId: "I07", locationId: "L07", timeId: "T09" };
+    const reversed = verifyClosing(
+      "Though the Billiard Room had been cleared, Mrs. Peacock took the Letter Opener there at Night.",
+      answer
+    );
+    expect(reversed.problems).toContain("The closing describes an answer card as cleared, ruled out, or impossible.");
   });
 });

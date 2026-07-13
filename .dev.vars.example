@@ -1,0 +1,9 @@
+# Cloudflare AI Gateway / Workers AI local development.
+# Copy to .dev.vars and provide real values. .dev.vars is gitignored.
+CLOUDFLARE_ACCOUNT_ID=your-account-id
+AI_GATEWAY_ID=default
+AI_GATEWAY_TOKEN=your-account-api-token
+
+# Optional model overrides.
+AI_MYSTERY_MODEL=xai/grok-4.3
+AI_MYSTERY_REASONING_EFFORT=medium

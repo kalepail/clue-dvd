@@ -19,6 +19,7 @@
 import { ITEMS, LOCATIONS, SUSPECTS, TIME_PERIODS } from "../data/game-elements";
 import type { StorySeed } from "../data/ai-v3-prompts";
 import type { Answer } from "./ai-mystery-schemas";
+import type { EvidenceCapsule } from "../shared/evidence";
 import { requireItem, requireLocation, requireSuspect, requireTime } from "./world-sim";
 
 export type TextVerification = {
@@ -100,7 +101,7 @@ export function verifyClueText(text: string, seed: StorySeed): TextVerification 
 }
 
 /** The closing must name all four answer cards. */
-export function verifyClosing(closing: string, answer: Answer): TextVerification {
+export function verifyClosing(closing: string, answer: Answer, publicEvidence: EvidenceCapsule[] = []): TextVerification {
   const problems: string[] = [];
   const names = [
     requireSuspect(answer.suspectId).displayName,
@@ -108,10 +109,36 @@ export function verifyClosing(closing: string, answer: Answer): TextVerification
     requireLocation(answer.locationId).name,
     requireTime(answer.timeId).name,
   ];
-  const lower = closing.toLowerCase();
+  const mentions = new Set(findCardMentions(closing));
   for (const name of names) {
-    if (!lower.includes(name.toLowerCase())) {
+    if (!mentions.has(name)) {
       problems.push(`The closing must explicitly name "${name}".`);
+    }
+  }
+  const licensedIds = new Set(publicEvidence.flatMap((capsule) => [
+    ...capsule.suspectIds,
+    ...capsule.itemIds,
+    ...capsule.locationIds,
+    ...capsule.timeIds,
+  ]));
+  const licensedNames = new Set([
+    ...names,
+    ...[...licensedIds].map((id) =>
+      id.startsWith("S") ? requireSuspect(id).displayName :
+      id.startsWith("I") ? requireItem(id).nameUS :
+      id.startsWith("L") ? requireLocation(id).name : requireTime(id).name
+    ),
+  ]);
+  for (const mention of mentions) {
+    if (!licensedNames.has(mention)) {
+      problems.push(`The closing names "${mention}", which is absent from the public Butler record and the solution.`);
+    }
+  }
+  const answerEliminationPattern = /\b(cleared|ruled out|eliminated|impossible|could not have|couldn't have|not have been)\b/i;
+  for (const sentence of closing.split(/[.!?]+/)) {
+    if (answerEliminationPattern.test(sentence) && names.some((name) => sentence.toLowerCase().includes(name.toLowerCase()))) {
+      problems.push("The closing describes an answer card as cleared, ruled out, or impossible.");
+      break;
     }
   }
   if (closing.trim().length === 0) problems.push("The closing is empty.");

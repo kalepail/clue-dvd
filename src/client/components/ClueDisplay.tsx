@@ -1,13 +1,15 @@
 import { MessageCircle } from "lucide-react";
 import { Badge } from "@/client/components/ui/badge";
+import type { EvidenceCapsule } from "@/shared/evidence";
 
 interface Props {
   speaker: string;
   text: string;
   index: number;
+  evidence?: EvidenceCapsule;
 }
 
-export default function ClueDisplay({ speaker, text, index }: Props) {
+export default function ClueDisplay({ speaker, text, index, evidence }: Props) {
   return (
     <div>
       <div className="flex items-center justify-between mb-2">
@@ -23,6 +25,17 @@ export default function ClueDisplay({ speaker, text, index }: Props) {
       <blockquote className="border-l-2 border-primary/50 pl-3 italic text-foreground text-sm leading-snug clue-display-text">
         "{text}"
       </blockquote>
+
+      {evidence && (
+        <div className="mt-4 rounded-md border border-primary/30 bg-primary/5 px-3 py-2">
+          <div className="text-[0.68rem] font-bold uppercase tracking-[0.16em] text-primary">
+            Write this down{evidence.role === "context" ? " — context only" : ""}
+          </div>
+          <p className="mt-1 text-sm font-medium leading-snug text-foreground">
+            {evidence.statement}
+          </p>
+        </div>
+      )}
     </div>
   );
 }

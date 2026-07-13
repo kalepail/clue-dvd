@@ -34,7 +34,10 @@ export const ClueRepairSchema = z.object({
 });
 
 export const ClosingSchema = z.object({
-  closing: z.string().min(1),
+  /** Short tone-only line; deterministic code owns every factual sentence. */
+  salute: z.string().min(1),
+  /** Two public evidence IDs selected from the prompt's canonical record. */
+  citedFactIds: z.array(z.string().min(1)).length(2),
 });
 
 export type Answer = z.infer<typeof AnswerSchema>;

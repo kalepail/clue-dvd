@@ -19,7 +19,9 @@
 		"remote": true
 	},
 	"vars": {
-		"ANTHROPIC_API_KEY": ""
+		"AI_GATEWAY_ID": "default",
+		"AI_MYSTERY_MODEL": "xai/grok-4.3",
+		"AI_MYSTERY_REASONING_EFFORT": "medium"
 	},
 	"d1_databases": [
 		{

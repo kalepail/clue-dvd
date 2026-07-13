@@ -133,3 +133,182 @@ describe("structured Anthropic provider", () => {
     visit(schema);
   });
 });
+
+describe("structured Cloudflare provider", () => {
+  it("parses OpenAI-compatible tool calls from the REST transport", async () => {
+    const fetchImpl = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) => new Response(JSON.stringify({
+      success: true,
+      result: {
+        choices: [{
+          finish_reason: "tool_calls",
+          message: {
+            tool_calls: [{
+              type: "function",
+              function: { name: "submit_test", arguments: JSON.stringify({ value: "gateway" }) },
+            }],
+          },
+        }],
+        usage: { prompt_tokens: 21, completion_tokens: 7 },
+      },
+    }), { status: 200, headers: { "Content-Type": "application/json" } }));
+
+    const result = await callStructured({
+      runtime: {
+        model: "xai/grok-4.3",
+        gatewayId: "default",
+        accountId: "account",
+        gatewayToken: "token",
+      },
+      stage: "renderer",
+      system: "system",
+      prompt: "prompt",
+      toolName: "submit_test",
+      toolDescription: "test",
+      inputSchema: { type: "object" },
+      outputSchema: OutputSchema,
+      maxTokens: 100,
+      fetchImpl,
+    });
+
+    expect(result).toMatchObject({
+      value: { value: "gateway" },
+      usage: { inputTokens: 21, outputTokens: 7 },
+      model: "xai/grok-4.3",
+      transport: "cloudflare-rest",
+    });
+    const request = fetchImpl.mock.calls[0];
+    expect(String(request[0])).toContain("/accounts/account/ai/run");
+    const requestBody = JSON.parse(String(request[1]?.body));
+    expect(requestBody.model).toBe("xai/grok-4.3");
+    expect(requestBody.input.tool_choice.function.name).toBe("submit_test");
+  });
+
+  it("parses direct Workers AI tool calls from the binding transport", async () => {
+    const run = vi.fn(async () => ({
+      tool_calls: [{ name: "submit_test", arguments: { value: "workers" } }],
+      usage: { prompt_tokens: 13, completion_tokens: 5 },
+    }));
+    const result = await callStructured({
+      runtime: {
+        model: "@cf/meta/llama-3.3-70b-instruct-fp8-fast",
+        gatewayId: "default",
+        ai: { run },
+      },
+      stage: "architect",
+      system: "system",
+      prompt: "prompt",
+      toolName: "submit_test",
+      toolDescription: "test",
+      inputSchema: { type: "object" },
+      outputSchema: OutputSchema,
+      maxTokens: 100,
+    });
+
+    expect(result).toMatchObject({
+      value: { value: "workers" },
+      transport: "cloudflare-binding",
+    });
+    expect(run).toHaveBeenCalledWith(
+      "@cf/meta/llama-3.3-70b-instruct-fp8-fast",
+      expect.objectContaining({ max_tokens: 100 }),
+      expect.objectContaining({ gateway: expect.objectContaining({ id: "default" }) })
+    );
+  });
+
+  it("uses Anthropic Messages tools for unified Claude models", async () => {
+    const fetchImpl = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) => new Response(JSON.stringify({
+      success: true,
+      result: {
+        content: [{ type: "tool_use", name: "submit_test", input: { value: "claude" } }],
+        stop_reason: "tool_use",
+        usage: { input_tokens: 31, output_tokens: 8 },
+      },
+    }), { status: 200 }));
+    const result = await callStructured({
+      runtime: {
+        model: "anthropic/claude-sonnet-5",
+        gatewayId: "default",
+        accountId: "account",
+        gatewayToken: "token",
+      },
+      stage: "renderer",
+      system: "system",
+      prompt: "prompt",
+      toolName: "submit_test",
+      toolDescription: "test",
+      inputSchema: { type: "object" },
+      outputSchema: OutputSchema,
+      maxTokens: 100,
+      fetchImpl,
+    });
+    expect(result.value).toEqual({ value: "claude" });
+    const body = JSON.parse(String(fetchImpl.mock.calls[0][1]?.body));
+    expect(body.input.tools[0].input_schema).toEqual({ type: "object" });
+    expect(body.input.tool_choice).toEqual({ type: "tool", name: "submit_test" });
+  });
+
+  it("uses Responses tools for unified GPT models", async () => {
+    const fetchImpl = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) => new Response(JSON.stringify({
+      success: true,
+      result: {
+        status: "completed",
+        output: [{ type: "function_call", name: "submit_test", arguments: JSON.stringify({ value: "gpt" }) }],
+        usage: { input_tokens: 24, output_tokens: 6 },
+      },
+    }), { status: 200 }));
+    const result = await callStructured({
+      runtime: {
+        model: "openai/gpt-5.6-sol",
+        gatewayId: "default",
+        accountId: "account",
+        gatewayToken: "token",
+        reasoningEffort: "medium",
+      },
+      stage: "renderer",
+      system: "system",
+      prompt: "prompt",
+      toolName: "submit_test",
+      toolDescription: "test",
+      inputSchema: { type: "object" },
+      outputSchema: OutputSchema,
+      maxTokens: 100,
+      fetchImpl,
+    });
+    expect(result.value).toEqual({ value: "gpt" });
+    const body = JSON.parse(String(fetchImpl.mock.calls[0][1]?.body));
+    expect(body.input.max_output_tokens).toBe(100);
+    expect(body.input.reasoning).toEqual({ effort: "medium" });
+    expect(body.input.tools[0]).toMatchObject({ type: "function", name: "submit_test", strict: true });
+  });
+
+  it("reports Responses token exhaustion from incomplete_details", async () => {
+    const fetchImpl = vi.fn(async () => new Response(JSON.stringify({
+      success: true,
+      result: {
+        status: "incomplete",
+        incomplete_details: { reason: "max_output_tokens" },
+        output: [],
+      },
+    }), { status: 200 }));
+    await expect(callStructured({
+      runtime: {
+        model: "openai/gpt-5.6-terra",
+        gatewayId: "default",
+        accountId: "account",
+        gatewayToken: "token",
+      },
+      stage: "renderer",
+      system: "system",
+      prompt: "prompt",
+      toolName: "submit_test",
+      toolDescription: "test",
+      inputSchema: { type: "object" },
+      outputSchema: OutputSchema,
+      maxTokens: 100,
+      fetchImpl,
+    })).rejects.toMatchObject({
+      stage: "renderer",
+      message: expect.stringContaining("100-token output limit"),
+    });
+  });
+});

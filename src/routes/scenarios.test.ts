@@ -33,12 +33,20 @@ describe("scenario V2 integration", () => {
 
   it("removes AI elimination metadata and unrelated legacy events", () => {
     const { scenario } = generateScenarioWithPlan({ themeId: "DEV01", seed: 102 });
+    const evidence = (factId: string) => ({
+      factId,
+      kind: "thread_color" as const,
+      role: "context" as const,
+      statement: "Background context; it has no formal deduction effect.",
+      suspectIds: [], itemIds: [], locationIds: [], timeIds: [],
+    });
     const applied = applyMysteryPackage(scenario, {
       opening: "Mr. Boddy welcomed acquaintances for a county subscription gathering.",
       butlerClues: Array.from({ length: 10 }, (_, index) => `Story fragment ${index + 1}.`),
+      butlerEvidence: Array.from({ length: 10 }, (_, index) => evidence(`F${index + 1}`)),
       inspectorNotes: [
-        { id: "N1", text: "First factual note.", relatedClues: [2, 5] },
-        { id: "N2", text: "Second factual note.", relatedClues: [4, 7] },
+        { id: "N1", role: "cross_index", text: "First factual note.", relatedClues: [2, 5], evidence: evidence("N1") },
+        { id: "N2", role: "late_discriminator", text: "Second factual note.", relatedClues: [4, 7], evidence: evidence("N2") },
       ],
       closing: "The established evidence explains the theft.",
       mysterySignature: "occasion | motive | relationship | deception",

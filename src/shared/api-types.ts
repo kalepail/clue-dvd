@@ -5,6 +5,8 @@
  * Used by both frontend and backend for type safety.
  */
 
+import type { EvidenceCapsule } from "./evidence";
+
 // ============================================
 // COMMON TYPES
 // ============================================
@@ -67,6 +69,7 @@ export interface ClueData {
   type: ClueType;
   speaker: string;
   text: string;
+  evidence?: EvidenceCapsule;
   revealed: boolean;
   eliminates?: EliminationState;
 }
@@ -76,6 +79,7 @@ export interface RevealedClue {
   type: ClueType;
   speaker: string;
   text: string;
+  evidence?: EvidenceCapsule;
   enhancedText?: string;
   eliminates?: EliminationState;
 }
@@ -263,6 +267,7 @@ export interface ToggleMarkResponse extends ApiResponse {
 export type ActionType =
   | "game_started"
   | "clue_revealed"
+  | "pantry_draw_acknowledged"
   | "suggestion_made"
   | "suggestion_disproved"
   | "accusation_made"

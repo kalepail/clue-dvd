@@ -65,10 +65,15 @@ function buildMockProvider(overrides?: {
       };
     } else if (params.toolName === "submit_case_closing") {
       closingAttempts += 1;
+      const factIds = seeds
+        .filter((seed) => seed.deliverAs === "butler" && seed.evidence.role === "formal")
+        .map((seed) => seed.evidence.factId)
+        .slice(0, 2);
       value = overrides?.breakClosingOnce && closingAttempts === 1
-        ? { closing: "Someone took something. Well done." }
+        ? { salute: "The Library's final letter solved everything.", citedFactIds: ["MADE_UP", "MADE_UP"] }
         : {
-            closing: `Fine work, detectives: ${answerNames.suspect} took the ${answerNames.item} from the ${answerNames.location} at ${answerNames.time}, just as the evidence showed.`,
+            salute: "Fine work, detectives.",
+            citedFactIds: factIds,
           };
     } else if (params.toolName === "submit_repaired_text") {
       value = { text: "Hello -- the household went about its day quite ordinarily, nothing amiss that I saw myself." };
@@ -165,13 +170,15 @@ describe("world-first AI mystery engine V3", () => {
     expect(result.butlerClues[0]).toContain("Hello --");
   });
 
-  it("retries the closing when it fails to name the full solution", async () => {
+  it("falls back safely when the closing plan invents citations or factual prose", async () => {
     const { provider, calls } = buildMockProvider({ breakClosingOnce: true });
     const result = await generateMysteryV2("test-key", { setup, provider });
 
     const closingCalls = calls.filter((call) => call.toolName === "submit_case_closing");
-    expect(closingCalls.length).toBe(2);
+    expect(closingCalls.length).toBe(1);
     expect(result.closing).toContain(answerNames.location);
+    expect(result.closing).not.toContain("final letter");
+    expect(result.closing).not.toContain("MADE_UP");
   });
 
   it("is deterministic: same seed, same schedule and story seeds", async () => {

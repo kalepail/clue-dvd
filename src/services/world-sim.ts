@@ -55,6 +55,14 @@ export type ItemState = {
   intactSightings: Array<{ timeId: string; witness: "staff" | "guests" }>;
 };
 
+export type ItemHandlingEvent = {
+  itemId: string;
+  suspectId: string;
+  locationId: string;
+  timeId: string;
+  action: string;
+};
+
 export type SecuredSet = {
   itemIds: string[];
   label: string; // e.g. "the jewelry"
@@ -93,6 +101,8 @@ export type WorldState = {
   /** movement[timeId][suspectId] */
   movement: Record<string, Record<string, Placement>>;
   items: Record<string, ItemState>;
+  /** Truthful, witnessed handling beats; informational color, not card movement. */
+  itemHandlingEvents: ItemHandlingEvent[];
   /**
    * Decoy items: nobody can quite account for these that day, so they remain
    * live candidates to the very end. This is what keeps the item category
@@ -197,6 +207,61 @@ const OBJECT_NOTES = [
 const MEDAL_ITEM_ID = "I04";
 const MEDAL_NOTE = "given to Mr. Boddy by his late uncle, Dr. Black";
 
+type OccasionOverlay = {
+  gatherings: Partial<Record<string, Array<{ locationId: string; label: string }>>>;
+  roomActivities: Partial<Record<string, string[]>>;
+  threadCauses: string[];
+  itemActions: string[];
+  displayCategories: Array<Item["category"]>;
+};
+
+function occasionOverlay(family: string): OccasionOverlay {
+  const name = family.toLowerCase();
+  if (/arts|recital|theatrical/.test(name)) {
+    return {
+      gatherings: { T05: [{ locationId: "L05", label: "a rehearsal before the recital" }], T09: [{ locationId: "L05", label: "the private performance" }] },
+      roomActivities: { L05: ["marking cues in a score", "rehearsing an entrance", "tuning the piano"], L08: ["copying a speech", "checking the programme"] },
+      threadCauses: ["rewriting a missing page of the programme", "practising an unexpected encore"],
+      itemActions: ["handled", "examined"],
+      displayCategories: ["antique"],
+    };
+  }
+  if (/horticultural|garden/.test(name)) {
+    return {
+      gatherings: { T03: [{ locationId: "L10", label: "judging the prize roses" }], T05: [{ locationId: "L06", label: "the horticultural prize inspection" }] },
+      roomActivities: { L10: ["tying labels to the prize roses", "comparing bloom cards", "checking the judges' marks"], L06: ["staging the orchid display", "misting the specimen ferns"] },
+      threadCauses: ["hiding a damaged prize bloom", "replacing a smudged judging card"],
+      itemActions: ["handled", "carried"],
+      displayCategories: ["jewelry"],
+    };
+  }
+  if (/scholarly|collector|exhibition/.test(name)) {
+    return {
+      gatherings: { T03: [{ locationId: "L08", label: "a private examination of the collection" }], T05: [{ locationId: "L09", label: "Mr. Boddy's demonstration" }] },
+      roomActivities: { L08: ["comparing catalogue entries", "checking a disputed inscription", "consulting an old atlas"], L09: ["arranging specimens", "taking notes on the collection"] },
+      threadCauses: ["checking a doubtful catalogue attribution", "preparing a private correction for Mr. Boddy"],
+      itemActions: ["examined", "handled"],
+      displayCategories: ["antique", "desk"],
+    };
+  }
+  if (/tournament/.test(name)) {
+    return {
+      gatherings: { T05: [{ locationId: "L07", label: "the house tournament semifinal" }], T09: [{ locationId: "L07", label: "the tournament final" }] },
+      roomActivities: { L07: ["keeping the tournament score", "arguing over a foul", "practising a difficult bank shot"] },
+      threadCauses: ["correcting the tournament score in private", "replacing a bent cue tip"],
+      itemActions: ["handled", "displayed"],
+      displayCategories: ["antique"],
+    };
+  }
+  return {
+    gatherings: { T05: [{ locationId: "L02", label: `a private interval during the ${family}` }] },
+    roomActivities: { L02: ["reviewing the guest list", "discussing Mr. Boddy's arrangements"], L03: ["checking place cards", "rearranging the service"] },
+    threadCauses: ["quietly correcting the seating plan", "preparing a surprise announcement"],
+    itemActions: ["showed off", "moved"],
+    displayCategories: ["jewelry", "antique"],
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Simulation
 // ---------------------------------------------------------------------------
@@ -211,6 +276,7 @@ export function simulateWorld(params: {
   const rng = new SeededRandom(hashSeed(params.seed, params.attempt));
   const slots = [...TIME_PERIODS].sort((a, b) => a.order - b.order);
   const answerTime = requireTime(answer.timeId);
+  const overlay = occasionOverlay(occasionFamily);
   const thiefIsStaff = (STAFF_SUSPECT_IDS as readonly string[]).includes(answer.suspectId);
 
   // --- Party mode, arrival, departures -----------------------------------
@@ -265,7 +331,10 @@ export function simulateWorld(params: {
   }
 
   // --- Gatherings (never at the answer time) ------------------------------
-  const gatheringPool = GATHERING_OPTIONS.filter((option) => option.timeId !== answer.timeId)
+  const gatheringPool = GATHERING_OPTIONS.map((option) => ({
+    ...option,
+    options: [...option.options, ...(overlay.gatherings[option.timeId] ?? [])],
+  })).filter((option) => option.timeId !== answer.timeId)
     .filter((option) => isSlotAttended(option.timeId, arrival, departures));
   const gatheringCount = Math.min(rng.nextInt(3, 5), gatheringPool.length);
   const chosenGatherings = rng.pickMultiple(gatheringPool, gatheringCount)
@@ -304,13 +373,14 @@ export function simulateWorld(params: {
   }
 
   // --- Innocent threads ----------------------------------------------------
-  const threads = buildThreads(rng, answer, arrival, departures);
+  const threads = buildThreads(rng, answer, arrival, departures, overlay);
 
   // --- Movement grid -------------------------------------------------------
-  const movement = buildMovementGrid(rng, slots, answer, gatherings, threads, arrival, departures);
+  const movement = buildMovementGrid(rng, slots, answer, gatherings, threads, arrival, departures, overlay);
 
   // --- Item lifecycles ------------------------------------------------------
-  const items = buildItemStates(rng, answer, movement, gatherings);
+  const items = buildItemStates(rng, answer, movement, gatherings, overlay);
+  const itemHandlingEvents = buildItemHandlingEvents(rng, answer, movement, items, overlay);
 
   // Decoy items: 1-2 pieces from one non-answer category whose whereabouts
   // simply never come up. They hold the item candidates at 2-3 to the end.
@@ -383,6 +453,7 @@ export function simulateWorld(params: {
     gatherings,
     movement,
     items,
+    itemHandlingEvents,
     decoyItemIds,
     securedSet,
     roomClosure,
@@ -404,6 +475,7 @@ function buildMovementGrid(
   threads: InnocentThread[],
   arrival: WorldState["arrival"],
   departures: WorldState["departures"]
+  , overlay: OccasionOverlay
 ): Record<string, Record<string, Placement>> {
   const grid: Record<string, Record<string, Placement>> = {};
   const gatheringByTime = new Map(gatherings.map((gathering) => [gathering.timeId, gathering]));
@@ -528,10 +600,10 @@ function buildMovementGrid(
         const pool = fresh.length > 0 ? fresh : legalRooms;
         roomId = rng.pick(pool).id;
         circleRooms.set(circleIndex, roomId);
-        circleActivities.set(circleIndex, pickActivity(rng, roomId));
+        circleActivities.set(circleIndex, pickActivity(rng, roomId, overlay));
       }
       occupiedRooms.add(roomId);
-      const activity = circleActivities.get(circleIndex) ?? pickActivity(rng, roomId);
+      const activity = circleActivities.get(circleIndex) ?? pickActivity(rng, roomId, overlay);
       for (const member of members) {
         placements[member] = {
           locationId: roomId,
@@ -567,7 +639,8 @@ function buildItemStates(
   rng: SeededRandom,
   answer: Answer,
   movement: Record<string, Record<string, Placement>>,
-  gatherings: Gathering[]
+  gatherings: Gathering[],
+  overlay: OccasionOverlay
 ): Record<string, ItemState> {
   const answerTime = requireTime(answer.timeId);
   const states: Record<string, ItemState> = {};
@@ -586,6 +659,7 @@ function buildItemStates(
         .map((name) => LOCATIONS.find((location) => location.name === name)?.id)
         .filter((id): id is string => Boolean(id));
       homeLocationId = rng.pick(likelyIds.length > 0 ? likelyIds : [rng.pick(LOCATIONS).id]);
+      displayedForOccasion = overlay.displayCategories.includes(item.category) && rng.nextBool(0.35);
     }
     usedHomes.set(homeLocationId, (usedHomes.get(homeLocationId) ?? 0) + 1);
 
@@ -629,11 +703,43 @@ function buildItemStates(
   return states;
 }
 
+function buildItemHandlingEvents(
+  rng: SeededRandom,
+  answer: Answer,
+  movement: Record<string, Record<string, Placement>>,
+  states: Record<string, ItemState>,
+  overlay: OccasionOverlay
+): ItemHandlingEvent[] {
+  const candidates = rng.shuffle(ITEMS.filter((item) => !states[item.id].offsite));
+  const events: ItemHandlingEvent[] = [];
+  for (const item of candidates) {
+    if (events.length >= 3) break;
+    const latestOrder = item.id === answer.itemId ? requireTime(answer.timeId).order - 1 : 10;
+    const possible = TIME_PERIODS.flatMap((time) => {
+      if (time.order > latestOrder) return [];
+      return Object.entries(movement[time.id] ?? {})
+        .filter(([, placement]) => placement.locationId === states[item.id].homeLocationId && placement.social !== "away")
+        .map(([suspectId]) => ({ timeId: time.id, suspectId }));
+    });
+    if (possible.length === 0) continue;
+    const witness = rng.pick(possible);
+    events.push({
+      itemId: item.id,
+      suspectId: witness.suspectId,
+      locationId: states[item.id].homeLocationId,
+      timeId: witness.timeId,
+      action: rng.pick(overlay.itemActions),
+    });
+  }
+  return events;
+}
+
 function buildThreads(
   rng: SeededRandom,
   answer: Answer,
   arrival: WorldState["arrival"],
-  departures: WorldState["departures"]
+  departures: WorldState["departures"],
+  overlay: OccasionOverlay
 ): InnocentThread[] {
   const threads: InnocentThread[] = [];
   const count = rng.nextInt(2, 3);
@@ -658,7 +764,7 @@ function buildThreads(
         suspectIds: pickSuspects(1),
         locationId: rng.pick(threadRooms).id,
         timeId,
-        cause: rng.pick(ERRAND_CAUSES),
+        cause: rng.pick([...ERRAND_CAUSES, ...overlay.threadCauses]),
       });
     } else if (kind === "borrowed_item") {
       const item = rng.pick(ITEMS.filter((candidate) => candidate.id !== answer.itemId));
@@ -681,7 +787,7 @@ function buildThreads(
         suspectIds: pickSuspects(1),
         locationId: rng.pick([threadRooms.find((room) => room.id === "L04") ?? rng.pick(threadRooms), rng.pick(threadRooms)]).id,
         timeId,
-        cause: rng.pick(SURPRISE_CAUSES),
+        cause: rng.pick([...SURPRISE_CAUSES, ...overlay.threadCauses]),
       });
     }
   });
@@ -699,8 +805,8 @@ function hashSeed(seed: number, attempt: number): number {
   return h & 0x7fffffff;
 }
 
-function pickActivity(rng: SeededRandom, locationId: string): string {
-  const options = ROOM_ACTIVITIES[locationId] ?? ["passing the time"];
+function pickActivity(rng: SeededRandom, locationId: string, overlay?: OccasionOverlay): string {
+  const options = [...(ROOM_ACTIVITIES[locationId] ?? ["passing the time"]), ...(overlay?.roomActivities[locationId] ?? [])];
   return rng.pick(options);
 }
 

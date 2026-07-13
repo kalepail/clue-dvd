@@ -8,6 +8,8 @@
  * 3. Validation (ensure solvability and coherence)
  */
 
+import type { EvidenceCapsule } from "../shared/evidence";
+
 // ============================================
 // CORE ENUMS AND TYPES
 // ============================================
@@ -408,6 +410,8 @@ export interface GeneratedClue {
   speaker: ClueSpeaker;
   /** The clue text */
   text: string;
+  /** Canonical deterministic fact printed beside AI-authored narration. */
+  evidence?: EvidenceCapsule;
   /** Which act */
   act: NarrativeAct;
   /** What this clue eliminates */
@@ -436,8 +440,12 @@ export interface GeneratedDramaticEvent {
 export interface InspectorNote {
   /** Note ID */
   id: string;
+  /** Distinct deduction job for the two private notes. */
+  role?: "cross_index" | "late_discriminator";
   /** Note text */
   text: string;
+  /** Canonical deterministic fact printed beside AI-authored note prose. */
+  evidence?: EvidenceCapsule;
   /** Clue positions referenced by this note */
   relatedClues?: number[];
 }

@@ -68,6 +68,10 @@ export type Schedule = {
   finalCandidates: { suspects: string[]; items: string[]; locations: string[]; times: string[] };
   noteRelatedClues: { note1: number[]; note2: number[] };
   softScore: number;
+  /** Soft preference for leaving useful work to physical cards (lower wins). */
+  physicalFinishPenalty: number;
+  /** Number of hard-valid alternatives compared before selecting this one. */
+  candidatesConsidered: number;
   attempts: number;
 };
 
@@ -364,10 +368,12 @@ export function scheduleMystery(params: {
   answer: Answer;
   seed: number;
   maxAttempts?: number;
+  candidateCount?: number;
 }): Schedule | null {
   const { facts, answer } = params;
   const rng = new SeededRandom((params.seed ^ 0x5f3759df) >>> 1);
-  const maxAttempts = params.maxAttempts ?? 14;
+  const maxAttempts = params.maxAttempts ?? 40;
+  const candidateCount = Math.max(1, Math.trunc(params.candidateCount ?? 8));
   const killLists = buildKillLists(facts);
   const factById = new Map(facts.map((fact) => [fact.id, fact]));
   const answerCell = cellIndex(
@@ -377,7 +383,8 @@ export function scheduleMystery(params: {
     DIMS.times.indexOf(answer.timeId)
   );
 
-  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+  const candidates: Schedule[] = [];
+  for (let attempt = 1; attempt <= maxAttempts && candidates.length < candidateCount; attempt += 1) {
     // Prefer keeping a slot for one pure-color clue; late attempts may spend
     // all twelve reveals on constraining facts if the world demands it.
     const allowedConstraining = attempt <= Math.ceil(maxAttempts * 0.6) ? REVEAL_COUNT - 1 : REVEAL_COUNT;
@@ -414,7 +421,7 @@ export function scheduleMystery(params: {
 
     const aliveNames = (cells: Uint32Array, ids: readonly string[], toName: (id: string) => string): string[] =>
       ids.filter((_, index) => cells[index] > 0).map(toName);
-    return {
+    candidates.push({
       reveals: ordered,
       trajectory,
       finalCounts,
@@ -426,10 +433,31 @@ export function scheduleMystery(params: {
       },
       noteRelatedClues: relatedClues(ordered, factById),
       softScore: softPenalty(ordered.map((reveal) => factById.get(reveal.factId)!), answer),
+      physicalFinishPenalty: physicalFinishPenalty(finalCounts),
+      candidatesConsidered: 0,
       attempts: attempt,
-    };
+    });
   }
-  return null;
+  if (candidates.length === 0) return null;
+  candidates.sort((left, right) =>
+    left.physicalFinishPenalty - right.physicalFinishPenalty ||
+    left.softScore - right.softScore ||
+    scheduleSignature(left).localeCompare(scheduleSignature(right))
+  );
+  return { ...candidates[0], candidatesConsidered: candidates.length };
+}
+
+function scheduleSignature(schedule: Schedule): string {
+  return schedule.reveals.map((reveal) => `${reveal.factId}@${reveal.position}`).join("|");
+}
+
+function physicalFinishPenalty(counts: CategoryCounts): number {
+  // Fully solving an axis publicly makes that category's dealt cards inert.
+  // Within the already-proven final windows, prefer converged axes to retain
+  // two or three candidates rather than collapse to one. This is deliberately
+  // soft: hard fairness and feasibility remain the only acceptance gates.
+  return ([counts.items, counts.locations, counts.times] as number[])
+    .reduce((penalty, count) => penalty + (count <= CONVERGED_MAX ? CONVERGED_MAX - count : 0), 0);
 }
 
 function meetsFinalTarget(counts: CategoryCounts): boolean {
@@ -570,9 +598,11 @@ function selectFacts(
   // Convergence top-up: drive the two most tractable of items/locations/times
   // down to ≤ 3 candidates — every original mystery pins two or three
   // dimensions hard and leaves the rest to the dealt cards.
-  const convergeOrder = (["items", "locations", "times"] as const)
-    .map((axis) => ({ axis, count: grid.counts()[axis] }))
-    .sort((a, b) => a.count - b.count);
+  // Try different convergence shapes across search attempts. Best-of-K later
+  // chooses on physical-card usefulness and prose rhythm; no mutable recent-
+  // history target is injected into truth or fairness.
+  const convergeOrder = rng.shuffle(["items", "locations", "times"] as const)
+    .map((axis) => ({ axis, count: grid.counts()[axis] }));
   let converged = convergeOrder.filter((entry) => entry.count <= CONVERGED_MAX).length;
   for (const entry of convergeOrder) {
     if (converged >= CONVERGED_AXES_REQUIRED) break;
@@ -586,8 +616,30 @@ function selectFacts(
   if (finalNeed.suspects + finalNeed.items + finalNeed.locations + finalNeed.times > 0) return null;
   if (chosen.length > maxConstraining) return null;
 
+  // When two texture slots are available, prefer a complete innocent thread
+  // (suspicious setup, later payoff) over two unrelated one-line anecdotes.
+  // Both beats are mention-only, so this changes rhythm without changing the
+  // proven candidate trajectory.
+  const remainingSlots = REVEAL_COUNT - chosen.length;
+  if (remainingSlots >= 2) {
+    const completeThreads = [...new Set(colorFacts.map((fact) => fact.threadId).filter((id): id is string => Boolean(id)))]
+      .map((threadId) => colorFacts.filter((fact) => fact.threadId === threadId))
+      .filter((pair) => pair.some((fact) => fact.kind === "thread_setup") && pair.some((fact) => fact.kind === "thread_resolution"));
+    if (completeThreads.length > 0) {
+      const pair = rng.pick(completeThreads);
+      const setup = pair.find((fact) => fact.kind === "thread_setup")!;
+      const resolution = pair.find((fact) => fact.kind === "thread_resolution")!;
+      if (!used.has(setup.id)) add(setup);
+      if (!used.has(resolution.id) && chosen.length < REVEAL_COUNT) add(resolution);
+    }
+  }
+
   // Pad to 12 with color facts (pure narrative texture; they kill nothing).
-  const pads = rng.shuffle(colorFacts.filter((fact) => !used.has(fact.id)));
+  // A resolution is never admitted without its matching setup.
+  const selectedThreadIds = new Set(chosen.filter((fact) => fact.kind === "thread_setup").map((fact) => fact.threadId));
+  const pads = rng.shuffle(colorFacts.filter((fact) =>
+    !used.has(fact.id) && (fact.kind !== "thread_resolution" || selectedThreadIds.has(fact.threadId))
+  ));
   while (chosen.length < REVEAL_COUNT && pads.length > 0) add(pads.shift()!);
   if (chosen.length < REVEAL_COUNT) {
     // Not enough color facts: fill with harmless leftovers that stay in range.
@@ -655,6 +707,10 @@ function orderReveals(
         if (!isNote && needsNoteSlot(remaining, fact, position, noteAssigned)) return false;
         if (needsLate(fact) && position < 7) return false;
         if (isAnswerSolo(fact) && position < 11) return false;
+        if (
+          fact.kind === "thread_resolution" &&
+          remaining.some((candidate) => candidate.kind === "thread_setup" && candidate.threadId === fact.threadId)
+        ) return false;
         // Late-only facts must still fit in remaining legal slots.
         const lateOnly = remaining.filter((candidate) => candidate.id !== fact.id && isAnswerSolo(candidate)).length;
         if (lateOnly > Math.max(0, 12 - Math.max(position, 10))) return false;

@@ -13,6 +13,7 @@
  */
 
 import type { SeededRandom } from "../services/seeded-random";
+import type { EvidenceCapsule } from "../shared/evidence";
 import { ORIGINAL_MYSTERIES } from "./original-mysteries";
 import { ORIGINAL_MYSTERY_STYLE_GUIDE } from "./original-mystery-style";
 import { SUSPECTS } from "./game-elements";
@@ -26,6 +27,8 @@ export type StorySeed = {
   brief: string;
   /** Card names this clue is allowed to say out loud. */
   allowedNames: string[];
+  /** Deterministic fact the generated prose must faithfully convey. */
+  evidence: EvidenceCapsule;
 };
 
 export type DossierInput = {
@@ -122,13 +125,18 @@ Then write exactly ${butlerSeeds.length} butler testimonies, one per event below
 
 ${butlerSeeds.map((seed) => `Testimony ${seed.clueNumber}: ${seed.brief}\n  Card names you may use in this testimony: ${seed.allowedNames.length > 0 ? seed.allowedNames.join(", ") : "none — keep it generic"}.`).join("\n\n")}
 
+The deterministic fact printed beside each testimony is authoritative. Your prose may add voice, but must not contradict or broaden it:
+${butlerSeeds.map((seed) => `Testimony ${seed.clueNumber}: ${seed.evidence.statement}`).join("\n")}
+
 Then the two Inspector notes — one dry factual sentence each, no greetings, no first person:
 
 Note 1: ${note1?.brief ?? ""}
   Card names allowed: ${note1 && note1.allowedNames.length > 0 ? note1.allowedNames.join(", ") : "none"}.
+  Job: a cross-index note. State the exact fact so a player can connect it to the public testimony numbered in the case file; do not speculate.
 
 Note 2: ${note2?.brief ?? ""}
   Card names allowed: ${note2 && note2.allowedNames.length > 0 ? note2.allowedNames.join(", ") : "none"}.
+  Job: a late discriminator or reconciliation. State the exact fact crisply; if it resolves suspicious behavior, make the innocent explanation explicit.
 
 Construction habits from the original cases:
 ${ORIGINAL_MYSTERY_STYLE_GUIDE.map((rule) => `- ${rule}`).join("\n")}
@@ -153,6 +161,9 @@ export function buildClueRepairPrompt(params: {
     prompt: `The event to convey:
 ${params.seed.brief}
 
+Authoritative fact (do not contradict or broaden it):
+${params.seed.evidence.statement}
+
 Card names you may use: ${params.seed.allowedNames.length > 0 ? params.seed.allowedNames.join(", ") : "none — keep it generic"}.
 Other names allowed: Mr. Boddy, Ashe, Inspector Brown, Dr. Black. ${CAST_WHITELIST_NOTE}
 
@@ -176,13 +187,12 @@ Rewrite it: ${isNote ? "one dry factual sentence, third person" : "1-3 sentences
 export function buildClosingPrompt(params: {
   answerNames: { suspect: string; item: string; location: string; time: string };
   dossierTitle: string;
-  caseRecap: string[]; // ordered briefs of the revealed facts
-  finalCandidates?: { suspects: string[]; items: string[]; locations: string[]; times: string[] };
+  /** Complete public Butler record, in clue order. Never private notes. */
+  publicEvidence: EvidenceCapsule[];
   fewshotClosings: string[];
 }): { system: string; prompt: string } {
-  const field = params.finalCandidates;
   return {
-    system: `You are the reveal narrator of the 2006 Clue DVD Game, congratulating the detectives and laying out the solved case. Return structured data only.`,
+    system: `You are selecting the tone and two citations for the reveal of a solved 2006 Clue DVD Game case. Deterministic code will write every factual sentence. Return structured data only.`,
     prompt: `The case ("${params.dossierTitle}") is solved. The truth:
 WHO: ${params.answerNames.suspect}
 WHAT: the ${params.answerNames.item}
@@ -192,17 +202,16 @@ WHEN: ${params.answerNames.time}
 Closing narrations from the original disc:
 ${params.fewshotClosings.map((closing) => `"${closing}"`).join("\n\n")}
 
-The evidence that was revealed during play, in order:
-${params.caseRecap.map((entry, index) => `${index + 1}. ${entry}`).join("\n")}
-${field ? `
-After all of that evidence, the field still standing was:
-- suspects: ${field.suspects.join(", ")}
-- valuables: ${field.items.join(", ")}
-- rooms: ${field.locations.join(", ")}
-- hours: ${field.times.join(", ")}
-The detectives' own dealt cards settled those final distinctions, as always.
-` : ""}
-Write the closing narration, 3-5 sentences: congratulate the detectives briefly, then explain how the evidence pointed toward ${params.answerNames.suspect} taking the ${params.answerNames.item} from the ${params.answerNames.location} at ${params.answerNames.time}. Name all four explicitly. Ground the explanation ONLY in the evidence listed above — cite two or three of its strongest threads. Be honest about scope: the clues narrowed the field and the detectives' cards and wits closed it; never claim a card was "the only" remaining possibility unless the field above shows exactly that. Do not invent new facts.`,
+The complete public Butler record, in clue order:
+${params.publicEvidence.map((entry, index) => `${index + 1}. ${entry.factId}: ${entry.statement}`).join("\n")}
+
+This is a post-solve reconstruction from the complete public Butler record. A correct accusation may have happened before every Butler clue was summoned, so never claim that every statement was heard at the table. Private Inspector notes are not included and must not be quoted or implied.
+
+Return:
+- salute: one short, fact-free congratulatory sentence in the register of the examples (for example, "Splendid work, detectives."). Do not name a person, item, room, or hour and do not make an evidence claim.
+- citedFactIds: exactly two fact IDs copied from the public record above. Prefer formal facts that create useful boundaries around the solution; never invent an ID.
+
+Do not write the factual closing itself. Deterministic code will quote the selected facts verbatim, credit the detectives' dealt cards, suggestions, and deduction, and state that ${params.answerNames.suspect} took the ${params.answerNames.item} from the ${params.answerNames.location} at ${params.answerNames.time}.`,
   };
 }
 

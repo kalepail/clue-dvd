@@ -251,6 +251,7 @@ export default function PhonePlayerPage({ code, onNavigate }: Props) {
   const [actionContinueMessage, setActionContinueMessage] = useState<string | null>(null);
   const [pendingRevealConfirm, setPendingRevealConfirm] = useState(false);
   const [pendingSuggestionConfirm, setPendingSuggestionConfirm] = useState(false);
+  const [suggestionCategories, setSuggestionCategories] = useState<Array<"suspect" | "item" | "location" | "time">>(["suspect", "item", "location"]);
   const [interruptionConfirming, setInterruptionConfirming] = useState(false);
   const [accusationFeedback, setAccusationFeedback] = useState<{
     correct: boolean;
@@ -538,7 +539,7 @@ export default function PhonePlayerPage({ code, onNavigate }: Props) {
         setActionContinueMessage("Secret passage resolved on the host screen.");
         setShowActionContinue(true);
       } else if (action === "reveal_clue") {
-        setActionContinueMessage("Clue revealed on the host screen.");
+        setActionContinueMessage("Listen to Ashe, then privately take the top item card from the Butler's Pantry.");
         setShowActionContinue(true);
       } else if (action === "make_suggestion") {
         setActionContinueMessage("Make your suggestion. Continue when the table resolves it.");
@@ -564,6 +565,22 @@ export default function PhonePlayerPage({ code, onNavigate }: Props) {
       setTab("turn");
     } catch (err) {
       setActionStatus(err instanceof Error ? err.message : "Failed to submit accusation.");
+    }
+  };
+
+  const resolveAccusationPenalty = async (resolution: "paid" | "unable") => {
+    if (!player || !token || !accusationFeedback || accusationFeedback.correct) return;
+    setActionStatus("Recording item-card payment...");
+    try {
+      await sendPlayerAction(player.id, token, "turn_action", {
+        action: "resolve_accusation_penalty",
+        resolution,
+      });
+      setShowAccusationNotice(false);
+      setAccusationFeedback(null);
+      setActionStatus(null);
+    } catch (err) {
+      setActionStatus(err instanceof Error ? err.message : "Failed to record the item-card payment.");
     }
   };
 
@@ -767,8 +784,20 @@ export default function PhonePlayerPage({ code, onNavigate }: Props) {
 
   const confirmSuggestion = async () => {
     if (!player || !token) return;
+    if (suggestionCategories.length !== 3) return;
     setPendingSuggestionConfirm(false);
-    await sendAction("make_suggestion");
+    setActionStatus("Sending to host...");
+    try {
+      await sendPlayerAction(player.id, token, "turn_action", {
+        action: "make_suggestion",
+        categories: suggestionCategories,
+      });
+      setActionStatus(null);
+      setActionContinueMessage("Announce one physical card from each selected category. Continue after the table resolves the suggestion.");
+      setShowActionContinue(true);
+    } catch (err) {
+      setActionStatus(err instanceof Error ? err.message : "Failed to send suggestion.");
+    }
   };
 
   const confirmInterruption = async () => {
@@ -1241,14 +1270,14 @@ export default function PhonePlayerPage({ code, onNavigate }: Props) {
                 {interruptionConfirming ? "Sending..." : "Inspector Interruption"}
               </button>
             )}
-            {(showAccusationNotice || showActionContinue) && (
+            {(showAccusationNotice || showActionContinue) && !(showAccusationNotice && accusationFeedback && !accusationFeedback.correct) && (
               <button
                 type="button"
                 className="phone-end-turn"
                 onClick={handleContinueInvestigation}
                 style={plumButtonStyle}
               >
-                End Turn
+              {actionContinueMessage?.includes("secret passage") ? "Continue" : "End Turn"}
               </button>
             )}
           </div>
@@ -1685,7 +1714,7 @@ export default function PhonePlayerPage({ code, onNavigate }: Props) {
                         onClick={() => handleInspectorNoteSelect(noteId)}
                         disabled={!isRead && (!isPlayersTurn || !available)}
                       >
-                        {noteId === "N1" ? "Note 1" : "Note 2"} · {status}
+                        {noteId === "N1" ? "Note 1 · Cross-index" : "Note 2 · Late discriminator"} · {status}
                       </button>
                     );
                   })}
@@ -2104,8 +2133,35 @@ export default function PhonePlayerPage({ code, onNavigate }: Props) {
                     <div className="phone-action-card-dim" aria-hidden="true" />
                     <div className="phone-action-toast phone-action-toast-card phone-action-confirm phone-action-toast-large">
                       <div>
-                        {pendingRevealConfirm ? "Reveal the next clue?" : "Make a suggestion?"}
+                        {pendingRevealConfirm
+                          ? "Summon Ashe? Your pawn must be outside the Evidence Room. After the public testimony, privately take the top Butler's Pantry item card."
+                          : "Make a suggestion?"}
                       </div>
+                      {pendingSuggestionConfirm && (
+                        <>
+                          <div className="phone-subtitle">Include exactly three categories, then speak one physical card from each.</div>
+                          <div className="phone-button-row">
+                            {(["suspect", "item", "location", "time"] as const).map((category) => {
+                              const selected = suggestionCategories.includes(category);
+                              return (
+                                <button
+                                  key={category}
+                                  type="button"
+                                  className={`phone-button secondary ${selected ? "active" : ""}`}
+                                  aria-pressed={selected}
+                                  onClick={() => setSuggestionCategories((current) =>
+                                    current.includes(category)
+                                      ? current.filter((entry) => entry !== category)
+                                      : [...current, category]
+                                  )}
+                                >
+                                  {category === "suspect" ? "WHO" : category === "item" ? "WHAT" : category === "location" ? "WHERE" : "WHEN"}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </>
+                      )}
                       <div className="phone-button-row">
                         <button
                           type="button"
@@ -2123,6 +2179,7 @@ export default function PhonePlayerPage({ code, onNavigate }: Props) {
                           type="button"
                           className="phone-button"
                           onClick={pendingRevealConfirm ? confirmRevealClue : confirmSuggestion}
+                          disabled={pendingSuggestionConfirm && suggestionCategories.length !== 3}
                           style={plumButtonStyle}
                         >
                           Confirm
@@ -2138,6 +2195,21 @@ export default function PhonePlayerPage({ code, onNavigate }: Props) {
                     <div className="phone-action-toast phone-action-toast-card">
                       <div>{actionNoticeText}</div>
                       {actionNoticeSub && <div className="phone-subtitle">{actionNoticeSub}</div>}
+                      {showAccusationNotice && accusationFeedback && !accusationFeedback.correct && (
+                        <div className="phone-stack">
+                          <div className="phone-subtitle">
+                            Turn {4 - accusationFeedback.correctCount} item card{4 - accusationFeedback.correctCount === 1 ? "" : "s"} face up into the Evidence Room.
+                          </div>
+                          <div className="phone-button-row">
+                            <button type="button" className="phone-button" onClick={() => resolveAccusationPenalty("paid")}>
+                              Payment complete
+                            </button>
+                            <button type="button" className="phone-button ghost" onClick={() => resolveAccusationPenalty("unable")}>
+                              Cannot pay — eliminate me
+                            </button>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   </>
                 )}
@@ -2150,8 +2222,8 @@ export default function PhonePlayerPage({ code, onNavigate }: Props) {
                     disabled={!isPlayersTurn}
                     style={accentTileStyle}
                   >
-                    <div className="phone-action-title">Reveal Next Clue</div>
-                    <div className="phone-action-subtitle">Advance the investigation.</div>
+                    <div className="phone-action-title">Summon the Butler</div>
+                    <div className="phone-action-subtitle">Public testimony + private top Pantry item card. Not from the Evidence Room.</div>
                   </button>
                   <button
                     type="button"
@@ -2181,7 +2253,7 @@ export default function PhonePlayerPage({ code, onNavigate }: Props) {
                   >
                     <div className="phone-action-title">Use Secret Passage</div>
                     <div className="phone-action-subtitle">
-                      {secretPassageUsedThisTurn ? "Already used this turn." : "Risk it for a shortcut."}
+                      {secretPassageUsedThisTurn ? "Already used this turn." : "Move to the paired room, then choose one action."}
                     </div>
                   </button>
                   <button

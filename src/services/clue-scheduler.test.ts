@@ -37,6 +37,22 @@ describe("clue scheduler fair-play guarantees (seed sweep)", () => {
 
   it("schedules every seed within the world-attempt budget", () => {
     expect(results).toHaveLength(SWEEP_SEEDS);
+    expect(results.every(({ schedule }) => schedule.candidatesConsidered >= 1 && schedule.candidatesConsidered <= 8)).toBe(true);
+  });
+
+  it("best-of-K never scores worse than the first hard-valid schedule", () => {
+    const seed = 71;
+    const answer = randomAnswer(seed);
+    const world = simulateWorld({ seed, attempt: 1, answer, occasionFamily: "test occasion" });
+    const facts = harvestFacts(world);
+    const first = scheduleMystery({ facts, answer, seed, candidateCount: 1 });
+    const best = scheduleMystery({ facts, answer, seed, candidateCount: 8 });
+    if (!first || !best) return;
+    expect(
+      best.physicalFinishPenalty < first.physicalFinishPenalty ||
+      (best.physicalFinishPenalty === first.physicalFinishPenalty && best.softScore <= first.softScore)
+    ).toBe(true);
+    expect(best.candidatesConsidered).toBeGreaterThanOrEqual(1);
   });
 
   it("holds checkpoint A: at least 4 candidates everywhere after clue 5 + Note 1", () => {
@@ -96,6 +112,23 @@ describe("clue scheduler fair-play guarantees (seed sweep)", () => {
       expect(clueNumbers).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
     }
   });
+
+  it("never reveals an innocent-thread resolution before its setup", () => {
+    let stagedCases = 0;
+    for (const { schedule, factIds } of results) {
+      const positions = new Map(schedule.reveals.map((reveal) => [reveal.factId, reveal.position]));
+      for (const fact of factIds.values()) {
+        if (fact.kind !== "thread_resolution" || !fact.threadId || !positions.has(fact.id)) continue;
+        const setup = [...factIds.values()].find(
+          (candidate) => candidate.kind === "thread_setup" && candidate.threadId === fact.threadId
+        );
+        expect(setup).toBeDefined();
+        expect(positions.get(setup!.id)!).toBeLessThan(positions.get(fact.id)!);
+        stagedCases += 1;
+      }
+    }
+    expect(stagedCases).toBeGreaterThanOrEqual(30);
+  });
 });
 
 describe("world simulation invariants (seed sweep)", () => {
@@ -131,6 +164,32 @@ describe("world simulation invariants (seed sweep)", () => {
       }
       // Harvest asserts internally that no fact can rule out the answer.
       expect(() => harvestFacts(world)).not.toThrow();
+      for (const event of world.itemHandlingEvents) {
+        expect(event.action).not.toMatch(/^was\b/i);
+        expect(world.items[event.itemId].offsite).toBeNull();
+        expect(world.movement[event.timeId][event.suspectId].locationId).toBe(event.locationId);
+        if (event.itemId === answer.itemId) {
+          expect(requireTime(event.timeId).order).toBeLessThan(requireTime(answer.timeId).order);
+        }
+      }
     }
+  });
+
+  it("lets the occasion change day topology without changing the answer", () => {
+    let changed = 0;
+    for (let seed = 1; seed <= 24; seed += 1) {
+      const answer = randomAnswer(seed);
+      const arts = simulateWorld({ seed, attempt: 1, answer, occasionFamily: "private arts recital" });
+      const garden = simulateWorld({ seed, attempt: 1, answer, occasionFamily: "horticultural prize gathering" });
+      const fingerprint = (world: typeof arts) => JSON.stringify({
+        gatherings: world.gatherings.map((entry) => [entry.locationId, entry.label]),
+        activities: Object.values(world.movement).flatMap((slot) => Object.values(slot).map((entry) => entry.activity)),
+        threads: world.threads.map((thread) => thread.cause),
+        displays: Object.values(world.items).filter((item) => item.displayedForOccasion).map((item) => item.itemId),
+      });
+      if (fingerprint(arts) !== fingerprint(garden)) changed += 1;
+      expect(arts.answer).toEqual(garden.answer);
+    }
+    expect(changed).toBeGreaterThanOrEqual(20);
   });
 });

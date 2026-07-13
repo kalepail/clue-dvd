@@ -57,6 +57,7 @@ export interface LocalGame {
 
   // Revealed clues tracking
   revealedClueIds: string[];
+  pendingPantryDrawClueNumber: number | null;
 
   // Player setup
   players: {
@@ -74,6 +75,12 @@ export interface LocalGame {
   }[];
   currentTurnIndex: number;
   turnCount: number;
+  eliminatedSuspectIds: string[];
+  pendingAccusationPenalty: {
+    playerName: string;
+    playerSuspectId: string;
+    wrongCount: number;
+  } | null;
 
   // Secret passage tracking
   secretPassageUses: number;
@@ -206,7 +213,7 @@ function buildRoomUnlockMessage(game: LocalGame): string {
 // GAME STORE CLASS
 // ============================================
 
-class GameStore {
+export class GameStore {
   private games: Record<string, LocalGame>;
 
   constructor() {
@@ -324,11 +331,14 @@ class GameStore {
       currentPlayer: null,
       startedAt: null,
       revealedClueIds: [],
+      pendingPantryDrawClueNumber: null,
       players,
       phoneSessionCode,
       turnOrder: [],
       currentTurnIndex: 0,
       turnCount: 0,
+      eliminatedSuspectIds: [],
+      pendingAccusationPenalty: null,
       secretPassageUses: 0,
       secretPassageTurnUsedAt: null,
       interruptionCount: 0,
@@ -358,6 +368,9 @@ class GameStore {
     game.startedAt = new Date().toISOString();
     game.updatedAt = new Date().toISOString();
     game.interruptionCount = 0;
+    game.eliminatedSuspectIds ??= [];
+    game.pendingAccusationPenalty = null;
+    game.pendingPantryDrawClueNumber = null;
     game.nextInterruptionAtMinutes = getNextInterruptionMinute(0);
     game.roomsUnlocked = false;
     game.turnCount = 0;
@@ -398,6 +411,9 @@ class GameStore {
     const game = this.games[id];
     if (!game) throw new Error("Game not found");
     if (game.status !== "in_progress") throw new Error("Game not in progress");
+    if (game.pendingPantryDrawClueNumber) {
+      throw new Error("Acknowledge the previous Butler's Pantry draw first");
+    }
 
     const clueIndex = game.currentClueIndex;
     if (clueIndex >= game.scenario.clues.length) {
@@ -407,6 +423,7 @@ class GameStore {
     const clue = game.scenario.clues[clueIndex];
     game.currentClueIndex++;
     game.revealedClueIds.push(clue.id);
+    game.pendingPantryDrawClueNumber = clue.position;
     game.updatedAt = new Date().toISOString();
 
     // Add clue revealed action
@@ -414,6 +431,7 @@ class GameStore {
       clueNumber: clue.position,
       clueType: clue.type,
       clueText: clue.text,
+      evidenceStatement: clue.evidence?.statement,
     });
 
     // Check for dramatic event
@@ -428,12 +446,48 @@ class GameStore {
       });
     }
 
-    if (game.status === "in_progress") {
-      this.advanceTurn(game);
-    }
-
     saveGamesToStorage(this.games);
     return { game, clue, dramaticEvent };
+  }
+
+  /** Records the physical Butler's Pantry draw without learning card identity. */
+  acknowledgePantryDraw(id: string): void {
+    const game = this.games[id];
+    if (!game) throw new Error("Game not found");
+    const clueNumber = game.pendingPantryDrawClueNumber ?? game.currentClueIndex;
+    if (clueNumber < 1) throw new Error("No Butler testimony has been summoned");
+    const alreadyAcknowledged = game.actions.some(
+      (action) => action.actionType === "pantry_draw_acknowledged" && action.details.clueNumber === clueNumber
+    );
+    if (alreadyAcknowledged) return;
+    this.addAction(game, "pantry_draw_acknowledged", "system", {
+      clueNumber,
+      identityTracked: false,
+    });
+    game.pendingPantryDrawClueNumber = null;
+    if (game.status === "in_progress") this.advanceTurn(game);
+    saveGamesToStorage(this.games);
+  }
+
+  /** Logs only the three categories used; physical card choices stay at table. */
+  recordSuggestion(id: string, categories: string[]): void {
+    const game = this.games[id];
+    if (!game) throw new Error("Game not found");
+    if (game.status !== "in_progress") throw new Error("Game not in progress");
+    if (game.pendingPantryDrawClueNumber || game.pendingAccusationPenalty) {
+      throw new Error("Complete the current physical action before making a suggestion");
+    }
+    const allowed = new Set(["suspect", "item", "location", "time"]);
+    const distinct = [...new Set(categories)];
+    if (distinct.length !== 3 || distinct.some((category) => !allowed.has(category))) {
+      throw new Error("A suggestion must name cards from exactly three different categories");
+    }
+    this.addAction(game, "suggestion_made", game.turnOrder[game.currentTurnIndex]?.name ?? "Detective", {
+      categories: distinct,
+      omittedCategory: [...allowed].find((category) => !distinct.includes(category)),
+      cardIdentitiesTracked: false,
+    });
+    saveGamesToStorage(this.games);
   }
 
   useSecretPassage(id: string): {
@@ -443,12 +497,15 @@ class GameStore {
     const game = this.games[id];
     if (!game) throw new Error("Game not found");
     if (game.status !== "in_progress") throw new Error("Game not in progress");
+    if (game.pendingPantryDrawClueNumber || game.pendingAccusationPenalty) {
+      throw new Error("Complete the current physical action before using a passage");
+    }
 
     if (game.secretPassageTurnUsedAt === game.turnCount) {
       throw new Error("Secret passage already used this turn");
     }
-    const outcome = this.rollSecretPassageOutcome();
-    const description = this.buildSecretPassageDescription(game, outcome);
+    const outcome = "neutral" as const;
+    const description = "Move your pawn through the printed secret passage to its paired room. This is movement, not your turn action; choose one action after moving.";
     game.secretPassageUses += 1;
     game.secretPassageTurnUsedAt = game.turnCount;
 
@@ -468,6 +525,9 @@ class GameStore {
     const game = this.games[id];
     if (!game) throw new Error("Game not found");
     if (game.status !== "in_progress") throw new Error("Game not in progress");
+    if (game.pendingPantryDrawClueNumber || game.pendingAccusationPenalty) {
+      throw new Error("Complete the current physical action before an Inspector interruption");
+    }
 
     const message = buildInterruptionMessage(game);
     const currentCount = game.interruptionCount;
@@ -611,6 +671,12 @@ class GameStore {
     const game = this.games[id];
     if (!game) throw new Error("Game not found");
     if (game.status !== "in_progress") throw new Error("Game not in progress");
+    if (game.pendingPantryDrawClueNumber) {
+      throw new Error("Acknowledge the Butler's Pantry draw before making an accusation");
+    }
+    if (game.pendingAccusationPenalty) {
+      throw new Error("Resolve the previous accusation's item-card payment first");
+    }
 
     const solution = game.scenario.solution;
     const correct =
@@ -650,14 +716,16 @@ class GameStore {
       });
     } else {
       game.wrongAccusations++;
+      game.pendingAccusationPenalty = {
+        playerName: accusation.player,
+        playerSuspectId: accusation.playerSuspectId || "",
+        wrongCount,
+      };
       this.addAction(game, "accusation_wrong", accusation.player, {
         message: "Wrong accusation!",
         wrongAccusations: game.wrongAccusations,
+        itemCardsDue: wrongCount,
       });
-    }
-
-    if (game.status === "in_progress") {
-      this.advanceTurn(game);
     }
 
     game.updatedAt = new Date().toISOString();
@@ -683,6 +751,52 @@ class GameStore {
       wrongCount,
       solution: correct ? fullSolution : undefined,
     };
+  }
+
+  /**
+   * Completes the physical wrong-accusation ritual without recording card
+   * identities. The host/player declares whether the required item cards were
+   * paid; inability to pay removes that pawn from turn rotation.
+   */
+  resolveAccusationPenalty(id: string, resolution: "paid" | "unable"): void {
+    const game = this.games[id];
+    if (!game) throw new Error("Game not found");
+    const pending = game.pendingAccusationPenalty;
+    if (!pending) return;
+
+    if (resolution === "paid") {
+      this.addAction(game, "card_shown", pending.playerName, {
+        destination: "Evidence Room",
+        itemCardCount: pending.wrongCount,
+        identitiesTracked: false,
+        reason: "wrong_accusation",
+      });
+      game.pendingAccusationPenalty = null;
+      this.advanceTurn(game);
+    } else {
+      if (pending.playerSuspectId) {
+        game.eliminatedSuspectIds ??= [];
+        if (!game.eliminatedSuspectIds.includes(pending.playerSuspectId)) {
+          game.eliminatedSuspectIds.push(pending.playerSuspectId);
+        }
+        const removedIndex = game.turnOrder.findIndex((player) => player.suspectId === pending.playerSuspectId);
+        if (removedIndex >= 0) {
+          game.turnOrder = game.turnOrder.filter((player) => player.suspectId !== pending.playerSuspectId);
+          if (removedIndex < game.currentTurnIndex) game.currentTurnIndex -= 1;
+          if (game.turnOrder.length > 0) game.currentTurnIndex %= game.turnOrder.length;
+          else game.currentTurnIndex = 0;
+        }
+      }
+      this.addAction(game, "player_eliminated", pending.playerName, {
+        suspectId: pending.playerSuspectId,
+        reason: "unable_to_pay_item_card_penalty",
+        itemCardsDue: pending.wrongCount,
+      });
+      game.pendingAccusationPenalty = null;
+      game.turnCount += 1;
+      game.updatedAt = new Date().toISOString();
+    }
+    saveGamesToStorage(this.games);
   }
 
   // Get game history
@@ -750,36 +864,11 @@ class GameStore {
     const game = this.games[id];
     if (!game) throw new Error("Game not found");
     if (game.status !== "in_progress") throw new Error("Game not in progress");
+    if (game.pendingPantryDrawClueNumber || game.pendingAccusationPenalty) {
+      throw new Error("Complete the current physical action before ending the turn");
+    }
     this.advanceTurn(game);
     saveGamesToStorage(this.games);
-  }
-
-  private rollSecretPassageOutcome(): "good" | "neutral" | "bad" {
-    const roll = Math.random();
-    if (roll < 0.2) return "good";
-    if (roll < 0.8) return "neutral";
-    return "bad";
-  }
-
-  private buildSecretPassageDescription(
-    game: LocalGame,
-    outcome: "good" | "neutral" | "bad"
-  ): string {
-    const themeName = game.theme?.name || "the evening";
-    const openers = [
-      `A hidden panel slides aside during ${themeName}.`,
-      `You discover a concealed passage during ${themeName}.`,
-      `The wall shifts in silence as ${themeName} unfolds.`,
-    ];
-    const intro = openers[Math.floor(Math.random() * openers.length)];
-
-    if (outcome === "good") {
-      return `${intro} You may privately examine one card from any player of your choosing.`;
-    }
-    if (outcome === "bad") {
-      return `${intro} A misstep costs you. Reveal one of your own cards face up in the Evidence Room.`;
-    }
-    return `${intro} You slip through safely with no further consequence.`;
   }
 
   // Get full game data formatted for frontend
@@ -813,6 +902,7 @@ class GameStore {
         type: clue.type as "butler" | "inspector" | "observation",
         speaker: clue.speaker,
         text: clue.text,
+        evidence: clue.evidence,
       };
     });
 
@@ -859,8 +949,11 @@ class GameStore {
       currentClueIndex: game.currentClueIndex,
       totalClues: scenario.clues.length,
       cluesRemaining: scenario.clues.length - game.currentClueIndex,
+      pendingPantryDrawClueNumber: game.pendingPantryDrawClueNumber ?? null,
       phase: game.phase,
       wrongAccusations: game.wrongAccusations,
+      eliminatedSuspectIds: game.eliminatedSuspectIds ?? [],
+      pendingAccusationPenalty: game.pendingAccusationPenalty ?? null,
       currentPlayer: game.currentPlayer,
       eliminated,
       remaining,
@@ -903,7 +996,7 @@ export interface GameDataFormatted {
   nextInterruptionAtMinutes: number | null;
   roomsUnlocked: boolean;
   lockedRooms: string[];
-  inspectorNotes: { id: string; text: string; relatedClues?: number[] }[];
+  inspectorNotes: { id: string; role?: "cross_index" | "late_discriminator"; text: string; relatedClues?: number[]; evidence?: import("../../shared/evidence").EvidenceCapsule }[];
   readInspectorNotes: Record<string, string[]>;
   inspectorNoteAnnouncements: { note1: boolean; note2: boolean };
   inspectorNoteTurnUsedAt: Record<string, number>;
@@ -911,8 +1004,15 @@ export interface GameDataFormatted {
   currentClueIndex: number;
   totalClues: number;
   cluesRemaining: number;
+  pendingPantryDrawClueNumber: number | null;
   phase: GamePhase;
   wrongAccusations: number;
+  eliminatedSuspectIds: string[];
+  pendingAccusationPenalty: {
+    playerName: string;
+    playerSuspectId: string;
+    wrongCount: number;
+  } | null;
   currentPlayer: string | null;
   eliminated: EliminationState;
   remaining: RemainingCounts;
@@ -921,6 +1021,7 @@ export interface GameDataFormatted {
     type: "butler" | "inspector" | "observation";
     speaker: string;
     text: string;
+    evidence?: import("../../shared/evidence").EvidenceCapsule;
     eliminates?: EliminationState;
   }[];
   totalButlerClues: number;

@@ -24,7 +24,7 @@
  */
 
 import { requireItem, requireLocation, requireSuspect, requireTime, simulateWorld, type WorldState } from "./world-sim";
-import { harvestFacts, type Fact } from "./fact-harvest";
+import { buildEvidenceCapsule, harvestFacts, type Fact } from "./fact-harvest";
 import { scheduleMystery, type Schedule } from "./clue-scheduler";
 import {
   buildClosingPrompt,
@@ -45,10 +45,16 @@ import {
   type Dossier,
   type RenderedMystery,
 } from "./ai-mystery-schemas";
-import { verifyClosing, verifyClueText, verifyOpening, type TextVerification } from "./clue-verifier";
-import { callStructured, MysteryStageError, type StructuredCallResult } from "./ai-mystery-provider";
+import { findCardMentions, verifyClosing, verifyClueText, verifyOpening, type TextVerification } from "./clue-verifier";
+import {
+  callStructured,
+  MysteryStageError,
+  type MysteryProviderRuntime,
+  type StructuredCallResult,
+} from "./ai-mystery-provider";
 import type { MysterySetup } from "./ai-mystery-setup";
 import { SeededRandom } from "./seeded-random";
+import type { EvidenceCapsule } from "../shared/evidence";
 
 export const ENGINE_VERSION = "3.0-world";
 const MAX_WORLD_ATTEMPTS = 30;
@@ -91,7 +97,8 @@ export type MysteryProgressEvent = {
 export type MysteryEngineResult = {
   opening: string;
   butlerClues: string[];
-  inspectorNotes: Array<{ id: "N1" | "N2"; text: string; relatedClues: number[] }>;
+  butlerEvidence: EvidenceCapsule[];
+  inspectorNotes: Array<{ id: "N1" | "N2"; role: "cross_index" | "late_discriminator"; text: string; relatedClues: number[]; evidence: EvidenceCapsule }>;
   closing: string;
   mysterySignature: string;
 };
@@ -105,6 +112,8 @@ type StageDebug<T> = {
   usage?: { inputTokens?: number; outputTokens?: number };
   stopReason?: string;
   strictSchema?: boolean;
+  model?: string;
+  transport?: StructuredCallResult<T>["transport"];
 };
 
 export type MysteryEngineDebug = {
@@ -125,6 +134,7 @@ export type MysteryEngineDebug = {
   closing?: StageDebug<Closing>;
   verification?: TextVerification[];
   repairs?: Array<{ target: string; attempt: number; problems: string[]; before: string; after: string }>;
+  fallbacks?: Array<{ target: string; problems: string[]; replacement: string }>;
   unresolvedProblems?: TextVerification[];
   finalPackage?: MysteryEngineResult;
   failure?: { stage: string; message: string; status?: number; rawResponse?: string };
@@ -138,7 +148,7 @@ export function getLastMysteryEngineDebug(): MysteryEngineDebug | null {
   return lastMysteryEngineDebug;
 }
 
-export async function generateMysteryV2(apiKey: string, params: {
+export async function generateMysteryV2(providerSource: string | MysteryProviderRuntime, params: {
   setup: MysterySetup;
   recentSignatures?: string[];
   onProgress?: (event: MysteryProgressEvent) => void | Promise<void>;
@@ -146,6 +156,9 @@ export async function generateMysteryV2(apiKey: string, params: {
 }): Promise<MysteryEngineResult> {
   const startedAt = Date.now();
   const provider = params.provider ?? callStructured;
+  const providerCredentials = typeof providerSource === "string"
+    ? { apiKey: providerSource }
+    : { runtime: providerSource };
   const answer: Answer = { ...params.setup.solution };
   const recentSignatures = (params.recentSignatures ?? []).filter(Boolean).slice(0, 5);
   const occasionFamily = chooseOccasionFamily(params.setup.seed, recentSignatures);
@@ -208,6 +221,7 @@ export async function generateMysteryV2(apiKey: string, params: {
           ...fact.mentions.locations,
           ...fact.mentions.times,
         ],
+        evidence: buildEvidenceCapsule(fact),
       };
     });
     debug.storySeeds = storySeeds;
@@ -224,28 +238,28 @@ export async function generateMysteryV2(apiKey: string, params: {
       colorNotes: worldColorNotes(world),
     });
     const dossier = await provider({
-      apiKey,
+      ...providerCredentials,
       stage: "architect",
       ...dossierPrompt,
       toolName: "submit_case_dossier",
       toolDescription: "Submit the occasion dossier for a new Tudor Mansion case.",
       inputSchema: toToolInputSchema(DossierSchema),
       outputSchema: DossierSchema,
-      maxTokens: 900,
+      maxTokens: 3_200,
     });
     debug.dossier = toStageDebug(dossierPrompt, dossier);
 
     await emit("rendering", "Ashe is recalling the day, one testimony at a time.", 48);
     const renderPrompt = buildRenderPrompt({ dossier: dossier.value, seeds: storySeeds, fewshots });
     const render = await provider({
-      apiKey,
+      ...providerCredentials,
       stage: "renderer",
       ...renderPrompt,
       toolName: "submit_rendered_mystery",
       toolDescription: "Submit the opening, ten butler testimonies, and two Inspector notes.",
       inputSchema: toToolInputSchema(RenderedMysterySchema),
       outputSchema: RenderedMysterySchema,
-      maxTokens: 5_000,
+      maxTokens: 6_500,
     });
     debug.render = toStageDebug(renderPrompt, render);
 
@@ -256,24 +270,33 @@ export async function generateMysteryV2(apiKey: string, params: {
       location: requireLocation(answer.locationId).name,
       time: requireTime(answer.timeId).name,
     };
+    const publicEvidence = storySeeds
+      .filter((seed) => seed.deliverAs === "butler")
+      .sort((a, b) => (a.clueNumber ?? 0) - (b.clueNumber ?? 0))
+      .map((seed) => seed.evidence);
     const closingPrompt = buildClosingPrompt({
       answerNames,
       dossierTitle: dossier.value.title,
-      caseRecap: storySeeds.map((seed) => seed.brief),
-      finalCandidates: schedule.finalCandidates,
+      publicEvidence,
       fewshotClosings: fewshots.closings,
     });
     let closing = await provider({
-      apiKey,
+      ...providerCredentials,
       stage: "inspector",
       ...closingPrompt,
       toolName: "submit_case_closing",
-      toolDescription: "Submit the closing reveal narration.",
+      toolDescription: "Select a fact-free salute and two canonical public evidence IDs for the closing.",
       inputSchema: toToolInputSchema(ClosingSchema),
       outputSchema: ClosingSchema,
-      maxTokens: 800,
+      maxTokens: 1_200,
     });
     debug.closing = toStageDebug(closingPrompt, closing);
+    const renderClosing = (): string => assembleClosing(
+      closing.value,
+      publicEvidence,
+      answerNames,
+      params.setup.seed
+    );
 
     // ---- Deterministic verification + surgical repair ---------------------
     await emit("audit", "Checking every line against the verified card world.", 82);
@@ -282,7 +305,7 @@ export async function generateMysteryV2(apiKey: string, params: {
       clues: [...render.value.clues],
       note1: render.value.note1,
       note2: render.value.note2,
-      closing: closing.value.closing,
+      closing: renderClosing(),
     };
     const repairs: NonNullable<MysteryEngineDebug["repairs"]> = [];
     debug.repairs = repairs;
@@ -300,7 +323,7 @@ export async function generateMysteryV2(apiKey: string, params: {
           seed.deliverAs === "note1" ? texts.note1 : texts.note2;
         results.push(verifyClueText(text, seed));
       }
-      results.push(verifyClosing(texts.closing, answer));
+      results.push(verifyClosing(texts.closing, answer, publicEvidence));
       return results;
     };
 
@@ -316,23 +339,23 @@ export async function generateMysteryV2(apiKey: string, params: {
           const retryPrompt = buildClosingPrompt({
             answerNames,
             dossierTitle: dossier.value.title,
-            caseRecap: storySeeds.map((seed) => seed.brief),
-            finalCandidates: schedule.finalCandidates,
+            publicEvidence,
             fewshotClosings: fewshots.closings,
           });
           retryPrompt.prompt += `\n\nThe previous attempt had problems: ${entry.problems.join(" ")} Fix them.`;
           closing = await provider({
-            apiKey,
+            ...providerCredentials,
             stage: "inspector",
             ...retryPrompt,
             toolName: "submit_case_closing",
-            toolDescription: "Submit the corrected closing reveal narration.",
+            toolDescription: "Select a corrected fact-free salute and two canonical public evidence IDs.",
             inputSchema: toToolInputSchema(ClosingSchema),
             outputSchema: ClosingSchema,
-            maxTokens: 800,
+            maxTokens: 1_200,
           });
-          repairs.push({ target: "closing", attempt: round, problems: entry.problems, before: texts.closing, after: closing.value.closing });
-          texts.closing = closing.value.closing;
+          const correctedClosing = renderClosing();
+          repairs.push({ target: "closing", attempt: round, problems: entry.problems, before: texts.closing, after: correctedClosing });
+          texts.closing = correctedClosing;
           continue;
         }
         if (entry.target === "opening") {
@@ -344,8 +367,18 @@ export async function generateMysteryV2(apiKey: string, params: {
             clueNumber: null,
             brief: `${dossier.value.occasionSummary} End on the discovery that something has been stolen, without naming any card.`,
             allowedNames: [],
+            evidence: {
+              factId: "OPENING",
+              kind: "thread_color",
+              role: "context",
+              statement: "The gathering ended with the discovery that something was missing.",
+              suspectIds: [],
+              itemIds: [],
+              locationIds: [],
+              timeIds: [],
+            },
           };
-          const repaired = await repairText(provider, apiKey, openingSeed, texts.opening, entry.problems, fewshots.clues);
+          const repaired = await repairText(provider, providerSource, openingSeed, texts.opening, entry.problems, fewshots.clues);
           repairs.push({ target: "opening", attempt: round, problems: entry.problems, before: texts.opening, after: repaired });
           texts.opening = repaired;
           continue;
@@ -355,7 +388,7 @@ export async function generateMysteryV2(apiKey: string, params: {
         const current =
           seed.deliverAs === "butler" ? texts.clues[(seed.clueNumber ?? 1) - 1] :
           seed.deliverAs === "note1" ? texts.note1 : texts.note2;
-        const repaired = await repairText(provider, apiKey, seed, current, entry.problems, fewshots.clues);
+        const repaired = await repairText(provider, providerSource, seed, current, entry.problems, fewshots.clues);
         repairs.push({ target: entry.target, attempt: round, problems: entry.problems, before: current, after: repaired });
         if (seed.deliverAs === "butler") texts.clues[(seed.clueNumber ?? 1) - 1] = repaired;
         else if (seed.deliverAs === "note1") texts.note1 = repaired;
@@ -363,11 +396,28 @@ export async function generateMysteryV2(apiKey: string, params: {
       }
       verification = runVerification();
     }
+    // A model that still violates its card-name license after surgical repair
+    // cannot be allowed to add unscheduled evidence. Fall back to the exact
+    // deterministic capsule for that one line; the rest of the prose survives.
+    const fallbacks: NonNullable<MysteryEngineDebug["fallbacks"]> = [];
+    for (const entry of problematic()) {
+      if (entry.target === "closing") continue;
+      if (entry.target === "opening") {
+        texts.opening = "Mr. Boddy gathered his acquaintances at Tudor Mansion for a private occasion. Before the gathering ended, the household discovered that something had been stolen.";
+        fallbacks.push({ target: entry.target, problems: entry.problems, replacement: texts.opening });
+        continue;
+      }
+      const seed = seedFor(entry.target);
+      if (!seed) continue;
+      const replacement = seed.evidence.statement;
+      if (seed.deliverAs === "butler") texts.clues[(seed.clueNumber ?? 1) - 1] = replacement;
+      else if (seed.deliverAs === "note1") texts.note1 = replacement;
+      else texts.note2 = replacement;
+      fallbacks.push({ target: entry.target, problems: entry.problems, replacement });
+    }
+    debug.fallbacks = fallbacks;
+    verification = runVerification();
     debug.verification = verification;
-
-    // Never hard-fail on residual style problems: the puzzle is already
-    // sound. Log them for the diagnostics payload instead — with one
-    // exception: a closing that fails to name the answer is unusable.
     const unresolved = problematic();
     debug.unresolvedProblems = unresolved;
     const closingStillBroken = unresolved.find((entry) => entry.target === "closing");
@@ -381,9 +431,10 @@ export async function generateMysteryV2(apiKey: string, params: {
     const result: MysteryEngineResult = {
       opening: texts.opening.trim(),
       butlerClues: texts.clues.map((clue) => clue.trim()),
+      butlerEvidence: publicEvidence,
       inspectorNotes: [
-        { id: "N1", text: texts.note1.trim(), relatedClues: schedule.noteRelatedClues.note1 },
-        { id: "N2", text: texts.note2.trim(), relatedClues: schedule.noteRelatedClues.note2 },
+        { id: "N1", role: "cross_index", text: texts.note1.trim(), relatedClues: schedule.noteRelatedClues.note1, evidence: storySeeds.find((seed) => seed.deliverAs === "note1")!.evidence },
+        { id: "N2", role: "late_discriminator", text: texts.note2.trim(), relatedClues: schedule.noteRelatedClues.note2, evidence: storySeeds.find((seed) => seed.deliverAs === "note2")!.evidence },
       ],
       closing: texts.closing.trim(),
       mysterySignature: dossier.value.mysterySignature.trim(),
@@ -406,9 +457,50 @@ export async function generateMysteryV2(apiKey: string, params: {
 // Helpers
 // ---------------------------------------------------------------------------
 
+function assembleClosing(
+  plan: Closing,
+  publicEvidence: EvidenceCapsule[],
+  answerNames: { suspect: string; item: string; location: string; time: string },
+  seed: number
+): string {
+  const formalEvidence = publicEvidence.filter((evidence) => evidence.role === "formal");
+  const byId = new Map(formalEvidence.map((evidence) => [evidence.factId, evidence]));
+  const cited: EvidenceCapsule[] = [];
+  for (const factId of plan.citedFactIds) {
+    const evidence = byId.get(factId);
+    if (evidence && !cited.some((entry) => entry.factId === evidence.factId)) cited.push(evidence);
+  }
+  for (const evidence of formalEvidence) {
+    if (cited.length >= 2) break;
+    if (!cited.some((entry) => entry.factId === evidence.factId)) cited.push(evidence);
+  }
+
+  const fallbackSalutes = [
+    "Splendid work, detectives.",
+    "Excellent work, detectives.",
+    "Well done, detectives.",
+    "A fine piece of deduction, detectives.",
+  ];
+  const proposedSalute = plan.salute.trim();
+  const safeSalute =
+    proposedSalute.split(/\s+/).length <= 15 &&
+    findCardMentions(proposedSalute).length === 0 &&
+    /^(splendid|excellent|well done|congratulations|bravo|fine work|a fine piece of deduction)\b[^.!?]*[.!?]$/i.test(proposedSalute)
+      ? proposedSalute
+      : fallbackSalutes[Math.abs(Math.trunc(seed)) % fallbackSalutes.length];
+  const evidenceSentences = cited.slice(0, 2).map((evidence) => evidence.statement).join(" ");
+
+  return [
+    safeSalute,
+    evidenceSentences,
+    "Those public facts narrowed the field; the detectives' dealt cards, suggestions, and deduction closed it.",
+    `${answerNames.suspect} took the ${answerNames.item} from the ${answerNames.location} during ${answerNames.time}.`,
+  ].filter(Boolean).join(" ");
+}
+
 async function repairText(
   provider: StructuredCaller,
-  apiKey: string,
+  providerSource: string | MysteryProviderRuntime,
   seed: StorySeed,
   previousText: string,
   problems: string[],
@@ -416,7 +508,7 @@ async function repairText(
 ): Promise<string> {
   const prompt = buildClueRepairPrompt({ seed, previousText, problems, fewshotClues });
   const repaired = await provider({
-    apiKey,
+    ...(typeof providerSource === "string" ? { apiKey: providerSource } : { runtime: providerSource }),
     stage: "revision",
     ...prompt,
     toolName: "submit_repaired_text",
@@ -479,5 +571,7 @@ function toStageDebug<T>(
     usage: result.usage,
     stopReason: result.stopReason,
     strictSchema: result.strictSchema,
+    model: result.model,
+    transport: result.transport,
   };
 }

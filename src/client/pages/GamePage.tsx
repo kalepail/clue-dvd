@@ -23,6 +23,14 @@ interface Props {
   onMusicPauseChange?: (paused: boolean) => void;
 }
 
+type SuggestionCategory = "suspect" | "item" | "location" | "time";
+const SUGGESTION_CATEGORIES: Array<{ id: SuggestionCategory; label: string }> = [
+  { id: "suspect", label: "WHO" },
+  { id: "item", label: "WHAT" },
+  { id: "location", label: "WHERE" },
+  { id: "time", label: "WHEN" },
+];
+
 const suspectColorById: Record<string, string> = {
   S01: "#da3f55",
   S02: "#dbad38",
@@ -97,6 +105,7 @@ export default function GamePage({ gameId, onNavigate, onMusicPauseChange }: Pro
   const [latestClue, setLatestClue] = useState<{
     speaker: string;
     text: string;
+    evidence?: import("../../shared/evidence").EvidenceCapsule;
   } | null>(null);
   const [showClueReveal, setShowClueReveal] = useState(false);
   const [showAccusation, setShowAccusation] = useState(false);
@@ -131,6 +140,7 @@ export default function GamePage({ gameId, onNavigate, onMusicPauseChange }: Pro
   const [forceRevealSymbols, setForceRevealSymbols] = useState(false);
   const [hostNotice, setHostNotice] = useState<string | null>(null);
   const [showEndTurnConfirm, setShowEndTurnConfirm] = useState(false);
+  const [suggestionCategories, setSuggestionCategories] = useState<SuggestionCategory[]>(["suspect", "item", "location"]);
   const [pendingPhoneContinue, setPendingPhoneContinue] = useState<null | "use_secret_passage" | "make_suggestion" | "reveal_clue">(null);
   const previousTurnKey = useRef<string | null>(null);
   const gameRef = useRef<GameDataFormatted | null>(null);
@@ -268,6 +278,7 @@ export default function GamePage({ gameId, onNavigate, onMusicPauseChange }: Pro
               setShowAccusation(false);
               setPhoneAccusation(null);
               if (pendingPhoneContinueRef.current === "reveal_clue") {
+                gameStore.acknowledgePantryDraw(gameId);
                 setShowClueReveal(false);
                 setPendingPhoneContinue(null);
                 return;
@@ -290,6 +301,12 @@ export default function GamePage({ gameId, onNavigate, onMusicPauseChange }: Pro
             ) {
               handleRevealClueRef.current();
               setPendingPhoneContinue("reveal_clue");
+            } else if (action === "resolve_accusation_penalty" && currentGame.status === "in_progress") {
+              const resolution = event.payload.resolution === "unable" ? "unable" : "paid";
+              gameStore.resolveAccusationPenalty(gameId, resolution);
+              setShowAccusation(false);
+              setPhoneAccusation(null);
+              loadGameRef.current();
             } else if (action === "use_secret_passage" && currentGame.status === "in_progress") {
               handleSecretPassageRef.current();
               setPendingPhoneContinue("use_secret_passage");
@@ -313,6 +330,12 @@ export default function GamePage({ gameId, onNavigate, onMusicPauseChange }: Pro
             } else if (action === "show_story" && currentGame.status === "in_progress") {
               setShowNarrative((prev) => !prev);
             } else if (action === "make_suggestion" && currentGame.status === "in_progress") {
+              const categories = Array.isArray(event.payload.categories)
+                ? event.payload.categories.filter((category): category is SuggestionCategory =>
+                    typeof category === "string" && SUGGESTION_CATEGORIES.some((option) => option.id === category)
+                  )
+                : [];
+              if (categories.length === 3) setSuggestionCategories(categories);
               setShowEndTurnConfirm(true);
               setPendingPhoneContinue("make_suggestion");
             } else if (action === "acknowledge_interruption") {
@@ -578,6 +601,7 @@ export default function GamePage({ gameId, onNavigate, onMusicPauseChange }: Pro
         setLatestClue({
           speaker: result.clue.speaker,
           text: result.clue.text,
+          evidence: result.clue.evidence,
         });
         setShowClueReveal(true);
         playVoiceover(result.clue.text, role);
@@ -587,6 +611,16 @@ export default function GamePage({ gameId, onNavigate, onMusicPauseChange }: Pro
       setError(err instanceof Error ? err.message : "Failed to reveal clue");
     }
     setRevealingClue(false);
+  };
+
+  const closeClueReveal = () => {
+    try {
+      gameStore.acknowledgePantryDraw(gameId);
+      loadGame();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to record the Pantry draw");
+    }
+    setShowClueReveal(false);
   };
 
   const handleAccusation = async (accusation: {
@@ -621,6 +655,17 @@ export default function GamePage({ gameId, onNavigate, onMusicPauseChange }: Pro
       };
     } catch {
       return { correct: false, message: "Failed to make accusation", correctCount: 0, wrongCount: 4 };
+    }
+  };
+
+  const handleResolveAccusationPenalty = (resolution: "paid" | "unable") => {
+    try {
+      gameStore.resolveAccusationPenalty(gameId, resolution);
+      setShowAccusation(false);
+      setPhoneAccusation(null);
+      loadGame();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to resolve the accusation penalty");
     }
   };
 
@@ -739,10 +784,12 @@ export default function GamePage({ gameId, onNavigate, onMusicPauseChange }: Pro
 
   const handleEndTurn = () => {
     try {
+      gameStore.recordSuggestion(gameId, suggestionCategories);
       gameStore.endTurn(gameId);
       loadGame();
       setShowEndTurnConfirm(false);
       setPendingPhoneContinue(null);
+      setSuggestionCategories(["suspect", "item", "location"]);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to end turn");
     }
@@ -833,6 +880,10 @@ export default function GamePage({ gameId, onNavigate, onMusicPauseChange }: Pro
   const canReadNote1 = note1Available || readByCurrentPlayer.includes("N1");
   const canReadNote2 = note2Available || readByCurrentPlayer.includes("N2");
   const hasInspectorNoteAvailable = canReadNote1 || canReadNote2;
+  const revealedInspectorRecord = revealedNoteId
+    ? game.inspectorNotes.find((note) => note.id === revealedNoteId)
+    : undefined;
+  const revealedInspectorEvidence = revealedInspectorRecord?.evidence;
   const note1Status = readByCurrentPlayer.includes("N1")
     ? "Read"
     : note1Available
@@ -1061,8 +1112,8 @@ export default function GamePage({ gameId, onNavigate, onMusicPauseChange }: Pro
                     {[
                       {
                         key: "reveal",
-                        title: revealingClue ? "Revealing..." : "Reveal Clue",
-                        description: "Share the next clue with the group",
+                        title: revealingClue ? "Summoning..." : "Summon the Butler",
+                        description: "Outside Evidence Room · draw top Pantry item card",
                         icon: Search,
                         onClick: handleRevealClue,
                         disabled: revealingClue || cluesRemaining === 0 || isPhoneLobbyActive,
@@ -1079,7 +1130,7 @@ export default function GamePage({ gameId, onNavigate, onMusicPauseChange }: Pro
                       {
                         key: "passage",
                         title: "Secret Passage",
-                        description: "Use a hidden passage",
+                        description: "Move to its paired room, then take an action",
                         icon: DoorOpen,
                         onClick: handleSecretPassage,
                         disabled: isPhoneLobbyActive || secretPassageUsedThisTurn,
@@ -1289,9 +1340,50 @@ export default function GamePage({ gameId, onNavigate, onMusicPauseChange }: Pro
             setPhoneAccusation(null);
           }}
           onAccuse={handleAccusation}
+          onResolvePenalty={handleResolveAccusationPenalty}
           presetAccusation={phoneAccusation}
           autoSubmit={Boolean(phoneAccusation)}
         />
+      )}
+
+      {/* Recoverable physical payment prompt (survives refresh/reconnect). */}
+      {!showAccusation && game.pendingAccusationPenalty && (
+        <div className="game-modal-overlay">
+          <div className="game-modal">
+            <div className="game-modal-header">
+              <div className="game-modal-icon"><Gavel className="w-6 h-6" /></div>
+              <h3 className="game-modal-title">Complete the Accusation Penalty</h3>
+              <p className="game-modal-subtitle">
+                {game.pendingAccusationPenalty.playerName} owes {game.pendingAccusationPenalty.wrongCount} item card{game.pendingAccusationPenalty.wrongCount === 1 ? "" : "s"}.
+              </p>
+            </div>
+            <div className="game-modal-body">
+              <p className="game-modal-text">Place the item cards face up in the Evidence Room. The app records only the count, never their identities.</p>
+            </div>
+            <div className="game-modal-footer game-modal-footer-split">
+              <button className="game-modal-btn" onClick={() => handleResolveAccusationPenalty("paid")}>Payment complete</button>
+              <button className="game-modal-btn game-modal-btn-outline" onClick={() => handleResolveAccusationPenalty("unable")}>Cannot pay — eliminate player</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {!showClueReveal && !game.pendingAccusationPenalty && game.pendingPantryDrawClueNumber && (
+        <div className="game-modal-overlay">
+          <div className="game-modal">
+            <div className="game-modal-header">
+              <div className="game-modal-icon"><Search className="w-6 h-6" /></div>
+              <h3 className="game-modal-title">Complete the Butler Summon</h3>
+              <p className="game-modal-subtitle">Testimony {game.pendingPantryDrawClueNumber} is public; the physical draw is private.</p>
+            </div>
+            <div className="game-modal-body">
+              <p className="game-modal-text">The summoner takes the top item card from the Butler's Pantry. Do not show it and do not enter its identity in the app.</p>
+            </div>
+            <div className="game-modal-footer">
+              <button className="game-modal-btn" onClick={closeClueReveal}>I took the top Pantry item card</button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Secret Passage Modal */}
@@ -1303,11 +1395,7 @@ export default function GamePage({ gameId, onNavigate, onMusicPauseChange }: Pro
                 <DoorOpen className="w-6 h-6" />
               </div>
               <h3 className="game-modal-title">Secret Passage</h3>
-              <p className="game-modal-subtitle">
-                {secretPassageResult.outcome === "good" && "Fortune favors you."}
-                {secretPassageResult.outcome === "neutral" && "You pass unseen."}
-                {secretPassageResult.outcome === "bad" && "A complication arises."}
-              </p>
+              <p className="game-modal-subtitle">Use the passage shown on the physical board.</p>
             </div>
             <div className="game-modal-body">
               <p className="game-modal-text">{secretPassageResult.description}</p>
@@ -1383,8 +1471,8 @@ export default function GamePage({ gameId, onNavigate, onMusicPauseChange }: Pro
               <div className="game-modal-icon">
                 <Search className="w-6 h-6" />
               </div>
-              <h3 className="game-modal-title">New Clue Discovered</h3>
-              <p className="game-modal-subtitle">A fresh lead has emerged in the investigation.</p>
+              <h3 className="game-modal-title">Ashe's Testimony</h3>
+              <p className="game-modal-subtitle">Listen to the recollection, then record the exact fact.</p>
             </div>
             <div className="game-modal-body">
               <img
@@ -1396,10 +1484,11 @@ export default function GamePage({ gameId, onNavigate, onMusicPauseChange }: Pro
                 speaker={latestClue.speaker}
                 text={latestClue.text}
                 index={game.currentClueIndex}
+                evidence={latestClue.evidence}
               />
             </div>
             <div className="game-modal-footer">
-              <button className="game-modal-btn" onClick={() => setShowClueReveal(false)}>Continue</button>
+              <button className="game-modal-btn" onClick={closeClueReveal}>I took the top Pantry item card</button>
             </div>
           </div>
         </div>
@@ -1425,7 +1514,7 @@ export default function GamePage({ gameId, onNavigate, onMusicPauseChange }: Pro
                     onClick={() => handleSelectInspectorNote("N1")}
                   >
                     <span className="game-modal-note-label">Note 1</span>
-                    <span className="game-modal-note-status">{note1Status}</span>
+                    <span className="game-modal-note-status">Cross-index · {note1Status}</span>
                   </button>
                   <button
                     className="game-modal-note-btn"
@@ -1433,7 +1522,7 @@ export default function GamePage({ gameId, onNavigate, onMusicPauseChange }: Pro
                     onClick={() => handleSelectInspectorNote("N2")}
                   >
                     <span className="game-modal-note-label">Note 2</span>
-                    <span className="game-modal-note-status">{note2Status}</span>
+                    <span className="game-modal-note-status">Late discriminator · {note2Status}</span>
                   </button>
                 </div>
               )}
@@ -1448,9 +1537,15 @@ export default function GamePage({ gameId, onNavigate, onMusicPauseChange }: Pro
               {revealedInspectorNote && (
                 <div className="game-modal-revealed">
                   <span className="game-modal-revealed-label">
-                    Confidential {revealedNoteId ? `(${revealedNoteId})` : ""}
+                    Confidential {revealedNoteId ? `(${revealedNoteId})` : ""} · {revealedInspectorRecord?.role === "cross_index" ? "Cross-index" : "Late discriminator"}
                   </span>
                   <p className="game-modal-revealed-text">{revealedInspectorNote}</p>
+                  {revealedInspectorEvidence && (
+                    <div className="mt-4 rounded-md border border-primary/30 bg-primary/5 px-3 py-2 text-left">
+                      <span className="text-xs font-bold uppercase tracking-wider text-primary">Record exactly</span>
+                      <p className="mt-1 text-sm font-medium">{revealedInspectorEvidence.statement}</p>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -1475,7 +1570,31 @@ export default function GamePage({ gameId, onNavigate, onMusicPauseChange }: Pro
                 <MessageCircle className="w-6 h-6" />
               </div>
               <h3 className="game-modal-title">Make Suggestion</h3>
-              <p className="game-modal-subtitle">Announce your suggestion to the table. Once resolved, click Confirm to end your turn.</p>
+              <p className="game-modal-subtitle">Choose exactly three categories, then announce one physical card from each to the table.</p>
+            </div>
+            <div className="game-modal-body">
+              <div className="grid grid-cols-2 gap-2">
+                {SUGGESTION_CATEGORIES.map((category) => {
+                  const selected = suggestionCategories.includes(category.id);
+                  return (
+                    <button
+                      key={category.id}
+                      type="button"
+                      className={`game-modal-note-btn ${selected ? "is-selected" : ""}`}
+                      aria-pressed={selected}
+                      onClick={() => setSuggestionCategories((current) =>
+                        current.includes(category.id)
+                          ? current.filter((id) => id !== category.id)
+                          : [...current, category.id]
+                      )}
+                    >
+                      <span className="game-modal-note-label">{category.label}</span>
+                      <span className="game-modal-note-status">{selected ? "Included" : "Omitted"}</span>
+                    </button>
+                  );
+                })}
+              </div>
+              <p className="game-modal-hint">The app records categories only, never the card identities or table response.</p>
             </div>
             <div className="game-modal-footer">
               {pendingPhoneContinue === "make_suggestion" ? (
@@ -1483,7 +1602,7 @@ export default function GamePage({ gameId, onNavigate, onMusicPauseChange }: Pro
               ) : (
                 <>
                   <button className="game-modal-btn game-modal-btn-outline" onClick={() => setShowEndTurnConfirm(false)}>Cancel</button>
-                  <button className="game-modal-btn" onClick={handleEndTurn}>Confirm Suggestion</button>
+                  <button className="game-modal-btn" disabled={suggestionCategories.length !== 3} onClick={handleEndTurn}>Suggestion resolved — end turn</button>
                 </>
               )}
             </div>
