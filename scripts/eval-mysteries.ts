@@ -60,22 +60,35 @@ let ok = 0;
 const worldAttemptsHist = new Map<number, number>();
 const finals = { suspects: new Map<number, number>(), items: new Map<number, number>(), locations: new Map<number, number>(), times: new Map<number, number>() };
 const failures: number[] = [];
+const selectedKinds = new Map<string, number>();
+let selectedStaticAccounting = 0;
+let selectedRevealCount = 0;
 
-const bump = (map: Map<number, number>, key: number) => map.set(key, (map.get(key) ?? 0) + 1);
+const bump = <T>(map: Map<T, number>, key: T) => map.set(key, (map.get(key) ?? 0) + 1);
 
 for (let seed = 1; seed <= seedCount; seed += 1) {
   const answer = randomAnswer(seed);
   let schedule: Schedule | null = null;
+  let scheduledFacts: ReturnType<typeof harvestFacts> = [];
   let attempts = 0;
   for (attempts = 1; attempts <= 30 && !schedule; attempts += 1) {
     const world = simulateWorld({ seed, attempt: attempts, answer, occasionFamily: "eval occasion" });
-    schedule = scheduleMystery({ facts: harvestFacts(world), answer, seed: seed * 31 + attempts });
+    const facts = harvestFacts(world);
+    schedule = scheduleMystery({ facts, answer, seed: seed * 31 + attempts });
+    if (schedule) scheduledFacts = facts;
   }
   if (!schedule) {
     failures.push(seed);
     continue;
   }
   ok += 1;
+  const factById = new Map(scheduledFacts.map((fact) => [fact.id, fact]));
+  for (const reveal of schedule.reveals) {
+    const kind = factById.get(reveal.factId)?.kind ?? "unknown";
+    bump(selectedKinds, kind);
+    selectedRevealCount += 1;
+    if (kind === "item_intact" || kind === "room_undisturbed") selectedStaticAccounting += 1;
+  }
   bump(worldAttemptsHist, attempts - 1);
   bump(finals.suspects, schedule.finalCounts.suspects);
   bump(finals.items, schedule.finalCounts.items);
@@ -85,6 +98,8 @@ for (let seed = 1; seed <= seedCount; seed += 1) {
 
 const show = (map: Map<number, number>) =>
   [...map.entries()].sort((a, b) => a[0] - b[0]).map(([key, count]) => `${key}:${count}`).join(" ");
+const showStringMap = (map: Map<string, number>) =>
+  [...map.entries()].sort((a, b) => a[0].localeCompare(b[0])).map(([key, count]) => `${key}:${count}`).join(" ");
 
 console.log(`success: ${ok}/${seedCount} (${((ok / seedCount) * 100).toFixed(1)}%)  |  ${((Date.now() - t0) / seedCount).toFixed(1)} ms/mystery`);
 console.log(`world attempts: ${show(worldAttemptsHist)}`);
@@ -92,6 +107,8 @@ console.log(`final suspects: ${show(finals.suspects)}`);
 console.log(`final items:    ${show(finals.items)}`);
 console.log(`final locations:${show(finals.locations)}`);
 console.log(`final times:    ${show(finals.times)}`);
+console.log(`selected kinds: ${showStringMap(selectedKinds)}`);
+console.log(`static accounting: ${selectedStaticAccounting}/${selectedRevealCount} (${((selectedStaticAccounting / Math.max(1, selectedRevealCount)) * 100).toFixed(1)}%)`);
 if (failures.length > 0) console.log(`FAILED seeds: ${failures.join(", ")}`);
 
 // ---------------------------------------------------------------------------
@@ -136,6 +153,7 @@ if (aiCount > 0) {
     let repeatedOpeners = 0;
     let genericFlags = 0;
     let stagedThreadGames = 0;
+    let continuityLinks = 0;
     console.log(`\n### ${model} ###`);
     for (let index = 0; index < aiCount; index += 1) {
       const seed = 900_000 + index * 1_013;
@@ -160,6 +178,10 @@ if (aiCount > 0) {
           result.butlerEvidence.some((evidence) => evidence.kind === "thread_setup") &&
           result.butlerEvidence.some((evidence) => evidence.kind === "thread_resolution")
         ) stagedThreadGames += 1;
+        continuityLinks += debug.continuity?.beats.reduce(
+          (count, beat) => count + beat.earlierPublicRelations.length,
+          0
+        ) ?? 0;
         console.log(`\n--- seed ${seed} (${(durationMs / 1000).toFixed(1)}s) ---`);
         console.log(`answer: ${JSON.stringify(answer)}  worldAttempts: ${debug.schedule?.worldAttempts}  schedulesCompared: ${debug.schedule?.candidatesConsidered}`);
         console.log(`repairs: ${debug.repairs?.length ?? 0}  unresolved: ${debug.unresolvedProblems?.length ?? 0}`);
@@ -181,7 +203,7 @@ if (aiCount > 0) {
         console.error(`seed ${seed} FAILED:`, error instanceof Error ? error.message : error);
       }
     }
-    console.log(`\nSUMMARY ${model}: ${modelSuccesses}/${aiCount} succeeded; mean ${(totalDurationMs / Math.max(1, modelSuccesses) / 1000).toFixed(1)}s; repairs ${totalRepairs} (closing ${closingRepairs}); unresolved ${totalUnresolved}; repeated opener keys ${repeatedOpeners}; generic flags ${genericFlags}; staged-thread games ${stagedThreadGames}`);
+    console.log(`\nSUMMARY ${model}: ${modelSuccesses}/${aiCount} succeeded; mean ${(totalDurationMs / Math.max(1, modelSuccesses) / 1000).toFixed(1)}s; repairs ${totalRepairs} (closing ${closingRepairs}); unresolved ${totalUnresolved}; repeated opener keys ${repeatedOpeners}; generic flags ${genericFlags}; staged-thread games ${stagedThreadGames}; validated continuity links ${continuityLinks}`);
   }
 }
 

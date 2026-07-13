@@ -13,6 +13,7 @@
  */
 
 import type { SeededRandom } from "../services/seeded-random";
+import type { ScheduledCaseContinuity } from "../services/scheduled-case-continuity";
 import type { EvidenceCapsule } from "../shared/evidence";
 import { ORIGINAL_MYSTERIES } from "./original-mysteries";
 import { ORIGINAL_MYSTERY_STYLE_GUIDE } from "./original-mystery-style";
@@ -29,6 +30,8 @@ export type StorySeed = {
   allowedNames: string[];
   /** Deterministic fact the generated prose must faithfully convey. */
   evidence: EvidenceCapsule;
+  /** Links the two stages of a selected innocent thread, when present. */
+  threadId?: string;
 };
 
 export type DossierInput = {
@@ -94,6 +97,7 @@ Produce:
 export function buildRenderPrompt(params: {
   dossier: { title: string; occasionName: string; occasionSummary: string; hostReason: string };
   seeds: StorySeed[];
+  continuity: ScheduledCaseContinuity;
   fewshots: { openings: string[]; clues: string[]; notes: string[] };
 }): { system: string; prompt: string } {
   const butlerSeeds = params.seeds.filter((seed) => seed.deliverAs === "butler");
@@ -105,6 +109,25 @@ export function buildRenderPrompt(params: {
 ${params.dossier.occasionSummary}
 
 ${CAST_WHITELIST_NOTE}
+
+=== WHOLE-CASE WRITING MAP (PRIVATE, ANSWER-BLIND) ===
+
+The record below contains exactly the twelve facts already selected for this case — no hidden world, answer, candidate counts, or unselected facts. Reveal output still follows the testimony order below; this chronological view exists so the recollections can feel like parts of one day rather than isolated checklist sentences.
+
+Chronological selected record:
+${formatChronology(params.continuity)}
+
+Validated earlier-public connections:
+${formatConnections(params.continuity)}
+
+Use these connections as writing continuity, not as extra evidence. A Butler testimony may echo only the ordinary prop, mood, or household task of a listed earlier Butler clue. It must not restate that clue's card names unless they are independently licensed for the current testimony. Inspector notes may likewise connect only to listed earlier public testimony; private notes are never continuity sources.
+
+You have meaningful creative control inside each true event:
+- Embed shared-presence facts in a small occasion-specific activity performed by exactly the people already named, in the existing room and hour. Never add a person, extend the duration, or move anyone.
+- Frame item and room checks through Ashe's occasion-specific household work with ordinary non-card props — programmes, ribbons, scorecards, flowers, trays, costumes, or similarly appropriate details. Never add a handler, owner, room, hour, or sighting.
+- Reuse two or three ordinary motifs across the case where natural, but vary the action and sentence shape. Do not paste the same decorative phrase onto every clue.
+- Motive, opportunity, possession, access, deception, and guilt may appear only when the current event itself establishes them. Atmosphere must never become evidence.
+- The authoritative sentence remains the complete player-recordable claim. Added color may not change who, what, where, when, quantity, duration, polarity, source, or certainty.
 
 === HOW THE ORIGINAL GAME SOUNDS (match this register exactly) ===
 
@@ -154,8 +177,10 @@ export function buildClueRepairPrompt(params: {
   previousText: string;
   problems: string[];
   fewshotClues: string[];
+  continuity: ScheduledCaseContinuity;
 }): { system: string; prompt: string } {
   const isNote = params.seed.deliverAs !== "butler";
+  const continuityBeat = params.continuity.beats.find((beat) => beat.factId === params.seed.evidence.factId);
   return {
     system: `You are rewriting one ${isNote ? "Inspector's note" : "butler testimony"} for the 2006 Clue DVD Game. You do NOT know the case's answer. Return structured data only.`,
     prompt: `The event to convey:
@@ -176,8 +201,30 @@ ${params.problems.map((problem) => `- ${problem}`).join("\n")}
 Register examples from the original game:
 ${params.fewshotClues.map((clue) => `"${clue}"`).join("\n")}
 
+Whole-case continuity that remains safe for this line:
+${continuityBeat && continuityBeat.earlierPublicRelations.length > 0
+  ? continuityBeat.earlierPublicRelations.map((relation) => `- Earlier Butler clue ${relation.clueNumber} (${relation.factId}) shares ${relation.kinds.join(", ")}. Echo only ordinary scene texture; do not import its card names or claims.`).join("\n")
+  : "- No earlier public callback is licensed for this line."}
+
 Rewrite it: ${isNote ? "one dry factual sentence, third person" : "1-3 sentences of first-hand butler recollection"}, faithfully conveying the event and its exact scope, using only the allowed names.`,
   };
+}
+
+function formatChronology(continuity: ScheduledCaseContinuity): string {
+  const byId = new Map(continuity.beats.map((beat) => [beat.factId, beat]));
+  return continuity.chronologicalFactIds.map((factId) => {
+    const beat = byId.get(factId)!;
+    const label = beat.deliverAs === "butler" ? `Butler clue ${beat.clueNumber}` : beat.deliverAs === "note1" ? "Private Note 1" : "Private Note 2";
+    return `- ${factId} [${label}; reveal position ${beat.position}]: ${beat.evidence.statement}`;
+  }).join("\n");
+}
+
+function formatConnections(continuity: ScheduledCaseContinuity): string {
+  const lines = continuity.beats.flatMap((beat) => beat.earlierPublicRelations.map((relation) => {
+    const target = beat.deliverAs === "butler" ? `Butler clue ${beat.clueNumber}` : beat.deliverAs === "note1" ? "Private Note 1" : "Private Note 2";
+    return `- ${target} (${beat.factId}) may echo earlier Butler clue ${relation.clueNumber} (${relation.factId}): ${relation.kinds.join(", ")}.`;
+  }));
+  return lines.length > 0 ? lines.join("\n") : "- No selected facts have a safe earlier-public relationship; connect this case through occasion motifs only.";
 }
 
 // ---------------------------------------------------------------------------

@@ -1,13 +1,15 @@
 # Clue DVD Gameplay Research Index
 
 Date: 2026-07-13  
-Scope: repository-grounded research and planning; no product-code changes
+Scope: repository-grounded research, implementation, and measured follow-up
 
 ## Start here
 
 - [`GAMEPLAY_IMPROVEMENT_PLAN.md`](GAMEPLAY_IMPROVEMENT_PLAN.md) — reconciled concern ledger, target experience, architecture, roadmap, gates, and first tickets.
 - [`GAMEPLAY_RESEARCH_BRIEF.md`](GAMEPLAY_RESEARCH_BRIEF.md) — verified project map, rule corrections, measurements, and questions given to the panel.
 - [`EXTERNAL_DESIGN_EVIDENCE.md`](EXTERNAL_DESIGN_EVIDENCE.md) — official-rule and primary-research evidence, with project-specific inferences clearly separated.
+- [`IMPLEMENTATION_REPORT.md`](IMPLEMENTATION_REPORT.md) — the first gameplay implementation slice and live provider qualification.
+- [`NARRATIVE_CONTINUITY_REPORT.md`](NARRATIVE_CONTINUITY_REPORT.md) — recording/artifact analysis, second Solo panel, truthful continuity implementation, and fixed-seed unified-billing results.
 
 ## Independent high-reasoning panel
 

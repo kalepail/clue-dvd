@@ -133,6 +133,7 @@ describe("clue scheduler fair-play guarantees (seed sweep)", () => {
 
 describe("world simulation invariants (seed sweep)", () => {
   it("embeds the theft consistently and never contradicts the answer", () => {
+    let mixedHomeBundles = 0;
     for (let seed = 1; seed <= SWEEP_SEEDS; seed += 1) {
       const answer = randomAnswer(seed);
       const world = simulateWorld({ seed, attempt: 1, answer, occasionFamily: "test occasion" });
@@ -163,7 +164,18 @@ describe("world simulation invariants (seed sweep)", () => {
         expect(requireTime(world.discovery.timeId).order).toBeGreaterThan(requireTime(answer.timeId).order);
       }
       // Harvest asserts internally that no fact can rule out the answer.
-      expect(() => harvestFacts(world)).not.toThrow();
+      const facts = harvestFacts(world);
+      expect(facts.length).toBeGreaterThan(0);
+      for (const fact of facts.filter((candidate) => candidate.kind === "item_intact" && candidate.itemIds.length > 1)) {
+        const homes = new Set(fact.itemIds.map((itemId) => world.items[itemId].homeLocationId));
+        if (homes.size > 1) {
+          mixedHomeBundles += 1;
+          expect(fact.locationIds).toEqual([]);
+          expect(fact.mentions.locations).toEqual([]);
+        } else if (fact.locationIds.length > 0) {
+          expect(fact.locationIds).toEqual([...homes]);
+        }
+      }
       for (const event of world.itemHandlingEvents) {
         expect(event.action).not.toMatch(/^was\b/i);
         expect(world.items[event.itemId].offsite).toBeNull();
@@ -173,6 +185,7 @@ describe("world simulation invariants (seed sweep)", () => {
         }
       }
     }
+    expect(mixedHomeBundles).toBeGreaterThan(0);
   });
 
   it("lets the occasion change day topology without changing the answer", () => {

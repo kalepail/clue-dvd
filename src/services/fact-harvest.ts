@@ -459,19 +459,27 @@ export function harvestFacts(world: WorldState): Fact[] {
       const isAnswerAnchor = item.id === world.answer.itemId;
       const bundledIds = isAnswerAnchor ? [item.id, ...world.decoyItemIds] : [item.id];
       const bundledNames = bundledIds.map(names.item);
+      // A last-seen bundle can combine the answer item with decoys that live
+      // in different rooms. Never license the answer item's room as though it
+      // applied to every bundled piece; the formal item-intact semantics are
+      // location-agnostic. Keep the room only when it is true for the entire
+      // bundle (always true for the ordinary single-item path).
+      const sharedHomeLocation = bundledIds.every(
+        (bundledId) => world.items[bundledId]?.homeLocationId === state.homeLocationId
+      ) ? state.homeLocationId : null;
       facts.push({
         id: nextId(),
         kind: "item_intact",
         primaryAxis: "item",
         suspectIds: [],
         itemIds: bundledIds,
-        locationIds: [state.homeLocationId],
+        locationIds: sharedHomeLocation ? [sharedHomeLocation] : [],
         timeIds: [sighting.timeId],
         cutoffOrder: requireTime(sighting.timeId).order,
         mentions: {
           suspects: sighting.witness === "staff" ? ["Mrs. White"] : [],
           items: bundledNames,
-          locations: [names.location(state.homeLocationId)],
+          locations: sharedHomeLocation ? [names.location(sharedHomeLocation)] : [],
           times: [names.time(sighting.timeId)],
         },
         writerBrief: isAnswerAnchor && bundledIds.length > 1

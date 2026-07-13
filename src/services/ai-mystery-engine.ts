@@ -55,6 +55,10 @@ import {
 import type { MysterySetup } from "./ai-mystery-setup";
 import { SeededRandom } from "./seeded-random";
 import type { EvidenceCapsule } from "../shared/evidence";
+import {
+  buildScheduledCaseContinuity,
+  type ScheduledCaseContinuity,
+} from "./scheduled-case-continuity";
 
 export const ENGINE_VERSION = "3.0-world";
 const MAX_WORLD_ATTEMPTS = 30;
@@ -129,6 +133,8 @@ export type MysteryEngineDebug = {
   facts?: Fact[];
   schedule?: Schedule & { worldAttempts: number };
   storySeeds?: StorySeed[];
+  /** Selected-facts-only chronology and safe earlier-public relationships. */
+  continuity?: ScheduledCaseContinuity;
   dossier?: StageDebug<Dossier>;
   render?: StageDebug<RenderedMystery>;
   closing?: StageDebug<Closing>;
@@ -222,9 +228,12 @@ export async function generateMysteryV2(providerSource: string | MysteryProvider
           ...fact.mentions.times,
         ],
         evidence: buildEvidenceCapsule(fact),
+        threadId: fact.threadId,
       };
     });
     debug.storySeeds = storySeeds;
+    const continuity = buildScheduledCaseContinuity(storySeeds);
+    debug.continuity = continuity;
 
     // ---- AI phase (answer-blind until the closing) ------------------------
     const fewshotRng = new SeededRandom(params.setup.seed ^ 0x2c1b3c6d);
@@ -250,7 +259,7 @@ export async function generateMysteryV2(providerSource: string | MysteryProvider
     debug.dossier = toStageDebug(dossierPrompt, dossier);
 
     await emit("rendering", "Ashe is recalling the day, one testimony at a time.", 48);
-    const renderPrompt = buildRenderPrompt({ dossier: dossier.value, seeds: storySeeds, fewshots });
+    const renderPrompt = buildRenderPrompt({ dossier: dossier.value, seeds: storySeeds, continuity, fewshots });
     const render = await provider({
       ...providerCredentials,
       stage: "renderer",
@@ -378,7 +387,7 @@ export async function generateMysteryV2(providerSource: string | MysteryProvider
               timeIds: [],
             },
           };
-          const repaired = await repairText(provider, providerSource, openingSeed, texts.opening, entry.problems, fewshots.clues);
+          const repaired = await repairText(provider, providerSource, openingSeed, texts.opening, entry.problems, fewshots.clues, continuity);
           repairs.push({ target: "opening", attempt: round, problems: entry.problems, before: texts.opening, after: repaired });
           texts.opening = repaired;
           continue;
@@ -388,7 +397,7 @@ export async function generateMysteryV2(providerSource: string | MysteryProvider
         const current =
           seed.deliverAs === "butler" ? texts.clues[(seed.clueNumber ?? 1) - 1] :
           seed.deliverAs === "note1" ? texts.note1 : texts.note2;
-        const repaired = await repairText(provider, providerSource, seed, current, entry.problems, fewshots.clues);
+        const repaired = await repairText(provider, providerSource, seed, current, entry.problems, fewshots.clues, continuity);
         repairs.push({ target: entry.target, attempt: round, problems: entry.problems, before: current, after: repaired });
         if (seed.deliverAs === "butler") texts.clues[(seed.clueNumber ?? 1) - 1] = repaired;
         else if (seed.deliverAs === "note1") texts.note1 = repaired;
@@ -504,9 +513,10 @@ async function repairText(
   seed: StorySeed,
   previousText: string,
   problems: string[],
-  fewshotClues: string[]
+  fewshotClues: string[],
+  continuity: ScheduledCaseContinuity
 ): Promise<string> {
-  const prompt = buildClueRepairPrompt({ seed, previousText, problems, fewshotClues });
+  const prompt = buildClueRepairPrompt({ seed, previousText, problems, fewshotClues, continuity });
   const repaired = await provider({
     ...(typeof providerSource === "string" ? { apiKey: providerSource } : { runtime: providerSource }),
     stage: "revision",

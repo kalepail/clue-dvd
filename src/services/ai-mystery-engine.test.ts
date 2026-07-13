@@ -135,6 +135,21 @@ describe("world-first AI mystery engine V3", () => {
     expect(closingText).toContain(answerNames.item);
   });
 
+  it("builds whole-case continuity from exactly the scheduled facts", async () => {
+    const { provider } = buildMockProvider();
+    await generateMysteryV2("test-key", { setup, provider });
+    const debug = getLastMysteryEngineDebug()!;
+    const scheduledIds = debug.schedule!.reveals.map((reveal) => reveal.factId);
+
+    expect(debug.continuity!.revealFactIds).toEqual(scheduledIds);
+    expect(new Set(debug.continuity!.chronologicalFactIds)).toEqual(new Set(scheduledIds));
+    const serialized = JSON.stringify(debug.continuity!);
+    expect(serialized).not.toContain("finalCounts");
+    expect(serialized).not.toContain("candidate");
+    expect(serialized).not.toContain("decoy");
+    expect(Object.keys(debug.continuity!).sort()).toEqual(["beats", "chronologicalFactIds", "revealFactIds"]);
+  });
+
   it("proves the fair-play schedule before any model call", async () => {
     const { provider } = buildMockProvider();
     await generateMysteryV2("test-key", { setup, provider });

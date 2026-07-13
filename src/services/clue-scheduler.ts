@@ -10,7 +10,8 @@
  * Hard fair-play targets (per-category candidate projections):
  *  - after position 6  (5 clues + Note 1): every category has ≥ 4 candidates
  *  - after position 9  (7 clues + both notes): every category has ≥ 3
- *  - after position 12: suspects 2–4, items 2–3, locations 2–3, times 2–3
+ *  - after position 12: suspects 3–6, items 2–5, locations 2–6, times 1–4,
+ *    with at least two of item/location/time at three or fewer
  *  - the answer cell is alive at every step (asserted; true facts cannot kill it)
  *  - constraining facts that mention an answer card appear at position ≥ 7
  *  - a solo sighting of the answer suspect at the answer time appears only as
@@ -792,6 +793,19 @@ function softPenalty(orderedFacts: Fact[], answer: Answer): number {
     ) {
       penalty += 1;
     }
+  }
+  // Static accounting is often essential to the proof, but a case dominated
+  // by item inventories and post-discovery room sweeps reads like a checklist.
+  // This is a tie-breaker only: every candidate already satisfies the same
+  // hard truth and fair-play gates, and no reveal position requires a type.
+  const staticAccounting = orderedFacts.filter(
+    (fact) => fact.kind === "item_intact" || fact.kind === "room_undisturbed"
+  ).length;
+  penalty += Math.max(0, staticAccounting - 4) * 6;
+  for (let index = 1; index < orderedFacts.length; index += 1) {
+    const previousStatic = orderedFacts[index - 1].kind === "item_intact" || orderedFacts[index - 1].kind === "room_undisturbed";
+    const currentStatic = orderedFacts[index].kind === "item_intact" || orderedFacts[index].kind === "room_undisturbed";
+    if (previousStatic && currentStatic) penalty += 1;
   }
   const mentionCounts = new Map<string, number>();
   for (const fact of orderedFacts) {

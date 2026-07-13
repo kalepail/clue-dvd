@@ -6,7 +6,7 @@
 
 ## The idea in one paragraph
 
-Every earlier engine asked one system to be both the logician and the novelist, and each failed on one side or the other. V3 separates them. Deterministic code simulates a full ground-truth day at Tudor Mansion, harvests every tellable TRUE fact with precise joint-space semantics, and a solver picks WHICH 10 facts become butler clues and 2 become Inspector notes — proving the fair-play pacing against all 12,100 possible solutions before a single word of prose exists. Only then does the AI write: an answer-blind dossier and renderer dress the chosen facts in Ashe's voice (few-shot on the ten original DVD mysteries), and a final answer-aware call writes the closing reveal. The prose model can't telegraph the answer because it never sees the answer, candidate counts, or any elimination data.
+Every earlier engine asked one system to be both the logician and the novelist, and each failed on one side or the other. V3 separates them. Deterministic code simulates a full ground-truth day at Tudor Mansion, harvests every tellable TRUE fact with precise joint-space semantics, and a solver picks WHICH 10 facts become butler clues and 2 become Inspector notes — proving the fair-play pacing against all 12,100 possible solutions before a single word of prose exists. The engine then derives a selected-facts-only chronology and safe earlier-public relationships. Only then does the AI write: an answer-blind dossier and renderer dress the chosen facts in Ashe's voice (few-shot on the ten original DVD mysteries). A final answer-aware call selects a safe salute and public citations; deterministic code assembles the exact solution. The clue writer can't telegraph the answer because it never sees the answer, candidate counts, or elimination data.
 
 ## Pipeline
 
@@ -19,16 +19,28 @@ deterministic  1. world-sim.ts        seeded day: movement grid (social circles,
                                       factKillsCell() is the single semantics definition
                3. clue-scheduler.ts   joint-grid solver (12,100 cells) selects + orders
                                       reveals; retries cost microseconds
-        AI     4. dossier             answer-blind: occasion, title, signature
-               5. render              answer-blind: opening + 10 clues + 2 notes,
+               4. scheduled-case-     selected-facts-only chronology and structural
+                  continuity.ts       links; private notes are never callback sources
+        AI     5. dossier             answer-blind: occasion, title, signature
+               6. render              answer-blind: opening + 10 clues + 2 notes,
                                       few-shot on data/mysteries.json corpus
-               6. closing             the ONLY answer-aware prose
-deterministic  7. clue-verifier.ts    card-name discipline per mention license;
+               7. closing             answer-aware salute + public citation IDs only
+deterministic  8. clue-verifier.ts    card-name discipline per mention license;
                                       failures re-render ONE clue (max 2×), never
                                       the whole mystery
+               9. closing assembly    capsule-backed citations + exact solution
 ```
 
-Three Sonnet calls in the typical case; +1 small call per repaired line.
+Three provider calls in the typical case; +1 small call per repaired line. The continuity layer adds no model call.
+
+## Narration and evidence boundary
+
+- The renderer sees exactly the 12 scheduled facts, in reveal order and chronological order. It never receives raw `WorldState`, the answer, decoy metadata, candidate counts, kill effects, or unselected facts.
+- Structural connections use only shared selected entities, times, or selected thread IDs. A callback source must be an earlier public Butler clue; an Inspector note is never a source.
+- A connection licenses continuity of mood, ordinary props, or household activity. It does not widen the current clue's card-name allowlist or authorize another clue's factual claim.
+- Occasion color may make a true event feel lived-in, but may not change who, what, where, when, quantity, duration, polarity, source, or certainty.
+- The narration is context. The deterministic evidence capsule shown as “Write this down” is the canonical player-recordable claim.
+- The verifier proves card-name discipline and output shape; it does not claim to prove arbitrary natural-language entailment. A line that remains invalid after two repairs falls back to its exact capsule.
 
 ## Fair-play guarantees (machine-proven per generation)
 
@@ -44,6 +56,7 @@ Three Sonnet calls in the typical case; +1 small call per repaired line.
 - `src/services/world-sim.ts` — seeded WorldState generator.
 - `src/services/fact-harvest.ts` — fact taxonomy, semantics, mention licenses.
 - `src/services/clue-scheduler.ts` — joint-space solver, checkpoints, ordering.
+- `src/services/scheduled-case-continuity.ts` — selected-case chronology and safe public callback graph.
 - `src/services/ai-mystery-engine.ts` — orchestration, progress, diagnostics.
 - `src/services/clue-verifier.ts` — deterministic prose checks + repair targets.
 - `src/services/ai-mystery-provider.ts` — structured Sonnet calls (unchanged from V2).
@@ -52,7 +65,7 @@ Three Sonnet calls in the typical case; +1 small call per repaired line.
 
 ## API and diagnostics
 
-Unchanged surface: `POST /api/scenarios/generate-stream` (NDJSON progress), `POST /api/scenarios/generate`, `GET /api/scenarios/last-ai.json`, `GET /api/scenarios/last-ai-stages.json`. The stages payload now contains the simulated world, harvested facts, the proven schedule with its full candidate-count trajectory, story seeds, each prompt/response, verification results, and per-line repairs. It contains the hidden answer — local development only.
+Unchanged surface: `POST /api/scenarios/generate-stream` (NDJSON progress), `POST /api/scenarios/generate`, `GET /api/scenarios/last-ai.json`, `GET /api/scenarios/last-ai-stages.json`. The stages payload now contains the simulated world, harvested facts, the proven schedule with its full candidate-count trajectory, story seeds, scheduled-case continuity, each prompt/response, verification results, and per-line repairs. It contains the hidden answer — local development only.
 
 ## Testing
 
