@@ -7,9 +7,11 @@ import {
   classifyActionResult,
   loadActionEventIds,
   persistActionEventIds,
+  restorePassageState,
   shouldBlockPassageSubmit,
   type TurnActionResult,
 } from "./action-results";
+import { generatePassageRequestId } from "../../phone/utils";
 import { clearStoredPlayer, loadStoredPlayer } from "./storage";
 import {
   itemImageById,
@@ -273,6 +275,10 @@ export default function PhonePlayerPage({ code, onNavigate }: Props) {
   const lastActionResultSeenRef = useRef<string | null>(null);
   const latestActionResultRef = useRef<TurnActionResult | null>(null);
   const lastPassageEventIdRef = useRef<number | null>(null);
+  const passageRequestIdRef = useRef<string | null>(null);
+  const passageTurnNumberRef = useRef<number | null>(null);
+  const passageUsedTurnNumberRef = useRef<number | null>(null);
+  const lastTurnNumberRef = useRef<number | null>(null);
   const [passagePending, setPassagePending] = useState(false);
   const passagePendingRef = useRef(false);
   const [zeroAccusationMessage, setZeroAccusationMessage] = useState<string | null>(null);
@@ -559,12 +565,20 @@ export default function PhonePlayerPage({ code, onNavigate }: Props) {
   const evaluateActionResult = () => {
     const result = latestActionResultRef.current;
     if (result?.action !== "use_secret_passage") return;
-    const verdict = classifyActionResult(result, lastPassageEventIdRef.current, lastActionResultSeenRef.current);
+    const verdict = classifyActionResult(
+      result,
+      { eventId: lastPassageEventIdRef.current, requestId: passageRequestIdRef.current },
+      lastActionResultSeenRef.current
+    );
     if (!verdict || verdict.decision === "defer") return;
     lastActionResultSeenRef.current = verdict.key;
     if (verdict.decision !== "apply") return;
-    // The outstanding passage is settled either way.
+    // The outstanding passage is settled either way; the settled turn is
+    // persisted so a same-turn refresh keeps blocking a resubmission.
+    passageUsedTurnNumberRef.current = passageTurnNumberRef.current;
+    passageRequestIdRef.current = null;
     updatePassagePending(false);
+    setSecretPassageUsedThisTurn(true);
     if (result.ok) {
       setActionContinueMessage("Secret passage resolved on the host screen. Move through the passage, then choose one action.");
       setShowActionContinue(true);
@@ -582,6 +596,9 @@ export default function PhonePlayerPage({ code, onNavigate }: Props) {
       accusation: lastAccusationEventIdRef.current,
       passage: lastPassageEventIdRef.current,
       passagePending: passagePendingRef.current,
+      passageRequestId: passageRequestIdRef.current,
+      passageTurnNumber: passageTurnNumberRef.current,
+      passageUsedTurnNumber: passageUsedTurnNumberRef.current,
     });
   };
 
@@ -608,23 +625,34 @@ export default function PhonePlayerPage({ code, onNavigate }: Props) {
       );
       return;
     }
+    let passageRequestId: string | null = null;
+    if (action === "use_secret_passage") {
+      // Generate and persist the robust request identity BEFORE the POST:
+      // a refresh racing the response still correlates the host's echoed
+      // result by request id, and the waiting guard survives immediately.
+      passageRequestId = generatePassageRequestId();
+      passageRequestIdRef.current = passageRequestId;
+      passageTurnNumberRef.current = currentTurnNumber;
+      updatePassagePending(true);
+      setSecretPassageUsedThisTurn(true);
+      setActionContinueMessage("Waiting for the host to resolve the secret passage...");
+      setShowActionContinue(true);
+    }
     setActionStatus("Sending to host...");
     try {
-      const event = await sendPlayerAction(player.id, token, "turn_action", { action });
+      const event = await sendPlayerAction(
+        player.id,
+        token,
+        "turn_action",
+        action === "use_secret_passage" ? { action, requestId: passageRequestId } : { action }
+      );
       if (action === "reveal_clue") rememberActionEvent("reveal", event.id);
       if (action === "use_secret_passage") rememberActionEvent("passage", event.id);
       setActionStatus(null);
       if (action === "use_secret_passage") {
-        // The HTTP event is only pending; the host reports the authoritative
-        // outcome via the action-result snapshot. The persisted pending flag
-        // keeps the waiting UI and resubmit guard across a phone refresh.
-        setSecretPassageUsedThisTurn(true);
-        updatePassagePending(true);
-        setActionContinueMessage("Waiting for the host to resolve the secret passage...");
-        setShowActionContinue(true);
         // The host's result snapshot may have raced ahead of this response
-        // (it was deferred, never marked seen); re-evaluate now that the
-        // initiating event id is known so it overwrites the pending state.
+        // (it was deferred, never marked seen); re-evaluate now that both
+        // identities are known so it overwrites the pending state.
         evaluateActionResult();
       } else if (action === "reveal_clue") {
         setActionContinueMessage("Listen to Ashe, then privately take the top item card from the Butler's Pantry.");
@@ -634,6 +662,16 @@ export default function PhonePlayerPage({ code, onNavigate }: Props) {
         setShowActionContinue(true);
       }
     } catch (err) {
+      if (action === "use_secret_passage") {
+        // The POST never created an event; roll back the optimistic pending
+        // state so the player can retry.
+        passageRequestIdRef.current = null;
+        passageTurnNumberRef.current = null;
+        updatePassagePending(false);
+        setSecretPassageUsedThisTurn(false);
+        setShowActionContinue(false);
+        setActionContinueMessage(null);
+      }
       setActionStatus(err instanceof Error ? err.message : "Failed to send action.");
     }
   };
@@ -1213,6 +1251,9 @@ export default function PhonePlayerPage({ code, onNavigate }: Props) {
   );
   const leadPlayerId = sortedRoster[0]?.id;
   const playerId = player?.id;
+  // The host's authoritative LocalGame.turnCount, mirrored through the
+  // session. Turn-scoped phone state is keyed to this durable number.
+  const currentTurnNumber = session?.session.currentTurnNumber ?? null;
 
   useEffect(() => {
     if (!playerId) return;
@@ -1220,17 +1261,52 @@ export default function PhonePlayerPage({ code, onNavigate }: Props) {
     lastRevealEventIdRef.current = stored.reveal;
     lastAccusationEventIdRef.current = stored.accusation;
     lastPassageEventIdRef.current = stored.passage;
-    if (stored.passagePending) {
-      // A refresh happened while the passage result was outstanding: restore
-      // the waiting UI and the resubmit guard until the correlated result
-      // arrives (the next snapshot re-delivers it).
-      passagePendingRef.current = true;
-      setPassagePending(true);
-      setSecretPassageUsedThisTurn(true);
-      setActionContinueMessage("Waiting for the host to resolve the secret passage...");
-      setShowActionContinue(true);
-    }
+    lastActionResultSeenRef.current = null;
+    // Turn-scoped restoration (pending/used) happens in the turn-number
+    // effect once the session's durable turn number is known.
   }, [playerId]);
+
+  useEffect(() => {
+    if (!playerId || currentTurnNumber === null) return;
+    if (lastTurnNumberRef.current === currentTurnNumber) return;
+    const firstObservation = lastTurnNumberRef.current === null;
+    lastTurnNumberRef.current = currentTurnNumber;
+
+    if (firstObservation) {
+      // Hydrate turn-scoped persisted state against the authoritative turn
+      // number: pending/used survive only a same-turn refresh; anything from
+      // an earlier turn is stale — even if the same suspect is acting again
+      // in a later round — and is cleared from persistence.
+      const stored = loadActionEventIds(playerId);
+      const restored = restorePassageState(stored, currentTurnNumber);
+      if (restored.pending) {
+        passagePendingRef.current = true;
+        setPassagePending(true);
+        passageRequestIdRef.current = stored.passageRequestId;
+        passageTurnNumberRef.current = stored.passageTurnNumber;
+        setActionContinueMessage("Waiting for the host to resolve the secret passage...");
+        setShowActionContinue(true);
+      } else if (stored.passagePending) {
+        passageRequestIdRef.current = null;
+        passageTurnNumberRef.current = null;
+        updatePassagePending(false);
+      }
+      passageUsedTurnNumberRef.current = stored.passageUsedTurnNumber;
+      if (restored.usedThisTurn) setSecretPassageUsedThisTurn(true);
+      return;
+    }
+
+    // Genuine turn transition: clear turn-scoped state.
+    setSecretPassageUsedThisTurn(false);
+    setPendingInspectorNote(null);
+    if (passagePendingRef.current) {
+      passageRequestIdRef.current = null;
+      passageTurnNumberRef.current = null;
+      updatePassagePending(false);
+      setShowActionContinue(false);
+      setActionContinueMessage(null);
+    }
+  }, [playerId, currentTurnNumber]);
 
   const deductionPlayers = sortedRoster.filter((entry) => entry.id !== playerId);
   const isLead = playerId ? leadPlayerId === playerId : false;
@@ -1285,6 +1361,10 @@ export default function PhonePlayerPage({ code, onNavigate }: Props) {
   };
 
   useEffect(() => {
+    // Legacy fallback for sessions without a durable turn number: keyed to
+    // the suspect. Superseded by the turn-number effect whenever the host
+    // reports currentTurnNumber.
+    if (currentTurnNumber !== null) return;
     if (lastTurnRef.current !== currentTurnSuspectId) {
       // Only a genuine transition between observed turns clears turn-scoped
       // state; the first observation after a refresh must not wipe the
@@ -1295,6 +1375,8 @@ export default function PhonePlayerPage({ code, onNavigate }: Props) {
         if (passagePendingRef.current) {
           // The turn moved on while a passage result was outstanding: the
           // pending state is stale, so clear it and its waiting toast.
+          passageRequestIdRef.current = null;
+          passageTurnNumberRef.current = null;
           updatePassagePending(false);
           setShowActionContinue(false);
           setActionContinueMessage(null);
@@ -1302,7 +1384,7 @@ export default function PhonePlayerPage({ code, onNavigate }: Props) {
       }
       lastTurnRef.current = currentTurnSuspectId;
     }
-  }, [currentTurnSuspectId]);
+  }, [currentTurnSuspectId, currentTurnNumber]);
 
   useEffect(() => {
     if (tab === "accusation") {

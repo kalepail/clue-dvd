@@ -21,6 +21,22 @@ export function generateReconnectToken(): string {
   return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
+/**
+ * Client-generated id for a passage request, created and persisted BEFORE the
+ * initiating POST so a refresh that races the response can still correlate
+ * the host's echoed result without knowing the server event id.
+ */
+export function generatePassageRequestId(): string {
+  const bytes = new Uint8Array(12);
+  crypto.getRandomValues(bytes);
+  return `pr-${Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("")}`;
+}
+
+/** Fail-closed request-id validation: shape and length, or null. */
+export function normalizePassageRequestId(value: unknown): string | null {
+  return typeof value === "string" && /^[A-Za-z0-9_-]{8,64}$/.test(value) ? value : null;
+}
+
 /** Per-session secret issued only to the creating host. */
 export function generateHostToken(): string {
   const bytes = new Uint8Array(24);

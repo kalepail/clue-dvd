@@ -112,12 +112,13 @@ export async function closeSession(code: string): Promise<void> {
 
 export async function updateSessionTurn(
   code: string,
-  suspectId: string | null
+  suspectId: string | null,
+  turnNumber: number | null
 ): Promise<void> {
   const response = await fetch(`/api/phone/sessions/${code}/turn`, {
     method: "POST",
     headers: hostHeaders(),
-    body: JSON.stringify({ suspectId }),
+    body: JSON.stringify({ suspectId, turnNumber }),
   });
   if (!response.ok) {
     throw new Error("Failed to update session turn");
@@ -142,7 +143,7 @@ export async function sendAccusationResult(
 export async function sendTurnActionResult(
   code: string,
   suspectId: string,
-  result: { action: string; ok: boolean; message: string; forEventId: number | null }
+  result: { action: string; ok: boolean; message: string; forEventId: number | null; requestId: string | null }
 ): Promise<void> {
   const response = await fetch(`/api/phone/sessions/${code}/action-result`, {
     method: "POST",

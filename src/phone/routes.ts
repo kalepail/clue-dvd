@@ -17,7 +17,7 @@ import {
   updateSessionInterruptionStatus,
   verifyHostToken,
 } from "./session-store";
-import { isTurnOwnedPhoneAction, normalizeSessionCode } from "./utils";
+import { isTurnOwnedPhoneAction, normalizePassageRequestId, normalizeSessionCode } from "./utils";
 import type { PhoneEliminations, PhoneEvent, PhoneEventType, PhoneWsMessage } from "./types";
 
 const phone = new Hono<{ Bindings: CloudflareBindings }>();
@@ -134,12 +134,14 @@ phone.post("/sessions/:code/turn", async (c) => {
     return c.json({ error: "Host authorization required" }, 403);
   }
   const body = await c.req
-    .json<{ suspectId?: string | null }>()
-    .catch(() => ({} as { suspectId?: string | null }));
+    .json<{ suspectId?: string | null; turnNumber?: number | null }>()
+    .catch(() => ({} as { suspectId?: string | null; turnNumber?: number | null }));
   const suspectId = typeof body.suspectId === "string" ? body.suspectId : null;
+  const turnNumber =
+    typeof body.turnNumber === "number" && Number.isFinite(body.turnNumber) ? body.turnNumber : null;
   await c.env.DB
-    .prepare("UPDATE phone_sessions SET current_turn_suspect_id = ?, updated_at = datetime('now') WHERE id = ?")
-    .bind(suspectId, session.id)
+    .prepare("UPDATE phone_sessions SET current_turn_suspect_id = ?, current_turn_number = ?, updated_at = datetime('now') WHERE id = ?")
+    .bind(suspectId, turnNumber, session.id)
     .run();
   await broadcastSessionSnapshot(c.env, code);
   return c.json({ success: true });
@@ -262,8 +264,8 @@ phone.post("/sessions/:code/action-result", async (c) => {
     return c.json({ error: "Host authorization required" }, 403);
   }
   const body = await c.req
-    .json<{ suspectId?: string; action?: string; ok?: boolean; message?: string; forEventId?: number | null }>()
-    .catch(() => ({} as { suspectId?: string; action?: string; ok?: boolean; message?: string; forEventId?: number | null }));
+    .json<{ suspectId?: string; action?: string; ok?: boolean; message?: string; forEventId?: number | null; requestId?: string | null }>()
+    .catch(() => ({} as { suspectId?: string; action?: string; ok?: boolean; message?: string; forEventId?: number | null; requestId?: string | null }));
   if (!body.suspectId || typeof body.action !== "string" || typeof body.ok !== "boolean") {
     return c.json({ error: "Invalid action result payload" }, 400);
   }
@@ -272,6 +274,7 @@ phone.post("/sessions/:code/action-result", async (c) => {
     ok: body.ok,
     message: typeof body.message === "string" ? body.message : "",
     forEventId: typeof body.forEventId === "number" ? body.forEventId : null,
+    requestId: normalizePassageRequestId(body.requestId),
   });
   await broadcastSessionSnapshot(c.env, code);
   return c.json({ success: true });

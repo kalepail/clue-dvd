@@ -23,6 +23,10 @@ function rowToSession(row: Record<string, string>): PhoneSession {
     code: row.code,
     status: row.status as PhoneSessionStatus,
     currentTurnSuspectId: row.current_turn_suspect_id ?? null,
+    currentTurnNumber:
+      row.current_turn_number === null || row.current_turn_number === undefined
+        ? null
+        : Number(row.current_turn_number),
     note1Available: row.note1_available ? Number(row.note1_available) === 1 : false,
     note2Available: row.note2_available ? Number(row.note2_available) === 1 : false,
     interruptionActive: row.interruption_active ? Number(row.interruption_active) === 1 : false,
@@ -77,6 +81,7 @@ function parseActionResult(value: string | null | undefined): PhonePlayer["lastA
       ok: Boolean(parsed.ok),
       message: typeof parsed.message === "string" ? parsed.message : "",
       forEventId: typeof parsed.forEventId === "number" ? parsed.forEventId : null,
+      requestId: typeof parsed.requestId === "string" ? parsed.requestId : null,
       updatedAt: typeof parsed.updatedAt === "string" ? parsed.updatedAt : "",
     };
   } catch {
@@ -351,7 +356,7 @@ export async function updatePlayerActionResult(
   db: D1Database,
   sessionId: string,
   suspectId: string,
-  result: { action: string; ok: boolean; message: string; forEventId: number | null }
+  result: { action: string; ok: boolean; message: string; forEventId: number | null; requestId: string | null }
 ): Promise<void> {
   const record = JSON.stringify({ ...result, updatedAt: new Date().toISOString() });
   await db

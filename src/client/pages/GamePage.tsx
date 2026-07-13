@@ -15,6 +15,7 @@ import { getLocationName, getSuspectName } from "../../shared/game-elements";
 import { closeSession, sendAccusationResult, sendInspectorNoteResult, sendTurnActionResult, updateInspectorNoteAvailability, updateInterruptionStatus, updateSessionTurn } from "../phone/api";
 import { clearHostSessionCode, setHostAutoCreate } from "../phone/storage";
 import type { PhoneEvent, PhonePlayer, PhoneSessionStatus } from "../../phone/types";
+import { normalizePassageRequestId } from "../../phone/utils";
 import { createEventPipeline, matchesPendingSource, parseSuggestionCategories, resolveCurrentActor } from "../hooks/turn-authority";
 import { connectPhoneSessionSocket } from "../phone/ws";
 
@@ -432,7 +433,10 @@ export default function GamePage({ gameId, onNavigate, onMusicPauseChange }: Pro
           const actor = authorizePhoneActor(event);
           if (!actor) return "handled";
           // Idempotent by source event id: a replay after a failed result
-          // delivery re-reads the cached outcome without moving twice.
+          // delivery re-reads the cached outcome without moving twice. The
+          // phone's client-generated request id is echoed back so the result
+          // correlates even when the phone never learned the event id.
+          const requestId = normalizePassageRequestId(event.payload.requestId);
           const isReplay = gameStore.getGame(gameId)?.lastPhonePassageResult?.sourceEventId === event.id;
           const passage = gameStore.useSecretPassageFromEvent(gameId, event.id);
           if (!isReplay) {
@@ -453,6 +457,7 @@ export default function GamePage({ gameId, onNavigate, onMusicPauseChange }: Pro
               ok: passage.ok,
               message: passage.message,
               forEventId: event.id,
+              requestId,
             });
           } catch {
             return "retry";
@@ -585,8 +590,11 @@ export default function GamePage({ gameId, onNavigate, onMusicPauseChange }: Pro
     const suspectId = game.status === "in_progress"
       ? game.currentTurn?.suspectId || null
       : null;
-    updateSessionTurn(code, suspectId).catch(() => undefined);
-  }, [game?.currentTurn?.suspectId, game?.status]);
+    // The durable turn number lets phones key turn-scoped state to the
+    // host's authoritative turnCount rather than the repeating suspect.
+    const turnNumber = game.status === "in_progress" ? game.turnCount : null;
+    updateSessionTurn(code, suspectId, turnNumber).catch(() => undefined);
+  }, [game?.currentTurn?.suspectId, game?.turnCount, game?.status]);
 
   useEffect(() => {
     if (!game || game.status !== "in_progress") return;

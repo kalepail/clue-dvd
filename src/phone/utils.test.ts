@@ -1,5 +1,24 @@
 import { describe, expect, it } from "vitest";
-import { hostTokenMatches, isTurnOwnedPhoneAction } from "./utils";
+import { generatePassageRequestId, hostTokenMatches, isTurnOwnedPhoneAction, normalizePassageRequestId } from "./utils";
+
+describe("passage request ids", () => {
+  it("generates ids that pass their own validation and differ per call", () => {
+    const first = generatePassageRequestId();
+    const second = generatePassageRequestId();
+    expect(normalizePassageRequestId(first)).toBe(first);
+    expect(normalizePassageRequestId(second)).toBe(second);
+    expect(first).not.toBe(second);
+  });
+
+  it("rejects malformed shapes and lengths", () => {
+    expect(normalizePassageRequestId(undefined)).toBeNull();
+    expect(normalizePassageRequestId(42)).toBeNull();
+    expect(normalizePassageRequestId("short")).toBeNull();
+    expect(normalizePassageRequestId("has spaces in it")).toBeNull();
+    expect(normalizePassageRequestId("x".repeat(65))).toBeNull();
+    expect(normalizePassageRequestId("pr-abc12345")).toBe("pr-abc12345");
+  });
+});
 
 describe("hostTokenMatches (fail-closed host auth)", () => {
   it("rejects when the session has no issued token, regardless of what is provided", () => {
