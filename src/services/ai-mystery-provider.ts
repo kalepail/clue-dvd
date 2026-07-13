@@ -368,17 +368,17 @@ async function callCloudflareRest<T>(
       headers: {
         Authorization: `Bearer ${params.runtime.gatewayToken}`,
         "Content-Type": "application/json",
+        "cf-aig-gateway-id": params.runtime.gatewayId,
+        "cf-aig-collect-log": "true",
+        "cf-aig-metadata": JSON.stringify({
+          stage: params.stage,
+          tool: params.toolName,
+          suite: "clue-dvd",
+        }),
       },
       body: JSON.stringify({
         model: params.runtime.model,
         input,
-        options: {
-          gateway: {
-            id: params.runtime.gatewayId,
-            metadata: { stage: params.stage, tool: params.toolName, suite: "clue-dvd" },
-            collectLog: true,
-          },
-        },
       }),
     }
   );

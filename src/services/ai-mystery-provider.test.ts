@@ -226,7 +226,7 @@ describe("structured Cloudflare provider", () => {
     const result = await callStructured({
       runtime: {
         model: "xai/grok-4.3",
-        gatewayId: "default",
+        gatewayId: "production",
         accountId: "account",
         gatewayToken: "token",
       },
@@ -252,6 +252,15 @@ describe("structured Cloudflare provider", () => {
     const requestBody = JSON.parse(String(request[1]?.body));
     expect(requestBody.model).toBe("xai/grok-4.3");
     expect(requestBody.input.tool_choice.function.name).toBe("submit_test");
+    expect(requestBody).not.toHaveProperty("options");
+    const headers = new Headers(request[1]?.headers);
+    expect(headers.get("cf-aig-gateway-id")).toBe("production");
+    expect(headers.get("cf-aig-collect-log")).toBe("true");
+    expect(JSON.parse(headers.get("cf-aig-metadata") ?? "null")).toEqual({
+      stage: "renderer",
+      tool: "submit_test",
+      suite: "clue-dvd",
+    });
   });
 
   it("parses @cf tool calls from the Workers AI binding transport", async () => {
