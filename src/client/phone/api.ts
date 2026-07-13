@@ -85,11 +85,13 @@ export async function updatePlayer(
 }
 
 /**
- * Thrown only when the server definitively rejected an action (non-2xx
- * response): no event was created, so optimistic state may be rolled back.
- * Any other failure (network error, aborted response, unparsable 2xx body)
- * is ambiguous — the event may exist server-side — and callers must keep
- * their pending state so the eventual snapshot can settle it.
+ * Thrown only when the server definitively rejected an action with a 4xx
+ * client/auth status: the route emits all of those BEFORE creating the
+ * event, so none exists and optimistic state may be rolled back. Every other
+ * failure — a 5xx (post-create D1 work like touchPlayer/getSession can
+ * throw), a network error, an aborted response, an unparsable 2xx body — is
+ * ambiguous: the event may exist server-side, and callers must keep their
+ * pending state so the eventual snapshot can settle it.
  */
 export class PhoneActionRejectedError extends Error {
   constructor(message: string) {
@@ -111,7 +113,11 @@ export async function sendPlayerAction(
   });
   if (!response.ok) {
     const data = (await response.json().catch(() => ({}))) as { error?: string };
-    throw new PhoneActionRejectedError(data.error || "Failed to send action");
+    const message = data.error || "Failed to send action";
+    if (response.status >= 400 && response.status < 500) {
+      throw new PhoneActionRejectedError(message);
+    }
+    throw new Error(message);
   }
   const data = (await response.json()) as { event: PhoneEvent };
   return data.event;

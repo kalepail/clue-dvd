@@ -435,10 +435,12 @@ phone.post("/players/:playerId/actions", async (c) => {
     }
   }
 
-  // INVARIANT: every rejection response in this route (player lookup, token
-  // auth, turn ownership, lead check) occurs BEFORE createEvent, so a non-2xx
-  // response guarantees no event was created. The phone's
-  // PhoneActionRejectedError rollback semantics depend on this boundary.
+  // INVARIANT: all explicit 4xx rejections in this route (player lookup,
+  // token auth, turn ownership, lead check) occur BEFORE createEvent, so a
+  // 4xx response guarantees no event was created. A 5xx remains ambiguous —
+  // the post-create D1 work below (touchPlayer/getSession/broadcast) can
+  // throw after the event exists. The phone's PhoneActionRejectedError
+  // rollback semantics depend on this boundary.
   const event = await createEvent(
     c.env.DB,
     row.session_id as string,
