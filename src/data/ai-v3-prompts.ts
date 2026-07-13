@@ -91,7 +91,16 @@ Produce:
 - occasionName: what the day is called in conversation (e.g. "the subscription committee luncheon").
 - occasionSummary: 2-3 sentences on why Mr. Boddy has gathered everyone and what the mood is.
 - hostReason: one sentence on what Mr. Boddy personally hopes the day achieves.
-- mysterySignature: a compact fingerprint of this case, pipe-separated (occasion | social tension | texture), used to avoid repeats in future games.`,
+- mysterySignature: a compact fingerprint of this case, pipe-separated (occasion | social tension | texture), used to avoid repeats in future games.
+- occasionTexture: a small factual palette the household genuinely uses during this occasion:
+  - groupActivities: 5-7 varied lowercase gerund phrases people could do together in different rooms (for example, "comparing their marked programmes").
+  - transitionRemarks: 4-5 short first-person excuses somebody might give when stepping away (for example, "I ought to fetch my wrap").
+  - gatheringDetails: 3-4 lowercase gerund phrases the whole company might do during a meal or scheduled gathering.
+  - inspectionContexts: 3-4 lowercase gerund phrases Ashe might be doing while checking rooms afterward.
+  - observationContexts: 3-4 lowercase gerund phrases Ashe or Mrs. White might be doing when noticing valuables still in place.
+  - uncertainObservations: 3-4 ambiguous things a guest might half-see or half-hear amid this particular occasion (for example, "a masked guest hurrying away with a torn ribbon"); these may be mistaken or invented, so do not identify anyone.
+
+The texture entries are reusable world ingredients, NOT finished clues. Make every entry unmistakably specific to this occasion, but include no suspect names, card valuables, room names, or printed time names. Use ordinary non-card props freely (masks, scripts, scorecards, programmes, ribbons, flowers, pledge sheets, and so on when appropriate).`,
   };
 }
 
@@ -225,7 +234,7 @@ After all of that evidence, the field still standing was:
 The detectives' own dealt cards settled those final distinctions, as always.
 ` : ""}
 ${params.thiefMotive ? `The thief's true motive, revealed only now: ${params.thiefMotive}.\n` : ""}${params.lieReveal ? `And the lie worth savoring: ${params.lieReveal}.\n` : ""}
-Write the closing narration, 4-6 sentences: congratulate the detectives briefly, then explain how the evidence pointed toward ${params.answerNames.suspect} taking the ${params.answerNames.item} from the ${params.answerNames.location} at ${params.answerNames.time} — and WHY${params.lieReveal ? ", including how their story failed to hold" : ""}. Name all four explicitly. Ground the explanation ONLY in the evidence listed above — cite two or three of its strongest threads. Be honest about scope: the clues narrowed the field and the detectives' cards and wits closed it; never claim a card was "the only" remaining possibility unless the field above shows exactly that. Do not invent new facts.`,
+Write the closing narration, 4-6 sentences: congratulate the detectives briefly, then reconstruct the strongest timeline, movement, or deception threads that were ACTUALLY revealed before naming ${params.answerNames.suspect}, the ${params.answerNames.item}, the ${params.answerNames.location}, and ${params.answerNames.time} explicitly. Explain WHY${params.lieReveal ? ", including how their story failed to hold" : ""}. Ground every evidentiary statement ONLY in the numbered evidence above. If a solution dimension was settled by dealt cards rather than those facts, say so plainly; do not invent a witness, route, absence, opportunity, or movement into the answer room to make the clues sound more conclusive than they were. Never claim a card was "the only" remaining possibility unless the field above shows exactly that.`,
   };
 }
 

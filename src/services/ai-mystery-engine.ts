@@ -23,7 +23,7 @@
  * proven before any prose existed and cannot be broken by the prose.
  */
 
-import { requireItem, requireLocation, requireSuspect, requireTime, simulateWorld, type WorldState } from "./world-sim";
+import { applyOccasionTexture, requireItem, requireLocation, requireSuspect, requireTime, simulateWorld, type WorldState } from "./world-sim";
 import { harvestFacts, type Fact } from "./fact-harvest";
 import { scheduleMystery, type Schedule } from "./clue-scheduler";
 import {
@@ -194,24 +194,6 @@ export async function generateMysteryV2(apiKey: string, params: {
 
     await emit("timeline", "Fair-play schedule proven against 12,100 possibilities.", 18);
 
-    const factById = new Map(facts.map((fact) => [fact.id, fact]));
-    const storySeeds: StorySeed[] = schedule.reveals.map((reveal) => {
-      const fact = factById.get(reveal.factId)!;
-      return {
-        position: reveal.position,
-        deliverAs: reveal.slot === "clue" ? "butler" : reveal.slot,
-        clueNumber: reveal.clueNumber,
-        brief: fact.writerBrief,
-        allowedNames: [
-          ...fact.mentions.suspects,
-          ...fact.mentions.items,
-          ...fact.mentions.locations,
-          ...fact.mentions.times,
-        ],
-      };
-    });
-    debug.storySeeds = storySeeds;
-
     // ---- AI phase (answer-blind until the closing) ------------------------
     const fewshotRng = new SeededRandom(params.setup.seed ^ 0x2c1b3c6d);
     const fewshots = pickFewshots(fewshotRng);
@@ -231,9 +213,41 @@ export async function generateMysteryV2(apiKey: string, params: {
       toolDescription: "Submit the occasion dossier for a new Tudor Mansion case.",
       inputSchema: toToolInputSchema(DossierSchema),
       outputSchema: DossierSchema,
-      maxTokens: 900,
+      maxTokens: 1_400,
     });
     debug.dossier = toStageDebug(dossierPrompt, dossier);
+
+    // The dossier remains answer-blind, but its occasion palette is now made
+    // TRUE in the chosen world before any clue prose exists. Re-harvesting
+    // changes only writer briefs; fact IDs and deduction predicates stay put.
+    applyOccasionTexture(world, dossier.value.occasionTexture);
+    facts = harvestFacts(world);
+    const factById = new Map(facts.map((fact) => [fact.id, fact]));
+    const missingFact = schedule.reveals.find((reveal) => !factById.has(reveal.factId));
+    if (missingFact) {
+      throw new MysteryStageError(
+        "architect",
+        `Occasion texture changed deterministic fact identity ${missingFact.factId}; this is a world-layer bug.`
+      );
+    }
+    const storySeeds: StorySeed[] = schedule.reveals.map((reveal) => {
+      const fact = factById.get(reveal.factId)!;
+      return {
+        position: reveal.position,
+        deliverAs: reveal.slot === "clue" ? "butler" : reveal.slot,
+        clueNumber: reveal.clueNumber,
+        brief: fact.writerBrief,
+        allowedNames: [
+          ...fact.mentions.suspects,
+          ...fact.mentions.items,
+          ...fact.mentions.locations,
+          ...fact.mentions.times,
+        ],
+      };
+    });
+    debug.world = world;
+    debug.facts = facts;
+    debug.storySeeds = storySeeds;
 
     await emit("rendering", "Ashe is recalling the day, one testimony at a time.", 48);
     const renderPrompt = buildRenderPrompt({ dossier: dossier.value, seeds: storySeeds, fewshots });
@@ -257,11 +271,15 @@ export async function generateMysteryV2(apiKey: string, params: {
       time: requireTime(answer.timeId).name,
     };
     const thiefMotive = world.motives.find((entry) => entry.suspectId === answer.suspectId)?.motive;
-    const lieWasDealt = schedule.reveals.some((reveal) => {
+    const lieClaimWasDealt = schedule.reveals.some((reveal) => {
       const fact = factById.get(reveal.factId);
       return fact?.kind === "claim" && fact.threadId === "LIE";
     });
-    const lieReveal = world.falseAlibi && lieWasDealt
+    const lieContradictionWasDealt = schedule.reveals.some((reveal) => {
+      const fact = factById.get(reveal.factId);
+      return fact?.kind !== "claim" && fact?.threadId === "LIE";
+    });
+    const lieReveal = world.falseAlibi && lieClaimWasDealt && lieContradictionWasDealt
       ? `${answerNames.suspect} claimed to have been in the ${requireLocation(world.falseAlibi.claimedLocationId).name} at the fatal hour — but the party actually in that room never saw them`
       : undefined;
     const closingPrompt = buildClosingPrompt({

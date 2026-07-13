@@ -62,6 +62,13 @@ export type Fact = {
   itemIds: string[];
   locationIds: string[];
   timeIds: string[];
+  /**
+   * Exact vouched-for suspect/hour pairs for a changing group. When absent,
+   * suspectIds × timeIds remains the fact's coverage. This prevents a clue
+   * from extending a departing guest's alibi into hours only the continuing
+   * members actually shared.
+   */
+  suspectTimePairs?: Array<{ suspectId: string; timeId: string }>;
   /** Extra payload interpreted per kind (e.g. cutoff order). */
   cutoffOrder?: number;
   mentions: MentionLicense;
@@ -114,8 +121,11 @@ export function factKillsCell(fact: Fact, s: string, i: string, l: string, t: st
   const order = TIME_ORDER.get(t) ?? 0;
   switch (fact.kind) {
     case "gathering":
-    case "group_presence":
       return fact.timeIds.includes(t) && fact.suspectIds.includes(s);
+    case "group_presence":
+      return fact.suspectTimePairs
+        ? fact.suspectTimePairs.some((pair) => pair.suspectId === s && pair.timeId === t)
+        : fact.timeIds.includes(t) && fact.suspectIds.includes(s);
     case "solo_presence":
       return fact.timeIds.includes(t) && fact.suspectIds.includes(s) && l !== fact.locationIds[0];
     case "departure":
@@ -236,20 +246,38 @@ export function harvestFacts(world: WorldState): Fact[] {
     location: (id: string) => requireLocation(id).name,
     time: (id: string) => requireTime(id).name,
   };
+  const texture = (
+    field: "gatheringDetails" | "inspectionContexts" | "observationContexts",
+    salt: number
+  ): string | null => {
+    const values = world.occasionTexture?.[field] ?? [];
+    if (values.length === 0) return null;
+    return values[hashLocal(world.seed, world.attempt, salt) % values.length];
+  };
+  const whileThemed = (detail: string | null, sentence: string): string =>
+    detail ? `While ${detail}, ${sentence[0].toLowerCase()}${sentence.slice(1)}` : sentence;
 
   // Gatherings ---------------------------------------------------------------
   for (const gathering of world.gatherings) {
     const everyone = gathering.suspectIds.length === SUSPECTS.length;
     const timeName = names.time(gathering.timeId);
+    const gatheringDetail = gathering.kind === "retired"
+      ? null
+      : texture("gatheringDetails", 300 + requireTime(gathering.timeId).order);
+    const detailSuffix = gatheringDetail ? `, ${gatheringDetail}` : "";
+    const roomName = gathering.locationId ? names.location(gathering.locationId) : "";
+    const roomSuffix = roomName && !gathering.label.toLowerCase().includes(roomName.toLowerCase())
+      ? ` in the ${roomName}`
+      : "";
     let brief: string;
     if (gathering.kind === "retired") {
       brief = everyone
         ? `At ${timeName}, ${gathering.label} — every bedroom door shut, the halls empty, not a soul about.`
         : `At ${timeName}, ${gathering.label}; only ${listNames(gathering.suspectIds.map(names.suspect))} were on the premises at that hour, and they were about their usual routine together.`;
     } else if (everyone) {
-      brief = `During ${timeName}, every single person — guests, plus Mrs. White and Rusty — was together at ${gathering.label} in the ${names.location(gathering.locationId!)}. Nobody slipped out.`;
+      brief = `During ${timeName}, every single person — guests, plus Mrs. White and Rusty — was together at ${gathering.label}${roomSuffix}${detailSuffix}. Nobody slipped out.`;
     } else {
-      brief = `During ${timeName}, ${listNames(gathering.suspectIds.map(names.suspect))} were all together at ${gathering.label} in the ${names.location(gathering.locationId!)}.`;
+      brief = `During ${timeName}, ${listNames(gathering.suspectIds.map(names.suspect))} were all together at ${gathering.label}${roomSuffix}${detailSuffix}.`;
     }
     facts.push({
       id: nextId(),
@@ -313,6 +341,15 @@ export function harvestFacts(world: WorldState): Fact[] {
           });
         }
       } else if (placement.social === "solo" && placement.locationId) {
+        // The hidden theft placement belongs to the solution, not the public
+        // fact pool. Publishing culprit + room + hour as one "solo" clue is
+        // a confession disguised as an observation; surrounding movements
+        // and physical cards must make players infer this cell instead.
+        const isTheftPlacement =
+          suspectId === world.answer.suspectId &&
+          slot.id === world.answer.timeId &&
+          placement.locationId === world.answer.locationId;
+        if (isTheftPlacement) continue;
         const thread = world.threads.find(
           (candidate) => candidate.timeId === slot.id && candidate.suspectIds.includes(suspectId)
         );
@@ -339,7 +376,35 @@ export function harvestFacts(world: WorldState): Fact[] {
     }
   }
 
+  // Adjacent exact-group blocks can describe one richer social episode when
+  // at least two people remain together in the same room while others peel
+  // away or join. Choose maximal, non-overlapping handoffs so the harvest
+  // offers the complete transition rather than its shorter component facts.
+  const transitionCandidates: Array<{ first: RawGroup; second: RawGroup; core: string[] }> = [];
+  for (const first of rawGroups) {
+    const firstEnd = first.timeIds[first.timeIds.length - 1];
+    for (const second of rawGroups) {
+      if (first === second || first.locationId !== second.locationId) continue;
+      if (!isConsecutive(firstEnd, second.timeIds[0])) continue;
+      if (first.members.join("+") === second.members.join("+")) continue;
+      const core = first.members.filter((member) => second.members.includes(member));
+      if (core.length >= 2) transitionCandidates.push({ first, second, core });
+    }
+  }
+  transitionCandidates.sort(
+    (a, b) => b.first.timeIds.length + b.second.timeIds.length - (a.first.timeIds.length + a.second.timeIds.length)
+  );
+  const consumedGroups = new Set<RawGroup>();
+  const transitions: typeof transitionCandidates = [];
+  for (const candidate of transitionCandidates) {
+    if (consumedGroups.has(candidate.first) || consumedGroups.has(candidate.second)) continue;
+    transitions.push(candidate);
+    consumedGroups.add(candidate.first);
+    consumedGroups.add(candidate.second);
+  }
+
   for (const group of rawGroups) {
+    if (consumedGroups.has(group)) continue;
     const memberNames = group.members.map(names.suspect);
     const multiSlot = group.timeIds.length > 1;
     const roomName = names.location(group.locationId);
@@ -388,6 +453,83 @@ export function harvestFacts(world: WorldState): Fact[] {
       writerBrief: multiSlot ? pickPhrase("group-multi", multiVariants) : pickPhrase("group-single", singleVariants),
       noteSuitable: true,
       threadId: isLieContradiction ? "LIE" : undefined,
+    });
+  }
+
+  for (const transition of transitions) {
+    const { first, second, core } = transition;
+    const firstOnly = first.members.filter((member) => !second.members.includes(member));
+    const secondOnly = second.members.filter((member) => !first.members.includes(member));
+    const allSuspects = [...new Set([...first.members, ...second.members])];
+    const allTimes = [...first.timeIds, ...second.timeIds];
+    const refs = new Map<string, ReturnType<typeof refName>>();
+    const ref = (timeId: string) => {
+      const existing = refs.get(timeId);
+      if (existing) return existing;
+      const created = refName(timeId);
+      refs.set(timeId, created);
+      return created;
+    };
+    const firstStart = ref(first.timeIds[0]);
+    const firstEnd = ref(first.timeIds[first.timeIds.length - 1]);
+    const secondStart = ref(second.timeIds[0]);
+    const secondEnd = ref(second.timeIds[second.timeIds.length - 1]);
+    const firstRange = first.timeIds.length > 1
+      ? `from ${firstStart.text} through ${firstEnd.text}`
+      : `during ${firstStart.text}`;
+    const secondRange = second.timeIds.length > 1
+      ? `from ${secondStart.text} through ${secondEnd.text}`
+      : `during ${secondStart.text}`;
+    const roomName = names.location(first.locationId);
+    const firstNames = listNames(first.members.map(names.suspect));
+    const coreNames = listNames(core.map(names.suspect));
+    const leftNames = listNames(firstOnly.map(names.suspect));
+    const joinedNames = listNames(secondOnly.map(names.suspect));
+    const boundaryFrom = first.timeIds[first.timeIds.length - 1];
+    const boundaryTo = second.timeIds[0];
+    const spokenAside = firstOnly.length === 1
+      ? world.transitionRemarks.find(
+          (remark) =>
+            remark.suspectId === firstOnly[0] &&
+            remark.fromTimeId === boundaryFrom &&
+            remark.toTimeId === boundaryTo
+        )
+      : undefined;
+
+    let handoff: string;
+    if (firstOnly.length > 0 && secondOnly.length === 0) {
+      handoff = `${leftNames} stepped away${spokenAside ? ` — “${spokenAside.line},” was all they said` : ""}, while ${coreNames} remained in the ${roomName}, ${second.activity}, ${secondRange}.`;
+    } else if (firstOnly.length === 0 && secondOnly.length > 0) {
+      handoff = `${joinedNames} joined the others, and ${coreNames} stayed on with the new company in the ${roomName} ${secondRange}, ${second.activity}.`;
+    } else {
+      handoff = `${leftNames} stepped away${spokenAside ? ` — “${spokenAside.line},” was all they said` : ""}, just as ${joinedNames} joined the conversation; ${coreNames} remained in the ${roomName} ${secondRange}.`;
+    }
+
+    const suspectTimePairs = [first, second].flatMap((group) =>
+      group.timeIds.flatMap((timeId) => group.members.map((suspectId) => ({ suspectId, timeId })))
+    );
+    const isLieContradiction =
+      world.falseAlibi !== null &&
+      first.locationId === world.falseAlibi.claimedLocationId &&
+      suspectTimePairs.some((pair) => pair.timeId === world.answer.timeId);
+    facts.push({
+      id: nextId(),
+      kind: "group_presence",
+      primaryAxis: "suspect",
+      suspectIds: allSuspects,
+      itemIds: [],
+      locationIds: [first.locationId],
+      timeIds: allTimes,
+      suspectTimePairs,
+      mentions: {
+        suspects: allSuspects.map(names.suspect),
+        items: [],
+        locations: [roomName],
+        times: [...new Set([...refs.values()].map((entry) => entry.mention).filter((entry): entry is string => Boolean(entry)))],
+      },
+      writerBrief: `${firstNames} were together in the ${roomName}, ${first.activity}, ${firstRange}. As ${secondStart.text} began, ${handoff}`,
+      noteSuitable: true,
+      threadId: isLieContradiction ? "LIE" : "CONTINUITY",
     });
   }
 
@@ -500,9 +642,12 @@ export function harvestFacts(world: WorldState): Fact[] {
           locations: [names.location(state.homeLocationId)],
           times: sightingRef.mention ? [sightingRef.mention] : [],
         },
-        writerBrief: isAnswerAnchor && bundledIds.length > 1
-          ? `As late as ${sightingRef.text}, the ${listNames(bundledNames)} were all still where they belonged — ${sighting.witness === "staff" ? "Mrs. White is certain of it from her rounds" : "several guests remember admiring them"}.`
-          : `As late as ${sightingRef.text}, the ${item.nameUS} was still sitting in its place in the ${names.location(state.homeLocationId)} — ${sighting.witness === "staff" ? "Mrs. White saw it during her rounds" : "several guests admired it there"}.`,
+        writerBrief: whileThemed(
+          texture("observationContexts", 500 + Number(item.id.slice(1))),
+          isAnswerAnchor && bundledIds.length > 1
+            ? `As late as ${sightingRef.text}, the ${listNames(bundledNames)} were all still where they belonged — ${sighting.witness === "staff" ? "Mrs. White is certain of it from her rounds" : "several guests remember admiring them"}.`
+            : `As late as ${sightingRef.text}, the ${item.nameUS} was still sitting in its place in the ${names.location(state.homeLocationId)} — ${sighting.witness === "staff" ? "Mrs. White saw it during her rounds" : "several guests admired it there"}.`
+        ),
         noteSuitable: true,
       });
     }
@@ -613,7 +758,10 @@ export function harvestFacts(world: WorldState): Fact[] {
       locationIds: [location.id],
       timeIds: [],
       mentions: { suspects: [], items: [], locations: [location.name], times: [] },
-      writerBrief: `The ${location.name} was gone over carefully afterward: nothing out of place, nothing missing, nothing so much as nudged.`,
+      writerBrief: whileThemed(
+        texture("inspectionContexts", 600 + Number(location.id.slice(1))),
+        `The ${location.name} was gone over carefully afterward: nothing out of place, nothing missing, nothing so much as nudged.`
+      ),
       noteSuitable: true,
     });
   }
@@ -629,11 +777,14 @@ export function harvestFacts(world: WorldState): Fact[] {
       locationIds: bundle.map((location) => location.id),
       timeIds: [],
       mentions: { suspects: [], items: [], locations: bundle.map((location) => location.name), times: [] },
-      writerBrief: pickPhrase("room-bundle", [
-        `The ${listNames(bundle.map((location) => location.name))} were each gone over carefully afterward: nothing out of place in any of them, and nothing missing.`,
-        `The Inspector's men went through the ${listNames(bundle.map((location) => location.name))} and came away satisfied — everything in those rooms accounted for.`,
-        `Nothing in the ${listNames(bundle.map((location) => location.name))} had been disturbed at all; each was checked with care.`,
-      ]),
+      writerBrief: whileThemed(
+        texture("inspectionContexts", 650 + Number(bundle[0].id.slice(1))),
+        pickPhrase("room-bundle", [
+          `The ${listNames(bundle.map((location) => location.name))} were each gone over carefully afterward: nothing out of place in any of them, and nothing missing.`,
+          `The Inspector's men went through the ${listNames(bundle.map((location) => location.name))} and came away satisfied — everything in those rooms accounted for.`,
+          `Nothing in the ${listNames(bundle.map((location) => location.name))} had been disturbed at all; each was checked with care.`,
+        ])
+      ),
       noteSuitable: true,
     });
   }
@@ -676,11 +827,14 @@ export function harvestFacts(world: WorldState): Fact[] {
         locations: [],
         times: roundRef.mention ? [roundRef.mention] : [],
       },
-      writerBrief: pickPhrase("item-sweep", [
-        `On the rounds during ${roundRef.text}, the ${listNames(bundle.map((item) => item.nameUS))} were each seen still in their proper places — every one present and accounted for at that hour.`,
-        `Nothing had touched the ${listNames(bundle.map((item) => item.nameUS))} as of ${roundRef.text}; each sat just where Mr. Boddy keeps it.`,
-        `When the rounds were made during ${roundRef.text}, the ${listNames(bundle.map((item) => item.nameUS))} were each in their usual spots — all quite undisturbed.`,
-      ]),
+      writerBrief: whileThemed(
+        texture("observationContexts", 700 + roundTime.order),
+        pickPhrase("item-sweep", [
+          `On the rounds during ${roundRef.text}, the ${listNames(bundle.map((item) => item.nameUS))} were each seen still in their proper places — every one present and accounted for at that hour.`,
+          `Nothing had touched the ${listNames(bundle.map((item) => item.nameUS))} as of ${roundRef.text}; each sat just where Mr. Boddy keeps it.`,
+          `When the rounds were made during ${roundRef.text}, the ${listNames(bundle.map((item) => item.nameUS))} were each in their usual spots — all quite undisturbed.`,
+        ])
+      ),
       noteSuitable: true,
     });
     // Late-repeat sweep: the same pieces seen again on the night rounds
@@ -703,11 +857,14 @@ export function harvestFacts(world: WorldState): Fact[] {
           locations: [],
           times: repeatRef.mention ? [repeatRef.mention] : [],
         },
-        writerBrief: pickPhrase("night-repeat", [
-          `On the last look round, during ${repeatRef.text}, the ${listNames(bundle.map((item) => item.nameUS))} were all still exactly where they belonged, every piece accounted for before the house went quiet.`,
-          `Locking up during ${repeatRef.text} took me past the ${listNames(bundle.map((item) => item.nameUS))} — all present, all in their places, as the lamps went down.`,
-          `By the end of ${repeatRef.text} nothing had moved: the ${listNames(bundle.map((item) => item.nameUS))} sat exactly as they had all day.`,
-        ]),
+        writerBrief: whileThemed(
+          texture("observationContexts", 750 + roundTime.order),
+          pickPhrase("night-repeat", [
+            `On the last look round, during ${repeatRef.text}, the ${listNames(bundle.map((item) => item.nameUS))} were all still exactly where they belonged, every piece accounted for before the house went quiet.`,
+            `Locking up during ${repeatRef.text} took me past the ${listNames(bundle.map((item) => item.nameUS))} — all present, all in their places, as the lamps went down.`,
+            `By the end of ${repeatRef.text} nothing had moved: the ${listNames(bundle.map((item) => item.nameUS))} sat exactly as they had all day.`,
+          ])
+        ),
         noteSuitable: true,
       });
     }
@@ -854,8 +1011,8 @@ export function harvestFacts(world: WorldState): Fact[] {
       mentions: { suspects: [who], items: [], locations: [], times: [] },
       threadId: "MOTIVE",
       writerBrief: pickPhrase("motive", [
-        `Below stairs it is quietly said that ${who} contends with ${entry.motive}. Households hear these things.`,
-        `One hears — one cannot help hearing — that ${who} contends with ${entry.motive}.`,
+        `Below stairs, ${entry.motive} is mentioned whenever ${who}'s name comes up.`,
+        `One hears — one cannot help hearing — that ${who} is troubled by ${entry.motive}.`,
         `${who}'s circumstances are much discussed below stairs: ${entry.motive}, they say.`,
       ]),
       noteSuitable: false,

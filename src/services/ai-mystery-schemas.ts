@@ -20,6 +20,14 @@ export const DossierSchema = z.object({
   occasionSummary: z.string().min(1),
   hostReason: z.string().min(1),
   mysterySignature: z.string().min(1),
+  occasionTexture: z.object({
+    groupActivities: z.array(z.string()),
+    transitionRemarks: z.array(z.string()),
+    gatheringDetails: z.array(z.string()),
+    inspectionContexts: z.array(z.string()),
+    observationContexts: z.array(z.string()),
+    uncertainObservations: z.array(z.string()),
+  }),
 });
 
 export const RenderedMysterySchema = z.object({
@@ -39,6 +47,7 @@ export const ClosingSchema = z.object({
 
 export type Answer = z.infer<typeof AnswerSchema>;
 export type Dossier = z.infer<typeof DossierSchema>;
+export type OccasionTexture = Dossier["occasionTexture"];
 export type RenderedMystery = z.infer<typeof RenderedMysterySchema>;
 export type ClueRepair = z.infer<typeof ClueRepairSchema>;
 export type Closing = z.infer<typeof ClosingSchema>;

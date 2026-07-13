@@ -7,25 +7,17 @@
  *
  * Reveal order: C1..C5, N1, C6, C7, N2, C8, C9, C10  (positions 1..12)
  *
- * Hard fair-play targets (per-category candidate projections):
- *  - after position 6  (5 clues + Note 1): every category has ≥ 4 candidates
- *  - after position 9  (7 clues + both notes): every category has ≥ 3
- *  - after position 12: every category inside its FINAL_TARGET window
- *  - the answer cell is alive at every step (asserted; true facts cannot kill it)
+ * Candidate counts are diagnostic only. The scheduler does NOT require an
+ * arbitrary number of suspects, items, rooms, or times to remain. It ranks
+ * facts by a soft blend of narrative richness, genuine deduction value,
+ * novelty, and non-repetition. Thus a movement can beat an inventory line
+ * without either clue family being mandatory.
  *
- * There are deliberately NO placement gates on answer-mentions: the numeric
- * checkpoints are the fairness floor, and discretion lives in the wording
- * (the theft hour is described by the day's rhythm, never named; the culprit
- * appears in choruses like anyone else). Statements ("claims") are mention-
- * only — including the thief's false alibi, which is simply allowed to lie;
- * the players' own cards and wits are the counterweight. Because candidate
- * counts only ever decrease, the checkpoint rules bound all earlier
- * positions too — early clues cannot converge.
- *
- * Selection is a coverage-driven greedy (not blind sampling): kill times to
- * the target window first, then cover suspects at the surviving times, then
- * items, then locations, padding with color facts. Ordering is a greedy that
- * keeps every checkpoint satisfiable, with randomization for variety.
+ * The hard rules are structural rather than numerical: the immutable answer
+ * must remain possible, the same source fact cannot be dealt twice, twelve
+ * distinct reveals must exist, and the public package cannot collapse the
+ * entire joint mystery to one literal solution cell. Reveal order has no
+ * clue-kind or information-kind gates.
  */
 
 import { SeededRandom } from "./seeded-random";
@@ -57,6 +49,9 @@ export type TrajectoryPoint = {
   position: number;
   factId: string;
   counts: CategoryCounts;
+  /** Remaining joint WHO × WHAT × WHERE × WHEN possibilities. Diagnostic
+   * only; it is never compared with a generation target. */
+  remainingSolutions: number;
   newlyEliminated: { suspects: string[]; items: string[]; locations: string[]; times: string[] };
 };
 
@@ -76,52 +71,6 @@ export type Schedule = {
 const REVEAL_COUNT = 12;
 const NOTE1_POSITION = 6;
 const NOTE2_POSITION = 9;
-const CHECKPOINT_A = { position: NOTE1_POSITION, min: 4 };
-const CHECKPOINT_B = { position: NOTE2_POSITION, min: 3 };
-/**
- * Final candidate windows after all public evidence. Times and locations
- * narrow; suspects stay socially contested; the item field stays broad
- * (4-7) because item cards are dealt like every other card — the hands
- * close what the clues leave open. Times may collapse to a single hour,
- * as the originals do ("all of the Jewelry had been locked up…").
- */
-export const FINAL_TARGET = {
-  suspects: { min: 3, max: 7 },
-  items: { min: 4, max: 7 },
-  locations: { min: 3, max: 5 },
-  times: { min: 1, max: 3 },
-} as const;
-
-/**
- * Selection weights by fact kind, encoding what a mystery is ABOUT:
- * suspects and their day first (company, absences, comings and goings),
- * then places, then item bookkeeping. Feasibility phases override taste
- * where a category genuinely needs its facts.
- */
-const PEOPLE_BIAS: Record<string, number> = {
-  gathering: 1.3,
-  group_presence: 1.3,
-  solo_presence: 1.25,
-  departure: 1.25,
-  guests_arrived: 1.2,
-  discovery: 1.1,
-  room_closed: 1.0,
-  room_undisturbed: 0.95,
-  item_home: 0.85,
-  item_intact: 0.8,
-  items_secured: 0.8,
-  item_offsite: 0.85,
-  object_history: 1.0,
-  personal_remark: 1.0,
-  thread_color: 1.0,
-  claim: 1.0,
-};
-
-// Convergence now lives in the windows themselves: times and locations
-// narrow (the dealt cards and the table's wits do the rest), while the item
-// field stays deliberately broad — item cards are dealt like everything
-// else, so the clues no longer hand over a near-certain item.
-
 
 // ---------------------------------------------------------------------------
 // Joint grid with precomputed kill lists
@@ -162,19 +111,9 @@ export function buildKillLists(facts: Fact[]): Map<string, Uint32Array> {
   return map;
 }
 
-type GridSnapshot = {
-  alive: Uint8Array;
-  s: Uint32Array;
-  i: Uint32Array;
-  l: Uint32Array;
-  t: Uint32Array;
-  st: Uint32Array;
-  it: Uint32Array;
-  lt: Uint32Array;
-};
-
 export class JointGrid {
   alive: Uint8Array;
+  aliveCount: number;
   suspectCells: Uint32Array;
   itemCells: Uint32Array;
   locationCells: Uint32Array;
@@ -190,6 +129,7 @@ export class JointGrid {
 
   constructor() {
     this.alive = new Uint8Array(CELL_COUNT);
+    this.aliveCount = CELL_COUNT;
     this.suspectCells = new Uint32Array(S_COUNT);
     this.itemCells = new Uint32Array(I_COUNT);
     this.locationCells = new Uint32Array(L_COUNT);
@@ -202,6 +142,7 @@ export class JointGrid {
 
   reset(): void {
     this.alive.fill(1);
+    this.aliveCount = CELL_COUNT;
     this.suspectCells.fill(I_COUNT * L_COUNT * T_COUNT);
     this.itemCells.fill(S_COUNT * L_COUNT * T_COUNT);
     this.locationCells.fill(S_COUNT * I_COUNT * T_COUNT);
@@ -211,30 +152,6 @@ export class JointGrid {
     this.ltPairs.fill(S_COUNT * I_COUNT);
   }
 
-  snapshot(): GridSnapshot {
-    return {
-      alive: this.alive.slice(),
-      s: this.suspectCells.slice(),
-      i: this.itemCells.slice(),
-      l: this.locationCells.slice(),
-      t: this.timeCells.slice(),
-      st: this.stPairs.slice(),
-      it: this.itPairs.slice(),
-      lt: this.ltPairs.slice(),
-    };
-  }
-
-  restore(snap: GridSnapshot): void {
-    this.alive.set(snap.alive);
-    this.suspectCells.set(snap.s);
-    this.itemCells.set(snap.i);
-    this.locationCells.set(snap.l);
-    this.timeCells.set(snap.t);
-    this.stPairs.set(snap.st);
-    this.itPairs.set(snap.it);
-    this.ltPairs.set(snap.lt);
-  }
-
   /** Applies a kill list; returns indices newly eliminated per category. */
   apply(kills: Uint32Array): { suspects: number[]; items: number[]; locations: number[]; times: number[] } {
     const newly = { suspects: [] as number[], items: [] as number[], locations: [] as number[], times: [] as number[] };
@@ -242,6 +159,7 @@ export class JointGrid {
       const cell = kills[k];
       if (this.alive[cell] === 0) continue;
       this.alive[cell] = 0;
+      this.aliveCount -= 1;
       const t = cell % T_COUNT;
       const rest1 = (cell - t) / T_COUNT;
       const l = rest1 % L_COUNT;
@@ -298,10 +216,7 @@ class VirtualEvaluator {
     this.grid = grid;
   }
 
-  evaluate(
-    kills: Uint32Array,
-    axis: "times" | "suspects" | "items" | "locations"
-  ): { axisDeaths: number; pairProgress: number; belowMin: boolean; deaths: CategoryCounts } {
+  evaluate(kills: Uint32Array): { killedCells: number; pairProgress: number; deaths: CategoryCounts } {
     const grid = this.grid;
     this.sDec.fill(0);
     this.iDec.fill(0);
@@ -311,9 +226,11 @@ class VirtualEvaluator {
     this.itDec.fill(0);
     this.ltDec.fill(0);
 
+    let killedCells = 0;
     for (let k = 0; k < kills.length; k += 1) {
       const cell = kills[k];
       if (grid.alive[cell] === 0) continue;
+      killedCells += 1;
       const t = cell % T_COUNT;
       const rest1 = (cell - t) / T_COUNT;
       const l = rest1 % L_COUNT;
@@ -342,13 +259,6 @@ class VirtualEvaluator {
       locations: deathsIn(this.grid.locationCells, this.lDec),
       times: deathsIn(this.grid.timeCells, this.tDec),
     };
-    const counts = grid.counts();
-    const belowMin =
-      counts.suspects - deaths.suspects < FINAL_TARGET.suspects.min ||
-      counts.items - deaths.items < FINAL_TARGET.items.min ||
-      counts.locations - deaths.locations < FINAL_TARGET.locations.min ||
-      counts.times - deaths.times < FINAL_TARGET.times.min;
-
     const pairDeaths = (pairs: Uint32Array, dec: Int32Array): number => {
       let progress = 0;
       for (let idx = 0; idx < pairs.length; idx += 1) {
@@ -356,25 +266,12 @@ class VirtualEvaluator {
       }
       return progress;
     };
-    // A time dies when every suspect OR every item is accounted for at it,
-    // so the times phase credits both chains. Location pairs are excluded:
-    // whole-location kills can never complete a time (two locations always
-    // survive), so counting them would bait the greedy into wasted picks.
     const pairProgress =
-      axis === "times"
-        ? pairDeaths(this.grid.stPairs, this.stDec) + pairDeaths(this.grid.itPairs, this.itDec)
-        : axis === "suspects"
-          ? pairDeaths(this.grid.stPairs, this.stDec)
-          : axis === "items"
-            ? pairDeaths(this.grid.itPairs, this.itDec)
-            : pairDeaths(this.grid.ltPairs, this.ltDec);
+      pairDeaths(this.grid.stPairs, this.stDec) +
+      pairDeaths(this.grid.itPairs, this.itDec) +
+      pairDeaths(this.grid.ltPairs, this.ltDec);
 
-    const axisDeaths =
-      axis === "times" ? deaths.times :
-      axis === "suspects" ? deaths.suspects :
-      axis === "items" ? deaths.items : deaths.locations;
-
-    return { axisDeaths, pairProgress, belowMin, deaths };
+    return { killedCells, pairProgress, deaths };
   }
 }
 
@@ -386,11 +283,13 @@ export function scheduleMystery(params: {
   facts: Fact[];
   answer: Answer;
   seed: number;
+  /** Retained for call-site compatibility; selection no longer retries until
+   * an arbitrary candidate-count window happens to pass. */
   maxAttempts?: number;
 }): Schedule | null {
   const { facts, answer } = params;
   const rng = new SeededRandom((params.seed ^ 0x5f3759df) >>> 1);
-  const maxAttempts = params.maxAttempts ?? 14;
+  if (facts.length < REVEAL_COUNT) return null;
   const killLists = buildKillLists(facts);
   const factById = new Map(facts.map((fact) => [fact.id, fact]));
   const answerCell = cellIndex(
@@ -399,445 +298,177 @@ export function scheduleMystery(params: {
     DIMS.locations.indexOf(answer.locationId),
     DIMS.times.indexOf(answer.timeId)
   );
-
-  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
-    // Prefer keeping a slot for one pure-color clue; late attempts may spend
-    // all twelve reveals on constraining facts if the world demands it.
-    const allowedConstraining = attempt <= Math.ceil(maxAttempts * 0.6) ? REVEAL_COUNT - 1 : REVEAL_COUNT;
-    const selected = selectFacts(rng, facts, killLists, answer, allowedConstraining);
-    if (!selected) continue;
-    const ordered = orderReveals(rng, selected, killLists, factById, answer);
-    if (!ordered) continue;
-
-    // Final full simulation for the trajectory + invariant assertions.
-    const grid = new JointGrid();
-    const trajectory: TrajectoryPoint[] = [];
-    for (const reveal of ordered) {
-      const newly = grid.apply(killLists.get(reveal.factId)!);
-      if (!grid.isCellAlive(answerCell)) {
-        throw new Error(`Schedule killed the answer cell via fact ${reveal.factId} — harvest bug.`);
-      }
-      trajectory.push({
-        position: reveal.position,
-        factId: reveal.factId,
-        counts: grid.counts(),
-        newlyEliminated: {
-          suspects: newly.suspects.map((index) => requireSuspect(DIMS.suspects[index]).displayName),
-          items: newly.items.map((index) => requireItem(DIMS.items[index]).nameUS),
-          locations: newly.locations.map((index) => requireLocation(DIMS.locations[index]).name),
-          times: newly.times.map((index) => requireTime(DIMS.times[index]).name),
-        },
-      });
-    }
-    const finalCounts = trajectory[trajectory.length - 1].counts;
-    if (!meetsFinalTarget(finalCounts)) continue;
-    const cpA = trajectory[CHECKPOINT_A.position - 1].counts;
-    const cpB = trajectory[CHECKPOINT_B.position - 1].counts;
-    if (minCount(cpA) < CHECKPOINT_A.min || minCount(cpB) < CHECKPOINT_B.min) continue;
-
-    const aliveNames = (cells: Uint32Array, ids: readonly string[], toName: (id: string) => string): string[] =>
-      ids.filter((_, index) => cells[index] > 0).map(toName);
-    return {
-      reveals: ordered,
-      trajectory,
-      finalCounts,
-      finalCandidates: {
-        suspects: aliveNames(grid.suspectCells, DIMS.suspects, (id) => requireSuspect(id).displayName),
-        items: aliveNames(grid.itemCells, DIMS.items, (id) => requireItem(id).nameUS),
-        locations: aliveNames(grid.locationCells, DIMS.locations, (id) => requireLocation(id).name),
-        times: aliveNames(grid.timeCells, DIMS.times, (id) => requireTime(id).name),
-      },
-      noteRelatedClues: relatedClues(ordered, factById),
-      softScore: softPenalty(ordered.map((reveal) => factById.get(reveal.factId)!), answer),
-      attempts: attempt,
-    };
+  const selection = selectFacts(rng, facts, killLists);
+  if (!selection) return null;
+  const orderedFacts = orderFacts(rng, selection.facts, answer);
+  const reveals: ScheduledReveal[] = [];
+  let clueNumber = 0;
+  for (let index = 0; index < orderedFacts.length; index += 1) {
+    const position = index + 1;
+    const slot: RevealSlot = position === NOTE1_POSITION ? "note1" : position === NOTE2_POSITION ? "note2" : "clue";
+    if (slot === "clue") clueNumber += 1;
+    reveals.push({ position, slot, clueNumber: slot === "clue" ? clueNumber : null, factId: orderedFacts[index].id });
   }
-  return null;
-}
 
-function meetsFinalTarget(counts: CategoryCounts): boolean {
-  return (
-    counts.suspects >= FINAL_TARGET.suspects.min && counts.suspects <= FINAL_TARGET.suspects.max &&
-    counts.items >= FINAL_TARGET.items.min && counts.items <= FINAL_TARGET.items.max &&
-    counts.locations >= FINAL_TARGET.locations.min && counts.locations <= FINAL_TARGET.locations.max &&
-    counts.times >= FINAL_TARGET.times.min && counts.times <= FINAL_TARGET.times.max
-  );
-}
+  const grid = new JointGrid();
+  const trajectory: TrajectoryPoint[] = [];
+  for (const reveal of reveals) {
+    const newly = grid.apply(killLists.get(reveal.factId)!);
+    if (!grid.isCellAlive(answerCell)) {
+      throw new Error(`Schedule killed the answer cell via fact ${reveal.factId} — harvest bug.`);
+    }
+    trajectory.push({
+      position: reveal.position,
+      factId: reveal.factId,
+      counts: grid.counts(),
+      remainingSolutions: grid.aliveCount,
+      newlyEliminated: {
+        suspects: newly.suspects.map((index) => requireSuspect(DIMS.suspects[index]).displayName),
+        items: newly.items.map((index) => requireItem(DIMS.items[index]).nameUS),
+        locations: newly.locations.map((index) => requireLocation(DIMS.locations[index]).name),
+        times: newly.times.map((index) => requireTime(DIMS.times[index]).name),
+      },
+    });
+  }
+  if (grid.aliveCount <= 1) return null;
 
-function minCount(counts: CategoryCounts): number {
-  return Math.min(counts.suspects, counts.items, counts.locations, counts.times);
+  const aliveNames = (cells: Uint32Array, ids: readonly string[], toName: (id: string) => string): string[] =>
+    ids.filter((_, index) => cells[index] > 0).map(toName);
+  return {
+    reveals,
+    trajectory,
+    finalCounts: grid.counts(),
+    finalCandidates: {
+      suspects: aliveNames(grid.suspectCells, DIMS.suspects, (id) => requireSuspect(id).displayName),
+      items: aliveNames(grid.itemCells, DIMS.items, (id) => requireItem(id).nameUS),
+      locations: aliveNames(grid.locationCells, DIMS.locations, (id) => requireLocation(id).name),
+      times: aliveNames(grid.timeCells, DIMS.times, (id) => requireTime(id).name),
+    },
+    noteRelatedClues: relatedClues(reveals, factById),
+    softScore: selection.score - softPenalty(orderedFacts, answer),
+    attempts: 1,
+  };
 }
 
 // ---------------------------------------------------------------------------
-// Coverage-driven selection
+// Quality-ranked selection
 // ---------------------------------------------------------------------------
+
+function licensedNames(fact: Fact): string[] {
+  return [...new Set([
+    ...fact.mentions.suspects,
+    ...fact.mentions.items,
+    ...fact.mentions.locations,
+    ...fact.mentions.times,
+  ])];
+}
+
+/** Narrative value comes from the fact's actual structure, not a whitelist
+ * or rank of clue kinds. People situated in a time and place naturally carry
+ * more story than a bare ledger entry; uncertain/threaded facts gain context
+ * without becoming mandatory. */
+function narrativeValue(fact: Fact, dimensions: number): number {
+  return 10 +
+    (fact.suspectIds.length > 0 ? 14 : 0) +
+    (fact.locationIds.length > 0 ? 5 : 0) +
+    (fact.timeIds.length > 0 ? 5 : 0) +
+    (fact.itemIds.length > 0 ? 3 : 0) +
+    (dimensions >= 3 ? 5 : 0) +
+    (isMentionOnly(fact) ? 7 : 0) +
+    (fact.threadId ? 5 : 0) +
+    (fact.suspectTimePairs && fact.suspectTimePairs.length > fact.suspectIds.length ? 3 : 0);
+}
 
 /**
- * Greedily assembles exactly 12 facts whose combined effect lands every
- * category inside the final target window. Order does not matter here; the
- * grid state after applying all selected facts is order-independent.
- *
- * The greedy is need-weighted and counts PARTIAL progress: killing joint
- * cells at a still-alive time/suspect/item/location scores even when no
- * category candidate dies outright, so multi-fact chains (e.g. covering all
- * ten suspects at Dawn across two clues to rule Dawn out) emerge naturally.
+ * Picks twelve facts by quality. Deduction helps a candidate's score, but no
+ * suspect/item/location/time count is a target or a pass/fail condition.
+ * Repetition is a soft cost; source reuse and a one-cell public solution are
+ * the only exclusions.
  */
 function selectFacts(
   rng: SeededRandom,
   facts: Fact[],
-  killLists: Map<string, Uint32Array>,
-  answer: Answer,
-  maxConstraining: number
-): Fact[] | null {
+  killLists: Map<string, Uint32Array>
+): { facts: Fact[]; score: number } | null {
   const grid = new JointGrid();
-  const chosen: Fact[] = [];
-  const used = new Set<string>();
-  const constraining = facts.filter((fact) => !isMentionOnly(fact));
-  const colorFacts = facts.filter((fact) => isMentionOnly(fact));
-
-  const needs = (counts: CategoryCounts): CategoryCounts => ({
-    suspects: Math.max(0, counts.suspects - FINAL_TARGET.suspects.max),
-    items: Math.max(0, counts.items - FINAL_TARGET.items.max),
-    locations: Math.max(0, counts.locations - FINAL_TARGET.locations.max),
-    times: Math.max(0, counts.times - FINAL_TARGET.times.max),
-  });
-
-  const chosenMemberships = new Set<string>();
-  const add = (fact: Fact): void => {
-    used.add(fact.id);
-    chosen.push(fact);
-    if (fact.kind === "group_presence") chosenMemberships.add(fact.suspectIds.slice().sort().join("+"));
-    grid.apply(killLists.get(fact.id)!);
-  };
-
-  /**
-   * One selection phase for a single category. Scores candidates by direct
-   * candidate-deaths in that category, plus pair progress toward this axis's
-   * chains (covering every suspect at a time kills the time; covering a
-   * suspect at every surviving time kills the suspect), so multi-fact chains
-   * build up naturally. Facts picked in an earlier phase count toward later
-   * phases automatically — a staff round serves both times and items.
-   *
-   * Candidate evaluation is virtual — it walks the kill list against the
-   * current grid without mutating it, which keeps the search fast.
-   */
   const evaluator = new VirtualEvaluator(grid);
-  const runPhase = (axis: "times" | "suspects" | "items" | "locations", maxOverride?: number): boolean => {
-    const targetMax = maxOverride ?? FINAL_TARGET[axis].max;
-    let stall = 0;
-    while (grid.counts()[axis] > targetMax) {
-      if (chosen.length >= maxConstraining || stall++ > 12) return false;
-      const scored: Array<{ fact: Fact; score: number }> = [];
-      for (const fact of constraining) {
-        if (used.has(fact.id)) continue;
-        const evaluated = evaluator.evaluate(killLists.get(fact.id)!, axis);
-        if (evaluated.belowMin) continue;
-        // Exchange rate: one direct candidate-death ≈ twelve pair-deaths.
-        // A heavy sweep laying 30+ pairs of groundwork legitimately outbids
-        // a redundant single-death fact — this is what lets three staff
-        // rounds quietly account for most of the day.
-        // People bias: a mystery is about people first — who kept whose
-        // company, who slipped off, who left early. When a people-fact and
-        // an item tally would both do the job, the people-fact wins; item
-        // facts still get picked wherever they are genuinely needed.
-        // The same four people twice reads stale even in fresh words — nudge
-        // toward different company when the coverage value is comparable.
-        const membershipKey = fact.suspectIds.slice().sort().join("+");
-        const repeatNudge =
-          fact.kind === "group_presence" && chosenMemberships.has(membershipKey) ? 0.75 : 1;
-        const score = (evaluated.axisDeaths * 120 + evaluated.pairProgress * 10) * PEOPLE_BIAS[fact.kind] * repeatNudge;
-        if (score > 0) scored.push({ fact, score });
-      }
-      if (scored.length === 0) return false;
-      scored.sort((a, b) => b.score - a.score);
-      const top = scored.slice(0, Math.min(3, scored.length));
-      add(rng.pick(top).fact);
-    }
-    return true;
-  };
+  const chosen: Fact[] = [];
+  const usedSources = new Set<string>();
+  const seenNames = new Set<string>();
+  const shapeCounts = new Map<string, number>();
+  const axisCounts = new Map<Fact["primaryAxis"], number>();
+  const threadCounts = new Map<string, number>();
+  const shuffled = rng.shuffle([...facts]);
+  let packageScore = 0;
 
-  // Late-theft closure basket: when the theft happens in the evening, the
-  // item chain is THE mechanism that retires the earlier hours, and it only
-  // works as a complete set — every item must be accounted for late. The
-  // basket: night-round sweeps, the offsite item, the last-seen-together
-  // anchor (answer item + decoys), and for Midnight the grand lockup. The
-  // myopic greedy cannot assemble this on its own because each piece scores
-  // nothing until the set completes.
-  const answerOrder = requireTime(answer.timeId).order;
-  if (answerOrder >= 6) {
-    const anchorCutoff = answerOrder - 1;
-    const basket = constraining
-      .filter((fact) => {
-        if (fact.kind === "item_offsite") return true;
-        if (fact.kind === "items_secured" && fact.itemIds.length >= 6) return true; // grand lockup
-        if (fact.kind !== "item_intact") return false;
-        if (fact.itemIds.includes(answer.itemId)) return (fact.cutoffOrder ?? 0) === anchorCutoff;
-        return fact.itemIds.length >= 2 && (fact.cutoffOrder ?? 0) >= Math.min(anchorCutoff, 9);
-      })
-      .sort((a, b) => b.itemIds.length - a.itemIds.length);
-    for (const fact of basket) {
-      if (chosen.length >= Math.min(maxConstraining - 4, 7)) break;
-      if (used.has(fact.id)) continue;
-      const evaluated = evaluator.evaluate(killLists.get(fact.id)!, "items");
-      if (evaluated.belowMin) continue;
-      if (evaluated.pairProgress === 0 && evaluated.axisDeaths === 0) continue; // redundant
-      add(fact);
-    }
-  }
+  while (chosen.length < REVEAL_COUNT) {
+    const scored: Array<{ fact: Fact; score: number }> = [];
+    for (const fact of shuffled) {
+      if (usedSources.has(fact.id)) continue;
+      const evaluated = evaluator.evaluate(killLists.get(fact.id)!);
+      if (grid.aliveCount - evaluated.killedCells <= 1) continue;
 
-  // Times first (they gate everything), then suspects (need coverage at the
-  // surviving times), then items and locations (cheap, bundle-served).
-  if (!runPhase("times")) return null;
-  if (!runPhase("suspects")) return null;
-  if (!runPhase("items")) return null;
-  if (!runPhase("locations")) return null;
-
-// Convergence now lives in the windows themselves: times and locations
-// narrow (the dealt cards and the table's wits do the rest), while the item
-// field stays deliberately broad — item cards are dealt like everything
-// else, so the clues no longer hand over a near-certain item.
-  const finalNeed = needs(grid.counts());
-  if (finalNeed.suspects + finalNeed.items + finalNeed.locations + finalNeed.times > 0) return null;
-  if (chosen.length > maxConstraining) return null;
-
-  // Redundancy prune: the greedy overbuys bookkeeping because item facts
-  // overlap heavily (sweeps, night repeats, lockups all vouching for the
-  // same pieces). Any item/room fact whose removal still leaves every final
-  // window and the converged-axes requirement intact is dead weight — drop
-  // it, and let the freed slot go to people instead. This is what tilts the
-  // case toward WHO was where over WHAT was dusted, without banning anything.
-  const BOOKKEEPING = new Set(["item_intact", "items_secured", "item_offsite", "item_home", "room_undisturbed"]);
-  const meetsAll = (): boolean => {
-    const counts = grid.counts();
-    const need = needs(counts);
-    if (need.suspects + need.items + need.locations + need.times > 0) return false;
-    return (
-      counts.suspects >= FINAL_TARGET.suspects.min && counts.items >= FINAL_TARGET.items.min &&
-      counts.locations >= FINAL_TARGET.locations.min && counts.times >= FINAL_TARGET.times.min
-    );
-  };
-  const rebuildGrid = (): void => {
-    grid.reset();
-    for (const fact of chosen) grid.apply(killLists.get(fact.id)!);
-  };
-  for (const candidate of [...chosen].filter((fact) => BOOKKEEPING.has(fact.kind))) {
-    const index = chosen.indexOf(candidate);
-    if (index === -1) continue;
-    chosen.splice(index, 1);
-    rebuildGrid();
-    if (meetsAll()) {
-      used.delete(candidate.id);
-    } else {
-      chosen.splice(index, 0, candidate);
-      rebuildGrid();
-    }
-  }
-
-  // Refill freed slots with PEOPLE first — company, absences, comings and
-  // goings that add texture (and only safe, above-floor eliminations).
-  if (chosen.length < REVEAL_COUNT) {
-    const peoplePads = rng.shuffle(
-      constraining.filter(
-        (fact) => !used.has(fact.id) && fact.suspectIds.length > 0 && fact.kind !== "gathering"
-      )
-    );
-    const evaluatorForPads = new VirtualEvaluator(grid);
-    for (const fact of peoplePads) {
-      if (chosen.length >= Math.min(REVEAL_COUNT - 2, maxConstraining)) break; // keep 2 slots for texture
-      const evaluated = evaluatorForPads.evaluate(killLists.get(fact.id)!, "suspects");
-      if (evaluated.belowMin) continue;
-      add(fact);
-      if (!meetsAll()) {
-        chosen.pop();
-        used.delete(fact.id);
-        rebuildGrid();
-      }
-    }
-  }
-
-  // Then texture: motives, half-memories, statements — the fog of the day.
-  // Claims are dealt freely: statements eliminate nothing, their uncertain
-  // wording marks them as somebody's word rather than Ashe's observation,
-  // and the players hold the truth in their hands. Let the liar lie.
-  // Texture priority: one attributed statement first (true or false — the
-  // wrapper is identical and the mixture is the point), then a motive
-  // whisper or half-memory, then the rest of the day's color. At most ONE
-  // claim per game, so paired alibi-statements never become a pattern.
-  const pads = rng.shuffle(colorFacts.filter((fact) => !used.has(fact.id)));
-  // When the thief's false alibi exists, deal it half the time it competes —
-  // the lie stays a live threat (~1 game in 3) without ever being the rule.
-  if (rng.nextBool(0.5)) {
-    const lieIndex = pads.findIndex((fact) => fact.kind === "claim" && fact.threadId === "LIE");
-    if (lieIndex > 0) {
-      const [lie] = pads.splice(lieIndex, 1);
-      pads.unshift(lie);
-    }
-  }
-  const textureRank = (fact: Fact): number =>
-    fact.kind === "claim" ? 0 : fact.threadId === "MOTIVE" || fact.threadId === "FOG" ? 1 : 2;
-  pads.sort((a, b) => textureRank(a) - textureRank(b));
-  let claimsDealt = 0;
-  while (chosen.length < REVEAL_COUNT && pads.length > 0) {
-    const fact = pads.shift()!;
-    if (fact.kind === "claim" && claimsDealt >= 1) continue;
-    if (fact.kind === "claim") claimsDealt += 1;
-    add(fact);
-  }
-  if (chosen.length < REVEAL_COUNT) {
-    // Not enough color facts: fill with harmless leftovers that stay in range.
-    const leftovers = rng.shuffle(constraining.filter((fact) => !used.has(fact.id)));
-    for (const fact of leftovers) {
-      if (chosen.length >= REVEAL_COUNT) break;
-      const snapshot = grid.snapshot();
-      grid.apply(killLists.get(fact.id)!);
-      const after = grid.counts();
-      const ok =
-        after.suspects >= FINAL_TARGET.suspects.min &&
-        after.items >= FINAL_TARGET.items.min &&
-        after.locations >= FINAL_TARGET.locations.min &&
-        after.times >= FINAL_TARGET.times.min;
-      if (ok) {
-        used.add(fact.id);
-        chosen.push(fact);
-      } else {
-        grid.restore(snapshot);
-      }
-    }
-  }
-  if (chosen.length !== REVEAL_COUNT) return null;
-
-  // Need at least two note-suitable facts for N1/N2.
-  if (chosen.filter((fact) => fact.noteSuitable).length < 2) return null;
-  return chosen;
-}
-
-// ---------------------------------------------------------------------------
-// Checkpoint-aware ordering
-// ---------------------------------------------------------------------------
-
-/**
- * Places the 12 selected facts into the reveal sequence so both checkpoints
- * hold, answer-mentioning facts sit at position ≥ 7, and the answer-solo fact
- * (if selected) lands in the last two clues. Greedy with randomized tie-breaks;
- * retries internally a few times.
- */
-function orderReveals(
-  rng: SeededRandom,
-  selected: Fact[],
-  killLists: Map<string, Uint32Array>,
-  factById: Map<string, Fact>,
-  answer: Answer
-): ScheduledReveal[] | null {
-  // No placement gates by answer-mention: the checkpoints are the fairness
-  // floor, and the wording (rhythm-of-the-day hours, chorus naming) carries
-  // the discretion. The story is told in whatever order tells it best.
-  outer: for (let round = 0; round < 40; round += 1) {
-    const remaining = rng.shuffle([...selected]);
-    const grid = new JointGrid();
-    const evaluator = new VirtualEvaluator(grid);
-    const reveals: ScheduledReveal[] = [];
-    let noteAssigned = 0;
-
-    for (let position = 1; position <= REVEAL_COUNT; position += 1) {
-      const isNote = position === NOTE1_POSITION || position === NOTE2_POSITION;
-      const afterCheckpoints = position > CHECKPOINT_B.position;
-      const bound = position <= CHECKPOINT_A.position ? CHECKPOINT_A.min : CHECKPOINT_B.min;
-
-      const legal = remaining.filter((fact) => {
-        if (isNote && !fact.noteSuitable) return false;
-        if (!isNote && needsNoteSlot(remaining, fact, position, noteAssigned)) return false;
-        return true;
-      });
-      if (legal.length === 0) continue outer;
-
-      // Keep the current checkpoint bound satisfied; after both checkpoints
-      // no bound applies (the selection already guarantees the final window,
-      // and counts can only decrease toward it). Prefer gentle facts early
-      // and heavy facts late so convergence lands in the last three clues.
-      const counts = grid.counts();
-      const viable: Array<{ fact: Fact; kills: number }> = [];
-      for (const fact of legal) {
-        const evaluated = evaluator.evaluate(killLists.get(fact.id)!, "times");
-        if (!afterCheckpoints) {
-          const after = {
-            suspects: counts.suspects - evaluated.deaths.suspects,
-            items: counts.items - evaluated.deaths.items,
-            locations: counts.locations - evaluated.deaths.locations,
-            times: counts.times - evaluated.deaths.times,
-          };
-          if (minCount(after) < bound) continue;
-        }
-        const kills =
-          evaluated.deaths.suspects + evaluated.deaths.items + evaluated.deaths.locations + evaluated.deaths.times;
-        viable.push({ fact, kills });
-      }
-      if (viable.length === 0) continue outer;
-      if (isNote) {
-        // The Inspector's notes are dry tallies by nature — give them the
-        // list-shaped bookkeeping facts, freeing Ashe's testimonies for
-        // people and events.
-        viable.sort((a, b) => bundleSize(b.fact) - bundleSize(a.fact));
-      } else {
-        // Even story reveal: each clue carries roughly its fair share of the
-        // day's information rather than whispers early and thunder late.
-        // People-facts lead within that budget.
-        const meanKills = viable.reduce((sum, entry) => sum + entry.kills, 0) / viable.length;
-        viable.sort(
-          (a, b) =>
-            Number(b.fact.suspectIds.length > 0) - Number(a.fact.suspectIds.length > 0) ||
-            Math.abs(a.kills - meanKills) - Math.abs(b.kills - meanKills)
-        );
-      }
-      const pickWindow = Math.min(3, viable.length);
-      const fact = viable[rng.nextInt(0, pickWindow - 1)].fact;
-
-      grid.apply(killLists.get(fact.id)!);
-      remaining.splice(remaining.findIndex((candidate) => candidate.id === fact.id), 1);
-      if (isNote) noteAssigned += 1;
-      reveals.push({
-        position,
-        slot: position === NOTE1_POSITION ? "note1" : position === NOTE2_POSITION ? "note2" : "clue",
-        clueNumber: null,
-        factId: fact.id,
+      const names = licensedNames(fact);
+      const newNames = names.filter((name) => !seenNames.has(name)).length;
+      const dimensions = [fact.suspectIds, fact.itemIds, fact.locationIds, fact.timeIds]
+        .filter((ids) => ids.length > 0).length;
+      const shape = fact.kind;
+      const deaths = evaluated.deaths.suspects + evaluated.deaths.items + evaluated.deaths.locations + evaluated.deaths.times;
+      const existingThreadCount = fact.threadId ? (threadCounts.get(fact.threadId) ?? 0) : 0;
+      const deductionValue =
+        Math.log2(evaluated.killedCells + 1) * 1.25 +
+        deaths * 3.5 +
+        Math.log2(evaluated.pairProgress + 1) * 1.25;
+      const noveltyValue = Math.min(newNames, 8) * 0.8 + dimensions * 1.5;
+      // A false statement and the separately observed contradiction form a
+      // genuine mystery thread, not repetition. Reward that second half
+      // softly; unrelated recurring labels remain a repetition cost.
+      const threadConnectionValue = fact.threadId === "LIE" && existingThreadCount === 1 ? 8 : 0;
+      const repetitionCost =
+        (shapeCounts.get(shape) ?? 0) * 7 +
+        (axisCounts.get(fact.primaryAxis) ?? 0) * 1.5 +
+        (fact.threadId && fact.threadId !== "LIE" ? existingThreadCount * 5 : Math.max(0, existingThreadCount - 1) * 5) +
+        Math.max(0, names.length - 8) * 2;
+      scored.push({
+        fact,
+        score: narrativeValue(fact, dimensions) + deductionValue + noveltyValue + threadConnectionValue - repetitionCost,
       });
     }
-
-    // Variety cap: Ashe reads at most two multi-item tallies and one
-    // multi-room check aloud; further list-shaped facts belong to the notes.
-    const clueFactsChosen = reveals
-      .filter((reveal) => reveal.slot === "clue")
-      .map((reveal) => factById.get(reveal.factId)!);
-    const roomLists = clueFactsChosen.filter((fact) => fact.kind === "room_undisturbed" && fact.locationIds.length >= 2).length;
-    if (roomLists > 2) continue outer;
-
-    // Assign clue numbers 1..10 in order.
-    let clueNumber = 0;
-    for (const reveal of reveals) {
-      if (reveal.slot === "clue") {
-        clueNumber += 1;
-        reveal.clueNumber = clueNumber;
-      }
+    if (scored.length === 0) return null;
+    scored.sort((a, b) => b.score - a.score);
+    const finalists = scored.slice(0, Math.min(4, scored.length));
+    const picked = rng.pickWeighted(finalists, [7, 3, 1.5, 0.5].slice(0, finalists.length));
+    const fact = picked.fact;
+    chosen.push(fact);
+    packageScore += picked.score;
+    usedSources.add(fact.id);
+    for (const name of licensedNames(fact)) seenNames.add(name);
+    const shape = fact.kind;
+    shapeCounts.set(shape, (shapeCounts.get(shape) ?? 0) + 1);
+    axisCounts.set(fact.primaryAxis, (axisCounts.get(fact.primaryAxis) ?? 0) + 1);
+    if (fact.threadId) {
+      threadCounts.set(fact.threadId, (threadCounts.get(fact.threadId) ?? 0) + 1);
     }
-    return reveals;
+    grid.apply(killLists.get(fact.id)!);
   }
-  return null;
+
+  return { facts: chosen, score: packageScore };
 }
 
-/**
- * Reserve note-suitable facts when only just enough remain to fill N1/N2.
- */
-function bundleSize(fact: Fact): number {
-  if (fact.kind === "item_intact" || fact.kind === "items_secured") return fact.itemIds.length;
-  if (fact.kind === "room_undisturbed") return fact.locationIds.length;
-  return 0;
-}
-
-function needsNoteSlot(remaining: Fact[], fact: Fact, position: number, notesAssigned: number): boolean {
-  if (!fact.noteSuitable) return false;
-  const notesLeft = 2 - notesAssigned;
-  if (notesLeft <= 0) return false;
-  const suitableLeft = remaining.filter((candidate) => candidate.noteSuitable).length;
-  return suitableLeft <= notesLeft;
+/** Every selected fact can occupy every reveal position. We sample several
+ * unrestricted shuffles and use only a soft adjacent-repetition preference. */
+function orderFacts(rng: SeededRandom, selected: Fact[], answer: Answer): Fact[] {
+  let best = rng.shuffle([...selected]);
+  let bestPenalty = softPenalty(best, answer);
+  for (let round = 1; round < 24; round += 1) {
+    const candidate = rng.shuffle([...selected]);
+    const penalty = softPenalty(candidate, answer);
+    if (penalty < bestPenalty) {
+      best = candidate;
+      bestPenalty = penalty;
+    }
+  }
+  return best;
 }
 
 // ---------------------------------------------------------------------------

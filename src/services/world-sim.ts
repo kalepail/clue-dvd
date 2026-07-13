@@ -23,7 +23,7 @@
 import { ITEMS, LOCATIONS, SUSPECTS, TIME_PERIODS } from "../data/game-elements";
 import type { Item, Location, Suspect, TimePeriod } from "../data/game-elements";
 import { SeededRandom } from "./seeded-random";
-import type { Answer } from "./ai-mystery-schemas";
+import type { Answer, OccasionTexture } from "./ai-mystery-schemas";
 
 export const STAFF_SUSPECT_IDS = ["S03", "S10"] as const; // Mrs. White, Rusty
 
@@ -79,11 +79,21 @@ export type InnocentThread = {
 
 export type PartyMode = "house_party" | "day_party";
 
+export type TransitionRemark = {
+  suspectId: string;
+  fromTimeId: string;
+  toTimeId: string;
+  /** What was actually said; whether the stated reason was sincere is unknown. */
+  line: string;
+};
+
 export type WorldState = {
   seed: number;
   attempt: number;
   answer: Answer;
   occasionFamily: string;
+  /** Answer-blind occasion details promoted to world truth after dossier design. */
+  occasionTexture: OccasionTexture | null;
   partyMode: PartyMode;
   /** Order-indexed time periods for convenience. */
   slots: TimePeriod[];
@@ -92,6 +102,8 @@ export type WorldState = {
   gatherings: Gathering[];
   /** movement[timeId][suspectId] */
   movement: Record<string, Record<string, Placement>>;
+  /** Neutral social excuses spoken when somebody breaks away from a group. */
+  transitionRemarks: TransitionRemark[];
   items: Record<string, ItemState>;
   /**
    * Decoy items: nobody can quite account for these that day, so they remain
@@ -155,6 +167,36 @@ const ROOM_ACTIVITIES: Record<string, string[]> = {
   L09: ["writing letters", "examining the collection", "settling accounts"],
   L10: ["strolling among the roses", "cutting blooms for the table", "taking photographs"],
   L11: ["feeding the goldfish", "taking the air", "admiring the stonework"],
+};
+
+const TRANSITION_REMARKS = {
+  morning: [
+    "I ought to fetch my spectacles",
+    "I promised to look for a missing letter",
+    "I left my gloves upstairs",
+    "I must see whether the morning post has come",
+  ],
+  afternoon: [
+    "I must make a telephone call",
+    "I promised to find Mr. Boddy's programme",
+    "I ought to fetch my notes",
+    "I left my gloves in another room",
+  ],
+  evening: [
+    "I ought to fetch my coat",
+    "I left my cigarette case upstairs",
+    "I must see whether my motorcar has come round",
+    "I promised to find the evening programme",
+  ],
+} as const;
+
+const DEFAULT_OCCASION_TEXTURE: OccasionTexture = {
+  groupActivities: ["comparing the day's programmes", "helping with the arrangements", "rehearsing a short presentation"],
+  transitionRemarks: ["I ought to fetch my notes", "I must make a telephone call", "I left my gloves in another room"],
+  gatheringDetails: ["discussing the next part of the programme", "comparing impressions of the occasion"],
+  inspectionContexts: ["collecting the abandoned programmes", "putting the occasion's materials in order"],
+  observationContexts: ["clearing away the occasion's papers", "making the usual household rounds"],
+  uncertainObservations: ["someone hurrying away from the company", "a figure slipping through the edge of the gathering"],
 };
 
 /**
@@ -392,6 +434,13 @@ export function simulateWorld(params: {
 
   // --- Movement grid -------------------------------------------------------
   const movement = buildMovementGrid(rng, slots, answer, gatherings, threads, arrival, departures);
+  // Dialogue is generated from a separate stream so adding prose texture can
+  // never alter the actual movements or deduction structure of the day.
+  const transitionRemarks = buildTransitionRemarks(
+    new SeededRandom(hashSeed(params.seed ^ 0x4f1bbcdc, params.attempt)),
+    slots,
+    movement
+  );
 
   // --- Item lifecycles ------------------------------------------------------
   const items = buildItemStates(rng, answer, movement, gatherings);
@@ -527,12 +576,14 @@ export function simulateWorld(params: {
     attempt: params.attempt,
     answer,
     occasionFamily,
+    occasionTexture: null,
     partyMode,
     slots,
     arrival,
     departures,
     gatherings,
     movement,
+    transitionRemarks,
     items,
     decoyItemIds,
     securedSet,
@@ -544,6 +595,54 @@ export function simulateWorld(params: {
     falseAlibi,
     trueStatements,
   };
+}
+
+/**
+ * Promote the answer-blind dossier's creative palette into world truth.
+ * Only narrative texture changes: placements, companions, rooms, times,
+ * items, and every deduction predicate remain untouched.
+ */
+export function applyOccasionTexture(world: WorldState, proposed: OccasionTexture): void {
+  const texture = normalizeOccasionTexture(proposed);
+  world.occasionTexture = texture;
+
+  const threadMoments = new Set(
+    world.threads
+      .filter((thread) => thread.timeId)
+      .map((thread) => `${thread.timeId}|${thread.suspectIds.slice().sort().join("+")}`)
+  );
+  for (const slot of world.slots) {
+    const placements = world.movement[slot.id] ?? {};
+    const seen = new Set<string>();
+    for (const placement of Object.values(placements)) {
+      if (placement.social !== "group") continue;
+      const groupKey = placement.companions.slice().sort().join("+");
+      if (seen.has(groupKey) || threadMoments.has(`${slot.id}|${groupKey}`)) continue;
+      seen.add(groupKey);
+      const activity = pickTexture(texture.groupActivities, `${world.seed}|${world.attempt}|${slot.id}|${groupKey}`);
+      for (const suspectId of placement.companions) {
+        const companion = placements[suspectId];
+        if (companion?.social === "group" && companion.companions.slice().sort().join("+") === groupKey) {
+          companion.activity = activity;
+        }
+      }
+    }
+  }
+
+  world.transitionRemarks.forEach((remark, index) => {
+    remark.line = pickTexture(
+      texture.transitionRemarks,
+      `${world.seed}|${world.attempt}|remark|${index}|${remark.suspectId}|${remark.toTimeId}`
+    );
+  });
+  world.threads
+    .filter((thread) => thread.kind === "foggy_memory")
+    .forEach((thread, index) => {
+      thread.cause = pickTexture(
+        texture.uncertainObservations,
+        `${world.seed}|${world.attempt}|uncertain|${index}|${thread.suspectIds[0]}`
+      );
+    });
 }
 
 // ---------------------------------------------------------------------------
@@ -641,11 +740,16 @@ function buildMovementGrid(
       }
     }
 
-    // Sticky carry-over: a card game that simply continues in the same room.
+    // Sticky carry-over: preserve the people who genuinely remain together,
+    // even when one member peels away or is pulled into a private thread. The
+    // old all-or-nothing equality check shattered exactly the useful episode:
+    // A, B, and C share an activity; C excuses themself; A and B carry on.
     for (const group of previousGroups) {
-      if (!rng.nextBool(0.55)) continue;
+      const carryWholeGroup = rng.nextBool(0.55);
       const stillHere = group.members.filter((member) => unplaced.includes(member));
-      if (stillHere.length < 2 || stillHere.length !== group.members.length) continue;
+      if (stillHere.length < 2) continue;
+      const memberPeeledAway = stillHere.length < group.members.length;
+      if (!memberPeeledAway && !carryWholeGroup) continue;
       if (slot.id === answer.timeId && group.locationId === answer.locationId) continue;
       for (const member of stillHere) {
         placements[member] = {
@@ -746,6 +850,47 @@ function buildMovementGrid(
     grid[slot.id] = placements;
   }
   return grid;
+}
+
+function buildTransitionRemarks(
+  rng: SeededRandom,
+  slots: TimePeriod[],
+  movement: Record<string, Record<string, Placement>>
+): TransitionRemark[] {
+  const remarks: TransitionRemark[] = [];
+  for (let index = 0; index < slots.length - 1; index += 1) {
+    const from = slots[index];
+    const to = slots[index + 1];
+    for (const suspect of SUSPECTS) {
+      const before = movement[from.id]?.[suspect.id];
+      const after = movement[to.id]?.[suspect.id];
+      if (!before || !after || before.social !== "group") continue;
+      const sameCompany =
+        after.social === "group" &&
+        before.companions.slice().sort().join("+") === after.companions.slice().sort().join("+");
+      if (sameCompany && before.locationId === after.locationId) continue;
+      // Only create dialogue for a real handoff: at least two of the people
+      // being left behind continue together in the same room next hour.
+      const continuingCompanions = before.companions.filter((companionId) => {
+        if (companionId === suspect.id) return false;
+        const nextPlacement = movement[to.id]?.[companionId];
+        return Boolean(
+          nextPlacement &&
+          nextPlacement.social === "group" &&
+          nextPlacement.locationId === before.locationId
+        );
+      });
+      if (continuingCompanions.length < 2) continue;
+      const phase = to.order <= 3 ? "morning" : to.order <= 6 ? "afternoon" : "evening";
+      remarks.push({
+        suspectId: suspect.id,
+        fromTimeId: from.id,
+        toTimeId: to.id,
+        line: rng.pick([...TRANSITION_REMARKS[phase]]),
+      });
+    }
+  }
+  return remarks;
 }
 
 function buildItemStates(
@@ -898,6 +1043,40 @@ function hashSeed(seed: number, attempt: number): number {
   h = (h ^ (h >>> 16)) * 0x45d9f3b;
   h = (h ^ (h >>> 16)) >>> 0;
   return h & 0x7fffffff;
+}
+
+function normalizeOccasionTexture(proposed: OccasionTexture): OccasionTexture {
+  const forbidden = [
+    ...SUSPECTS.flatMap((suspect) => [suspect.name, suspect.displayName]),
+    ...ITEMS.flatMap((item) => [item.nameUS, item.nameUK]),
+    ...LOCATIONS.map((location) => location.name),
+    ...TIME_PERIODS.map((time) => time.name),
+  ].map((name) => name.toLowerCase());
+  const clean = (values: string[] | undefined, fallback: string[]): string[] => {
+    const accepted = (values ?? [])
+      .map((value) => value.trim().replace(/^["“]|["”]$/g, "").replace(/[.!]$/, ""))
+      .filter((value) => value.length >= 4 && value.length <= 120)
+      .filter((value) => !forbidden.some((name) => value.toLowerCase().includes(name)))
+      .slice(0, 8);
+    return accepted.length > 0 ? accepted : [...fallback];
+  };
+  return {
+    groupActivities: clean(proposed?.groupActivities, DEFAULT_OCCASION_TEXTURE.groupActivities),
+    transitionRemarks: clean(proposed?.transitionRemarks, DEFAULT_OCCASION_TEXTURE.transitionRemarks),
+    gatheringDetails: clean(proposed?.gatheringDetails, DEFAULT_OCCASION_TEXTURE.gatheringDetails),
+    inspectionContexts: clean(proposed?.inspectionContexts, DEFAULT_OCCASION_TEXTURE.inspectionContexts),
+    observationContexts: clean(proposed?.observationContexts, DEFAULT_OCCASION_TEXTURE.observationContexts),
+    uncertainObservations: clean(proposed?.uncertainObservations, DEFAULT_OCCASION_TEXTURE.uncertainObservations),
+  };
+}
+
+function pickTexture(values: string[], key: string): string {
+  let hash = 2_166_136_261;
+  for (let index = 0; index < key.length; index += 1) {
+    hash ^= key.charCodeAt(index);
+    hash = Math.imul(hash, 16_777_619);
+  }
+  return values[(hash >>> 0) % values.length];
 }
 
 function pickActivity(rng: SeededRandom, locationId: string): string {

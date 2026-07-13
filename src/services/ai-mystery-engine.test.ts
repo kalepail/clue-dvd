@@ -43,6 +43,14 @@ function buildMockProvider(overrides?: {
         occasionSummary: "Mr. Boddy has gathered his acquaintances to settle a village memorial subscription. The mood is generous but watchful.",
         hostReason: "He hopes the fund will be settled without quarrel.",
         mysterySignature: "memorial subscription | old debts | garden weather",
+        occasionTexture: {
+          groupActivities: ["sorting pledge cards", "comparing the subscription lists"],
+          transitionRemarks: ["I ought to fetch the committee papers", "I must check a promised donation"],
+          gatheringDetails: ["reading out the newest pledges"],
+          inspectionContexts: ["collecting discarded subscription forms"],
+          observationContexts: ["putting the pledge cards back in order"],
+          uncertainObservations: ["someone folding a pledge sheet and slipping away from the committee"],
+        },
       };
     } else if (params.toolName === "submit_rendered_mystery") {
       const clueTexts = seeds
@@ -130,26 +138,34 @@ describe("world-first AI mystery engine V3", () => {
     expect(closingText).toContain(answerNames.item);
   });
 
-  it("proves the fair-play schedule before any model call", async () => {
+  it("promotes the dossier occasion palette into factual clue briefs without another model call", async () => {
+    const { provider, calls } = buildMockProvider();
+    await generateMysteryV2("test-key", { setup, provider });
+    const debug = getLastMysteryEngineDebug()!;
+
+    expect(calls.map((call) => call.toolName)).toEqual([
+      "submit_case_dossier",
+      "submit_rendered_mystery",
+      "submit_case_closing",
+    ]);
+    expect(debug.world!.occasionTexture?.groupActivities).toContain("sorting pledge cards");
+    expect(debug.storySeeds!.some((seed) => /pledge|subscription/i.test(seed.brief))).toBe(true);
+  });
+
+  it("builds and audits the clue package before any model call without category targets", async () => {
     const { provider } = buildMockProvider();
     await generateMysteryV2("test-key", { setup, provider });
     const debug = getLastMysteryEngineDebug()!;
     const trajectory = debug.schedule!.trajectory;
 
     expect(trajectory).toHaveLength(12);
-    const afterNote1 = trajectory[5].counts;
-    const afterNote2 = trajectory[8].counts;
-    for (const counts of [afterNote1]) {
-      expect(Math.min(counts.suspects, counts.items, counts.locations, counts.times)).toBeGreaterThanOrEqual(4);
+    expect(debug.schedule!.worldAttempts).toBe(1);
+    let previous = 12_100;
+    for (const point of trajectory) {
+      expect(point.remainingSolutions).toBeLessThanOrEqual(previous);
+      expect(point.remainingSolutions).toBeGreaterThan(1);
+      previous = point.remainingSolutions;
     }
-    for (const counts of [afterNote2]) {
-      expect(Math.min(counts.suspects, counts.items, counts.locations, counts.times)).toBeGreaterThanOrEqual(3);
-    }
-    const final = debug.schedule!.finalCounts;
-    expect(final.suspects).toBeGreaterThanOrEqual(3);
-    expect(final.suspects).toBeLessThanOrEqual(7);
-    expect(final.items).toBeGreaterThanOrEqual(4);
-    expect(final.times).toBeGreaterThanOrEqual(1);
   });
 
   it("repairs a single clue that breaks card-name discipline", async () => {
