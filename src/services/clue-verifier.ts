@@ -236,10 +236,17 @@ export function verifyClosing(closing: string, answer: Answer): TextVerification
     requireLocation(answer.locationId).name,
     requireTime(answer.timeId).name,
   ];
-  const lower = closing.toLowerCase();
+  const mentions = new Set(findCardMentions(closing));
   for (const name of names) {
-    if (!lower.includes(name.toLowerCase())) {
+    if (!mentions.has(name)) {
       problems.push(`The closing must explicitly name "${name}".`);
+    }
+  }
+  const answerEliminationPattern = /\b(cleared|ruled out|eliminated|impossible|could not have|couldn't have|not have been)\b/i;
+  for (const sentence of closing.split(/[.!?]+/)) {
+    if (answerEliminationPattern.test(sentence) && names.some((name) => sentence.toLowerCase().includes(name.toLowerCase()))) {
+      problems.push("The closing describes an answer card as cleared, ruled out, or impossible.");
+      break;
     }
   }
   const inventedAccess = [
