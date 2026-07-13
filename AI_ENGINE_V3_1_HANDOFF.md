@@ -177,8 +177,9 @@ the visible symptoms:
    departure/re-entry scene. The world and harvester now suppress both
    boundaries around that forced cell. Genuine, independently generated
    departures remain available with identical rules for every suspect.
-3. Rebuilt ordinary social supply around two shuffled guest circles (5/3)
-   rather than fragile 3/3/2 groups, and fixed episode derivation to inspect
+3. Rebuilt ordinary social supply around two shuffled guest circles that vary
+   answer-blindly between 4/4 and 5/3 rather than fragile 3/3/2 groups, and
+   fixed episode derivation to inspect
    every leaver at a boundary instead of only the first. Real step-aways now
    exist without borrowing the theft placement.
 4. Occasion activities cycle without replacement on a dedicated cosmetic RNG.
@@ -191,7 +192,9 @@ the visible symptoms:
 6. Added exact `continuousSuspectIds` to fused facts and composites. Renderer
    and repair prompts identify both the named person who leaves and the people
    who continue together. The verifier rejects a clue that dramatizes the
-   departure but drops the alibi-bearing continuation.
+   departure but drops the alibi-bearing continuation. Reconciliation
+   hardened that check to require the exact departure actor and exact named
+   continuing witnesses, and to inspect every departure in the rendered line.
 7. Hardened prose at deterministic boundaries: all ten Butler first words must
    differ; complex clues top out at 54 words; up to four bounded line repairs
    handle repair chains. New checks catch dangling actions, impersonal
@@ -199,7 +202,7 @@ the visible symptoms:
    multiword times, ambiguous departure pronouns, and false departure matches
    inside explicit negatives.
 8. Expanded `eval-mysteries.ts` with exact suspect-attention incidence,
-   answer-blind expectation, clue-level person coverage, questioned-fact kind
+   a selected-package field-size baseline, clue-level person coverage, questioned-fact kind
    mix, set-dressing variety, and live context-use diagnostics. These metrics
    remain measurements, not clue quotas or reveal-position rules.
 9. Completed live Opus acceptance across costume (`930000`), scholarly
@@ -248,17 +251,29 @@ Results:
 - Deterministic acceptance: 120/120 schedules; zero story-floor,
   spine-overlap, answer-hour, wide-inventory, or deterministic-language
   failures.
-- Attention symmetry: 16 culprit appearances in questioned fields against an
-  answer-blind expectation of 18.7; featured culprit 47 vs 47.7 expected;
-  suspicious-side-thread culprit 31 vs 35.0 expected.
-- Composition: 120/120 games with a multi-fragment episode, 113/120 with a
-  statement-shaped fact, mean 5.2 person-centered Butler clues, and mean 8.6
-  distinct suspects represented.
-- Full suite: 11 files and 102 tests passed, including the scheduler/world
-  sweep and new attention/continuation regressions.
+- Attention symmetry: 20 culprit appearances in questioned fields against a
+  diagnostic field-size baseline of 20.6; featured culprit 49 vs 49.4 expected;
+  suspicious-side-thread culprit 32 vs 33.4 expected.
+- Raw counterfactual symmetry: 60 seeds rebuilt against all ten possible
+  culprits (600 worlds) produced a 1.067 culprit-to-innocent questioned-attention
+  ratio. The permanent gate accepts only 0.90–1.10; Lawson's unmodified patch
+  measured 0.657, while an intermediate culprit-only correction reached only
+  0.796. Both fail the final gate.
+- Witness-speaker symmetry on the same matrix is 0.847 overall, 0.861 for
+  guests, and 0.787 for staff. Those pass the reciprocal 0.80–1.25 overall and
+  0.75–1.33 role gates. The 120-world attempt-one audit produced 115/298
+  fabricated accounts (38.6%), all four variants, and no missing step-away
+  worlds.
+- Composition: 119/120 games with a multi-fragment episode, 107/120 with a
+  statement-shaped fact, mean 5.1 person-centered Butler clues, and mean 9.3
+  distinct suspects represented. The largest recipe share is 34.2%.
+- Full suite: 17 files and 193 tests passed, including the scheduler/world
+  sweep, exact continuation checks, private-label scheduling invisibility,
+  and the all-suspect counterfactual regression.
 - TypeScript typecheck and the production worker/client build passed.
-- Live Opus generation was repeatedly inspected across three occasion
-  families; all final packages completed with no unresolved verifier defects.
+- Final live `anthropic/claude-opus-4.8` generation through the Cloudflare
+  gateway passed on tournament seed 940000 in one world attempt, with two
+  bounded repairs, zero unresolved defects, and ten distinct clue openers.
 
 ## Recommended next product iteration
 

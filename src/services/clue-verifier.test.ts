@@ -172,6 +172,53 @@ describe("clue verification", () => {
     expect(bareParticiple.problems.some((problem) => problem.includes("bare pronoun-plus-participle"))).toBe(true);
   });
 
+  it("enforces the exact questioned actor and continuing witnesses", () => {
+    const movementSeed = {
+      ...seed(["Lady Lavender", "Miss Scarlet", "Professor Plum", "Library"]),
+      questionedNames: ["Lady Lavender"],
+      continuationNames: ["Miss Scarlet", "Professor Plum"],
+    };
+    const wrongActor = verifyClueText(
+      "Lady Lavender, Miss Scarlet, and Professor Plum worked in the Library until Miss Scarlet stepped away, leaving the others at the task.",
+      movementSeed
+    );
+    expect(wrongActor.problems.some((problem) => problem.includes("named actor must be Lady Lavender"))).toBe(true);
+    expect(wrongActor.problems.some((problem) => problem.includes("Drops the continuation"))).toBe(true);
+
+    const exact = verifyClueText(
+      "Lady Lavender, Miss Scarlet, and Professor Plum worked in the Library until Lady Lavender stepped away; Miss Scarlet and Professor Plum remained together and continued the task.",
+      movementSeed
+    );
+    expect(exact.problems).toEqual([]);
+
+    const repeatedDeparture = verifyClueText(
+      "Lady Lavender stepped away, then went off again; Miss Scarlet and Professor Plum remained together and continued the task.",
+      movementSeed
+    );
+    expect(repeatedDeparture.problems.some((problem) => problem.includes("multiple departures"))).toBe(true);
+  });
+
+  it("checks every departure and does not treat 'without warning' as negation", () => {
+    const continuousSeed = { ...seed(["Miss Scarlet"]), mustRemainPresent: true };
+    const withoutWarning = verifyClueText(
+      "Without warning, Miss Scarlet slipped away from the room.",
+      continuousSeed
+    );
+    expect(withoutWarning.problems.some((problem) => problem.includes("continuous-presence"))).toBe(true);
+
+    const laterDeparture = verifyClueText(
+      "No one slipped away at first, but Miss Scarlet later left the room.",
+      continuousSeed
+    );
+    expect(laterDeparture.problems.some((problem) => problem.includes("continuous-presence"))).toBe(true);
+
+    const genuinelyNegated = verifyClueText(
+      "No one slipped away from the room during the exchange.",
+      continuousSeed
+    );
+    expect(genuinelyNegated.problems).toEqual([]);
+  });
+
   it("rejects dangling recollection grammar and ambiguous named departures", () => {
     const dangling = verifyClueText(
       "Straightening the dance cards, it was during Night that something first seemed amiss.",

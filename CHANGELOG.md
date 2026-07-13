@@ -2,14 +2,19 @@
 - Scene & Occasion V3.1 culprit-spotlight removal and final lived-scene polish
         - Replaced broad text inference with exact questioned-suspect, movement-boundary, and continuing-witness metadata across harvested and composite facts
         - Found and removed the root structural tell: the culprit's mandatory answer-cell placement can no longer generate a named departure/re-entry scene; ordinary answer-blind step-aways remain intact
-        - Rebalanced guest social circles and fixed multi-leaver episode discovery so genuine continuing scenes survive side-thread occupancy without borrowing the theft event
+        - Rebalanced guest social circles across answer-blind 4/4 and 5/3 topologies and fixed multi-leaver episode discovery so genuine continuing scenes survive side-thread occupancy without borrowing the theft event
         - Isolated occasion-activity wording on its own seeded stream and cycled activities without replacement, improving variety without changing movement or schedule RNG
         - Removed repeated props from recurring character texture and supplemented dossier contexts from six distinct occasion-spine observations/checks
-        - Added render/repair locks for the exact questioned actor and witnesses who remain after a departure; the verifier rejects prose that drops the continuation half of a fused fact
+        - Added render/repair locks for the exact questioned actor and witnesses who remain after a departure; reconciliation closed wrong-actor, generic-witness, false-negation, and later-departure verifier bypasses
         - Enforced ten distinct Butler opening words, a 54-word complex-scene ceiling, and bounded four-step surgical repair chains; added deterministic checks for ambiguous departures and recurring grammar failures
         - Expanded release diagnostics for person coverage, questioned-attention symmetry, culprit incidence, and set-dressing use
-        - Final release sweep: 120/120 schedules, 5.2 person-centered clues and 8.6 distinct suspects per game, 16 culprit appearances in questioned fields versus 18.7 expected, and zero story, fairness, leakage, inventory, or deterministic-language failures
-        - Live Opus acceptance passed across costume, scholarly, and engagement occasions with no unresolved prose defects, preserved multi-person continuation evidence, varied openers, and a strong anonymous-witness scene
+        - Added a 600-world all-suspect counterfactual gate and uniformly withheld singled-out movement provenance at the hidden answer hour; the final culprit-to-innocent questioned-attention ratio is 1.067 versus 0.657 for the unmodified patch and 0.796 after the first correction
+        - Removed the older 85% fabricated-culprit witness quota after the selected sweep amplified it to 60% culprit speakers; an isolated mixed speaker draw is now answer-blind 40% of the time and otherwise favors physical truth eligibility, with truth status decided only after the voice
+        - Calibrated direct fabrication to 5% because answer-blind speaker exploration adds unavoidable fabrications; the 120-world attempt-one audit lands at 115/298 (38.6%) and is permanently gated at 30–42%, while the much smaller dealt histogram remains diagnostic
+        - Counterfactually gated witness voice overall and by role: final culprit-to-innocent ratios are 0.847 overall, 0.861 for guests, and 0.787 for staff, inside reciprocal release bounds without an identity quota
+        - Added a bounded history-free scheduler fallback after recent-pattern memory stranded an otherwise valid seed; variety remains a preference and seed 89 now schedules at world 24 within the unchanged 240-world release budget
+        - Final release sweep: 120/120 schedules, 99.2% multi-fragment scenes, 5.1 person-centered clues and 9.3 distinct suspects per game, and zero story, fairness, inventory, or deterministic-language failures; selected-package attention remains diagnostic while the counterfactual is the leakage proof
+        - Final Cloudflare-gateway Opus acceptance passed on seed 940000 in one world attempt with two bounded repairs, zero unresolved prose defects, seven narrative clues, and ten distinct substantive openers
 
 07/13/26 (6)
 - Reconciled the stacked gameplay work with the Scene & Occasion V3.1 engine

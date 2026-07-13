@@ -416,6 +416,19 @@ export function scheduleMystery(params: {
       skeleton = dropLeastConnected(skeleton);
     }
   }
+  // Recent pattern memory is cosmetic variety, never a feasibility rule. Its
+  // preferred-recipe attempts consume a different deterministic RNG path and
+  // can very rarely strand an otherwise schedulable world even though the
+  // final quarter visits every recipe. Before rejecting the world, retry with
+  // no history and a bounded half-budget. The answer, facts, fairness windows,
+  // and story floor are unchanged.
+  if (recentPatterns.length > 0) {
+    return scheduleMystery({
+      ...params,
+      maxAttempts: Math.max(1, Math.ceil(maxAttempts / 2)),
+      recentCluePatternSignatures: [],
+    });
+  }
   return null;
 }
 

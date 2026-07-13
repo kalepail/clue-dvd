@@ -524,15 +524,11 @@ export function harvestFacts(world: WorldState): Fact[] {
           });
         }
       } else if (placement.social === "solo" && placement.locationId) {
-        // The hidden theft placement belongs to the solution, not the public
-        // fact pool. Publishing culprit + room + hour as one "solo" clue is
-        // a confession disguised as an observation; surrounding movements
-        // and physical cards must make players infer this cell instead.
-        const isTheftPlacement =
-          suspectId === world.answer.suspectId &&
-          slot.id === world.answer.timeId &&
-          placement.locationId === world.answer.locationId;
-        if (isTheftPlacement) continue;
+        // The hidden answer hour is not a source of singled-out public
+        // movement for any suspect. The simulated solo still exists for world
+        // continuity and anonymous accounts; only answer-conditioned public
+        // provenance is withheld.
+        if (slot.id === world.answer.timeId) continue;
         const thread = world.threads.find(
           (candidate) => candidate.timeId === slot.id && candidate.suspectIds.includes(suspectId)
         );
@@ -573,19 +569,9 @@ export function harvestFacts(world: WorldState): Fact[] {
       if (!isConsecutive(firstEnd, second.timeIds[0])) continue;
       if (first.members.join("+") === second.members.join("+")) continue;
       const core = first.members.filter((member) => second.members.includes(member));
-      // The simulator must place the culprit alone in the answer cell, but
-      // that private truth must not manufacture a public departure/re-entry
-      // story around them. Suppress either group boundary touching that
-      // forced cell; all independently generated step-aways remain eligible.
-      const answerSuspectWasForcedOut =
-        second.timeIds[0] === world.answer.timeId &&
-        first.members.includes(world.answer.suspectId) &&
-        !second.members.includes(world.answer.suspectId);
-      const answerSuspectRejoinsAfterForcedCell =
-        firstEnd === world.answer.timeId &&
-        !first.members.includes(world.answer.suspectId) &&
-        second.members.includes(world.answer.suspectId);
-      if (answerSuspectWasForcedOut || answerSuspectRejoinsAfterForcedCell) continue;
+      // Keep the world episode, but do not turn either boundary touching the
+      // hidden answer hour into singled-out public movement for anyone.
+      if (second.timeIds[0] === world.answer.timeId || firstEnd === world.answer.timeId) continue;
       if (core.length >= 2) transitionCandidates.push({ first, second, core });
     }
   }
@@ -1343,7 +1329,7 @@ export function harvestFacts(world: WorldState): Fact[] {
       sceneTexture: sceneTextureFor(episode.id, episode.continuousParticipantIds),
     });
 
-    if (episode.stepAway) {
+    if (episode.stepAway && episode.stepAway.absentFromTimeId !== world.answer.timeId) {
       const step = episode.stepAway;
       const stepRef = beatRef(step.absentFromTimeId);
       const who = names.suspect(step.suspectId);

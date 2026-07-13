@@ -35,6 +35,7 @@ export type ClueSetProblem = {
 const GREETING_OPENING = /^(?:hello|coming|good\s+day)\s*--/i;
 const EMPTY_INTERJECTION_OPENING = /^(?:indeed|quiet|well|yes)\s*(?:--|—|,)/i;
 const WHOLE_HOUSEHOLD_SCOPE = /\b(?:everyone|every\s+(?:single\s+person|soul|guest)|all\s+(?:of\s+)?the\s+guests|entire\s+(?:company|household|party)|whole\s+(?:company|household|house|party))\b/i;
+const DEPARTURE_LANGUAGE = /\b(?:slip(?:ped|ping)?\s+(?:off|away|out)|step(?:ped|ping)?\s+(?:off|out|away)|excus(?:e|ed)\s+(?:himself|herself|themselves)|left(?=\s+(?:the\s+)?(?:room|gathering|company|scene)\b|\s*[,.;!?]|\s*$)|broke\s+away|wandered\s+(?:off|away)|went\s+(?:off|away))\b/gi;
 
 const ALL_CARD_NAMES: Array<{ name: string; category: string }> = [
   ...SUSPECTS.map((suspect) => ({ name: suspect.displayName, category: "suspect" })),
@@ -54,6 +55,18 @@ const CARD_MATCHERS = ALL_CARD_NAMES
 
 function escapeRegex(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function departureMatches(text: string): Array<{ index: number; end: number }> {
+  return [...text.matchAll(new RegExp(DEPARTURE_LANGUAGE.source, DEPARTURE_LANGUAGE.flags))]
+    .map((match) => ({ index: match.index, end: match.index + match[0].length }));
+}
+
+function isExplicitlyNegatedDeparture(text: string, departureIndex: number): boolean {
+  const prefix = text.slice(Math.max(0, departureIndex - 90), departureIndex);
+  return /\b(?:no one|nobody|not one(?:\s+of\s+them|\s+person)?|none(?:\s+of\s+them)?|neither(?:\s+of\s+them)?)\b[^.!?;,]{0,28}$/i.test(prefix) ||
+    /\bwithout\s+(?:anyone|anybody|someone|a\s+(?:single\s+)?person|one\s+of\s+them)\b[^.!?;,]{0,20}$/i.test(prefix) ||
+    /\b(?:he|she|they)\s+(?:had\s+)?never\b[^.!?;,]{0,16}$/i.test(prefix);
 }
 
 /** Returns every real card name mentioned in a text. */
@@ -148,6 +161,7 @@ export function verifyClueText(text: string, seed: StorySeed): TextVerification 
   const licensedSuspects = seed.allowedNames.filter((name) =>
     SUSPECTS.some((suspect) => suspect.displayName === name)
   );
+  const departures = departureMatches(text);
   if (
     seed.deliverAs === "butler" &&
     seed.questionedNames?.length &&
@@ -156,17 +170,34 @@ export function verifyClueText(text: string, seed: StorySeed): TextVerification 
   ) {
     problems.push(`Makes the questioned departure actor ambiguous. Name ${seed.questionedNames.join(" and ")} explicitly at the action.`);
   }
+  if (seed.deliverAs === "butler" && seed.questionedNames?.length && departures.length > 0) {
+    const questioned = new Set(seed.questionedNames.map((name) => name.toLowerCase()));
+    const wrongActors = new Set<string>();
+    for (const departure of departures) {
+      const prefix = text.slice(Math.max(0, departure.index - 100), departure.index).toLowerCase();
+      const nearestActor = licensedSuspects
+        .map((name) => ({ name, index: prefix.lastIndexOf(name.toLowerCase()) }))
+        .filter((entry) => entry.index >= 0)
+        .sort((left, right) => right.index - left.index)[0];
+      if (nearestActor && !questioned.has(nearestActor.name.toLowerCase())) wrongActors.add(nearestActor.name);
+    }
+    if (wrongActors.size > 0) {
+      problems.push(`Assigns the questioned departure to ${[...wrongActors].join(" and ")}. The named actor must be ${seed.questionedNames.join(" and ")}.`);
+    }
+    if (departures.length > 1) {
+      problems.push(`Invents multiple departures for one questioned movement. Describe only ${seed.questionedNames.join(" and ")}'s licensed departure.`);
+    }
+  }
   if (seed.deliverAs === "butler" && seed.continuationNames?.length) {
-    const namedDeparture = text.match(/\b(?:step(?:ped)?\s+(?:off|out|away)|slip(?:ped)?\s+(?:off|out|away)|excus(?:e|ed)\s+(?:himself|herself|themselves)|left\b|broke\s+away|went\s+(?:off|away))\b/i);
-    const afterDeparture = namedDeparture?.index === undefined
+    const namedDeparture = departures[0];
+    const afterDeparture = namedDeparture === undefined
       ? ""
-      : text.slice(namedDeparture.index + namedDeparture[0].length);
+      : text.slice(namedDeparture.end);
     const namesContinue = seed.continuationNames.every((name) =>
       afterDeparture.toLowerCase().includes(name.toLowerCase())
     );
-    const genericContinuation = /\b(?:leaving|while)\s+(?:the\s+)?(?:other|others|remaining|rest)\b|\b(?:the\s+)?(?:other|others|remaining|rest)\b[^.!?]{0,60}\b(?:remained|stayed|kept|continued|carried on|lingered|were still)\b/i.test(afterDeparture);
     const explicitContinuation = namesContinue && /\b(?:leaving|remained|stayed|kept|continued|carried on|lingered|were still)\b/i.test(afterDeparture);
-    if (!namedDeparture || (!genericContinuation && !explicitContinuation)) {
+    if (!namedDeparture || !explicitContinuation) {
       problems.push(`Drops the continuation after the departure. State that ${seed.continuationNames.join(" and ")} remained together and continued the scene's activity.`);
     }
   }
@@ -186,13 +217,7 @@ export function verifyClueText(text: string, seed: StorySeed): TextVerification 
   if (seed.scopeMode === "whole_household" && !claimsWholeHousehold) {
     problems.push("Drops the event's whole-household scope. State explicitly that every guest, Mrs. White, and Rusty were covered.");
   }
-  const departureLanguage = /\b(?:slip(?:ped|ping)?\s+(?:off|away|out)|step(?:ped|ping)?\s+(?:out|away)|left\s+(?:the\s+)?(?:room|gathering|company)|broke\s+away|wandered\s+(?:off|away)|went\s+(?:off|away))\b/i;
-  const departureMatch = text.match(departureLanguage);
-  const departurePrefix = departureMatch?.index === undefined
-    ? ""
-    : text.slice(Math.max(0, departureMatch.index - 70), departureMatch.index);
-  const explicitlyNegatedDeparture = /(?:\bno one\b|\bnobody\b|\bnot one(?:\s+of\s+them|\s+person)?\b|\bnone(?:\s+of\s+them)?\b|\bneither(?:\s+of\s+them)?\b|\bwithout\b)[^.!?]{0,65}$/i.test(departurePrefix);
-  if (seed.mustRemainPresent && departureMatch && !explicitlyNegatedDeparture) {
+  if (seed.mustRemainPresent && departures.some((departure) => !isExplicitlyNegatedDeparture(text, departure.index))) {
     problems.push("Contradicts a continuous-presence scene by implying that a covered person left. Keep every named person within the stated scene for the full span.");
   }
   if (seed.locationSetting === "outdoor" && /\b(?:the|that|this|same)\s+room\b|\bindoors?\b/i.test(text)) {

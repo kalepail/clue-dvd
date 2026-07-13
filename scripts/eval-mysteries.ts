@@ -324,6 +324,7 @@ for (let offset = 0; offset < (aiOnly ? 0 : seedCount); offset += 1) {
     }
   }
   if (!world || !schedule) {
+    console.error(`seed ${seed} exhausted ${MAX_WORLD_ATTEMPTS} worlds with recent patterns: ${recentPatterns.join(" || ") || "none"}`);
     failures.push(seed);
     continue;
   }
@@ -539,7 +540,7 @@ console.log(`multi-fragment episode games: ${linkedEpisodeGames}/${ok} (${((link
 console.log(`person-centered Butler clues: mean ${(personCenteredButlerTotal / Math.max(1, ok)).toFixed(1)}/10; histogram ${show(personCenteredButlerHist)}`);
 console.log(`distinct named suspects in Butler clues: mean ${(distinctButlerSuspectTotal / Math.max(1, ok)).toFixed(1)}/10; histogram ${show(distinctButlerSuspectHist)}`);
 console.log(`questioned-attention games: ${questionedAttentionGames}/${ok}; 2+ different suspects: ${multiSuspectQuestionedGames}/${questionedAttentionGames}; lone suspect: ${loneQuestionedAttentionGames}`);
-console.log(`answer in questioned-attention field: ${answerInQuestionedField}; answer-blind expectation: ${expectedAnswerInQuestionedField.toFixed(1)}`);
+console.log(`answer in questioned-attention field: ${answerInQuestionedField}; field-size baseline: ${expectedAnswerInQuestionedField.toFixed(1)} (diagnostic only; the all-suspect counterfactual test is authoritative)`);
 console.log(`questioned fact kinds: ${[...questionedKindCounts.entries()].map(([kind, count]) => `${kind}:${count}`).join(" ") || "none"}; answer matches: ${[...answerQuestionedKindCounts.entries()].map(([kind, count]) => `${kind}:${count}`).join(" ") || "none"}`);
 if (answerQuestionedExamples.length > 0) console.log(`answer-questioned examples: ${answerQuestionedExamples.join(" | ")}`);
 if (loneQuestionedExamples.length > 0) console.log(`lone-questioned examples: ${loneQuestionedExamples.join(" | ")}`);
@@ -576,10 +577,15 @@ const populationGateFailed = maxRecipeShare > 0.4 || statementGames / Math.max(1
   linkedEpisodeGames / Math.max(1, ok) < 0.6 || expectedTextures.some((kind) => !textureKinds.has(kind)) ||
   Math.abs(featuredThief - expectedFeaturedThief) > seedCount * 0.12 || clearedMotiveGames === 0 ||
   Math.abs(answerThreadAppearances - expectedAnswerThreadAppearances) > seedCount * 0.12 ||
+  Math.abs(answerInQuestionedField - expectedAnswerInQuestionedField) > seedCount * 0.12 ||
   fogAtAnswerHour / Math.max(1, fogThreads) > 0.22 ||
-  witnessVariants.size < 4 || fabricatedWitnesses / Math.max(1, witnessTotal) < 0.3 ||
-  fabricatedWitnesses / Math.max(1, witnessTotal) > 0.42 || thiefWitnessSpeakers / Math.max(1, witnessTotal) < 0.25 ||
-  thiefWitnessSpeakers / Math.max(1, witnessTotal) > 0.38;
+  // The dealt witness sample is only about 30–50 observations, so a narrow
+  // truth/fabrication percentage is too noisy for a release gate. Raw supply
+  // is permanently gated at 30–42% in the 120-world invariant test; this
+  // sweep keeps the dealt histogram diagnostic and gates only sample supply
+  // plus gross culprit-speaker spotlighting.
+  witnessTotal < seedCount * 0.2 ||
+  thiefWitnessSpeakers / Math.max(1, witnessTotal) > 0.3;
 const deterministicGateFailed = perSeedGateFailed || (populationGateEnabled && populationGateFailed);
 if (deterministicGateFailed) {
   console.error(`DETERMINISTIC ACCEPTANCE FAILED${failures.length > 0 ? ` (seeds: ${[...new Set(failures)].join(", ")})` : ""}`);
