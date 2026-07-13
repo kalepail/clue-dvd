@@ -203,21 +203,28 @@ function actionEventStorageKey(playerId: string): string {
   return `clue-dvd-phone-action-events:${playerId}`;
 }
 
-function loadActionEventIds(playerId: string): { reveal: number | null; accusation: number | null } {
+interface StoredActionEventIds {
+  reveal: number | null;
+  accusation: number | null;
+  passage: number | null;
+}
+
+function loadActionEventIds(playerId: string): StoredActionEventIds {
   try {
     const raw = localStorage.getItem(actionEventStorageKey(playerId));
-    if (!raw) return { reveal: null, accusation: null };
-    const parsed = JSON.parse(raw) as { reveal?: unknown; accusation?: unknown };
+    if (!raw) return { reveal: null, accusation: null, passage: null };
+    const parsed = JSON.parse(raw) as { reveal?: unknown; accusation?: unknown; passage?: unknown };
     return {
       reveal: typeof parsed.reveal === "number" ? parsed.reveal : null,
       accusation: typeof parsed.accusation === "number" ? parsed.accusation : null,
+      passage: typeof parsed.passage === "number" ? parsed.passage : null,
     };
   } catch {
-    return { reveal: null, accusation: null };
+    return { reveal: null, accusation: null, passage: null };
   }
 }
 
-function persistActionEventIds(playerId: string, ids: { reveal: number | null; accusation: number | null }): void {
+function persistActionEventIds(playerId: string, ids: StoredActionEventIds): void {
   try {
     localStorage.setItem(actionEventStorageKey(playerId), JSON.stringify(ids));
   } catch {
@@ -289,6 +296,8 @@ export default function PhonePlayerPage({ code, onNavigate }: Props) {
     correctCount: number;
   } | null>(null);
   const lastAccusationSeenRef = useRef<string | null>(null);
+  const lastActionResultSeenRef = useRef<string | null>(null);
+  const lastPassageEventIdRef = useRef<number | null>(null);
   const [zeroAccusationMessage, setZeroAccusationMessage] = useState<string | null>(null);
   const [oneAccusationMessage, setOneAccusationMessage] = useState<string | null>(null);
   const [twoAccusationMessage, setTwoAccusationMessage] = useState<string | null>(null);
@@ -458,6 +467,29 @@ export default function PhonePlayerPage({ code, onNavigate }: Props) {
               : refreshedPlayer
           );
         }
+        if (refreshedPlayer?.lastActionResult?.updatedAt) {
+          const result = refreshedPlayer.lastActionResult;
+          const resultKey = `${result.updatedAt}:${result.forEventId ?? ""}`;
+          if (lastActionResultSeenRef.current !== resultKey) {
+            lastActionResultSeenRef.current = resultKey;
+            // Only apply results correlated to this phone's own initiating
+            // event; stale results from before a refresh are ignored.
+            if (
+              result.action === "use_secret_passage" &&
+              result.forEventId !== null &&
+              result.forEventId === lastPassageEventIdRef.current
+            ) {
+              if (result.ok) {
+                setActionContinueMessage("Secret passage resolved on the host screen. Move through the passage, then choose one action.");
+                setShowActionContinue(true);
+              } else {
+                setShowActionContinue(false);
+                setActionContinueMessage(null);
+                setActionStatus(result.message || "The secret passage was rejected by the host.");
+              }
+            }
+          }
+        }
         if (refreshedPlayer?.lastAccusationResult?.updatedAt) {
           const lastSeen = lastAccusationSeenRef.current;
           const nextSeen = refreshedPlayer.lastAccusationResult.updatedAt;
@@ -559,13 +591,15 @@ export default function PhonePlayerPage({ code, onNavigate }: Props) {
     });
   };
 
-  const rememberActionEvent = (kind: "reveal" | "accusation", eventId: number) => {
+  const rememberActionEvent = (kind: "reveal" | "accusation" | "passage", eventId: number) => {
     if (kind === "reveal") lastRevealEventIdRef.current = eventId;
-    else lastAccusationEventIdRef.current = eventId;
+    else if (kind === "accusation") lastAccusationEventIdRef.current = eventId;
+    else lastPassageEventIdRef.current = eventId;
     if (player) {
       persistActionEventIds(player.id, {
         reveal: lastRevealEventIdRef.current,
         accusation: lastAccusationEventIdRef.current,
+        passage: lastPassageEventIdRef.current,
       });
     }
   };
@@ -580,10 +614,13 @@ export default function PhonePlayerPage({ code, onNavigate }: Props) {
     try {
       const event = await sendPlayerAction(player.id, token, "turn_action", { action });
       if (action === "reveal_clue") rememberActionEvent("reveal", event.id);
+      if (action === "use_secret_passage") rememberActionEvent("passage", event.id);
       setActionStatus(null);
       if (action === "use_secret_passage") {
+        // The HTTP event is only pending; the host reports the authoritative
+        // outcome via the action-result snapshot.
         setSecretPassageUsedThisTurn(true);
-        setActionContinueMessage("Secret passage resolved on the host screen.");
+        setActionContinueMessage("Waiting for the host to resolve the secret passage...");
         setShowActionContinue(true);
       } else if (action === "reveal_clue") {
         setActionContinueMessage("Listen to Ashe, then privately take the top item card from the Butler's Pantry.");
@@ -1178,6 +1215,7 @@ export default function PhonePlayerPage({ code, onNavigate }: Props) {
     const stored = loadActionEventIds(playerId);
     lastRevealEventIdRef.current = stored.reveal;
     lastAccusationEventIdRef.current = stored.accusation;
+    lastPassageEventIdRef.current = stored.passage;
   }, [playerId]);
 
   const deductionPlayers = sortedRoster.filter((entry) => entry.id !== playerId);

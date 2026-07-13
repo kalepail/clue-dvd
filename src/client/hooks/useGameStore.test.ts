@@ -318,6 +318,14 @@ describe("physical turn rituals", () => {
     expect(() =>
       store.makeAccusation("ritual", withoutId as unknown as typeof accusation)
     ).toThrow(/must identify/i);
+
+    // Blank and whitespace-only pawn ids are equally rejected
+    expect(() =>
+      store.makeAccusation("ritual", { ...accusation, playerSuspectId: "" })
+    ).toThrow(/must identify/i);
+    expect(() =>
+      store.makeAccusation("ritual", { ...accusation, playerSuspectId: "   " })
+    ).toThrow(/must identify/i);
     expect(store.getGame("ritual")?.actions.some((action) => action.actionType === "accusation_made")).toBe(false);
   });
 

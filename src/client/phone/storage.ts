@@ -63,6 +63,25 @@ export function loadHostSessionCode(): string | null {
 
 export function clearHostSessionCode(): void {
   localStorage.removeItem(HOST_SESSION_KEY);
+  localStorage.removeItem(HOST_TOKEN_KEY);
+}
+
+const HOST_TOKEN_KEY = "clue-phone-host-token";
+
+export function storeHostSessionToken(token: string): void {
+  try {
+    localStorage.setItem(HOST_TOKEN_KEY, token);
+  } catch (error) {
+    console.error("Failed to store host session token:", error);
+  }
+}
+
+export function loadHostSessionToken(): string | null {
+  try {
+    return localStorage.getItem(HOST_TOKEN_KEY);
+  } catch {
+    return null;
+  }
 }
 
 export function setHostAutoCreate(value: boolean): void {

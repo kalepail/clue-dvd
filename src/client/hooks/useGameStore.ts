@@ -771,7 +771,7 @@ export class GameStore {
     if (game.pendingAccusationPenalty) {
       throw new Error("Resolve the previous accusation's item-card payment first");
     }
-    if (typeof accusation.playerSuspectId !== "string") {
+    if (typeof accusation.playerSuspectId !== "string" || accusation.playerSuspectId.trim() === "") {
       throw new Error("An accusation must identify the accusing detective's pawn");
     }
     if (game.eliminatedSuspectIds.includes(accusation.playerSuspectId)) {

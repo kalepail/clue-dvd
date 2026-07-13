@@ -16,11 +16,18 @@ const buildSocketUrl = (code: string) => {
   return `${protocol}://${window.location.host}/api/phone/sessions/${code}/ws`;
 };
 
+export type PhoneSocketHandle = (() => void) & {
+  /** Force-close the socket. The automatic reconnect re-sends "resume" from
+   * the caller's persisted cursor, so the server replays every uncommitted
+   * event in order on the fresh connection. */
+  reconnect: () => void;
+};
+
 export const connectPhoneSessionSocket = (
   code: string,
   handlers: PhoneSocketHandlers,
   options: PhoneSocketOptions = {}
-) => {
+): PhoneSocketHandle => {
   let socket: WebSocket | null = null;
   let closed = false;
   let retry = 0;
@@ -76,11 +83,21 @@ export const connectPhoneSessionSocket = (
 
   connect();
 
-  return () => {
+  const disconnect = () => {
     closed = true;
     clearRetry();
     if (socket && socket.readyState !== WebSocket.CLOSED) {
       socket.close();
     }
   };
+  return Object.assign(disconnect, {
+    reconnect: () => {
+      if (closed) return;
+      if (socket && socket.readyState !== WebSocket.CLOSED) {
+        socket.close();
+      } else {
+        scheduleReconnect();
+      }
+    },
+  });
 };

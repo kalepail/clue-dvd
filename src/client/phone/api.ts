@@ -5,13 +5,26 @@ import type {
   PhoneSessionSummary,
   PhoneEventType,
 } from "../../phone/types";
+import { loadHostSessionToken, storeHostSessionToken } from "./storage";
+
+// Host-only mutation routes authenticate with the per-session host token,
+// issued once at session creation and never present in session snapshots.
+function hostHeaders(): Record<string, string> {
+  const token = loadHostSessionToken();
+  return {
+    "Content-Type": "application/json",
+    ...(token ? { "X-Host-Token": token } : {}),
+  };
+}
 
 export async function createSession(): Promise<PhoneSessionSummary> {
   const response = await fetch("/api/phone/sessions", { method: "POST" });
   if (!response.ok) {
     throw new Error("Failed to create session");
   }
-  return response.json();
+  const data = (await response.json()) as PhoneSessionSummary & { hostToken?: string };
+  if (data.hostToken) storeHostSessionToken(data.hostToken);
+  return data;
 }
 
 export async function getSession(code: string): Promise<PhoneSessionSummary> {
@@ -91,7 +104,7 @@ export async function sendPlayerAction(
 }
 
 export async function closeSession(code: string): Promise<void> {
-  const response = await fetch(`/api/phone/sessions/${code}/close`, { method: "POST" });
+  const response = await fetch(`/api/phone/sessions/${code}/close`, { method: "POST", headers: hostHeaders() });
   if (!response.ok) {
     throw new Error("Failed to close session");
   }
@@ -103,7 +116,7 @@ export async function updateSessionTurn(
 ): Promise<void> {
   const response = await fetch(`/api/phone/sessions/${code}/turn`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: hostHeaders(),
     body: JSON.stringify({ suspectId }),
   });
   if (!response.ok) {
@@ -118,11 +131,26 @@ export async function sendAccusationResult(
 ): Promise<void> {
   const response = await fetch(`/api/phone/sessions/${code}/accusation-result`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: hostHeaders(),
     body: JSON.stringify({ suspectId, correct: result.correct, correctCount: result.correctCount }),
   });
   if (!response.ok) {
     throw new Error("Failed to record accusation result");
+  }
+}
+
+export async function sendTurnActionResult(
+  code: string,
+  suspectId: string,
+  result: { action: string; ok: boolean; message: string; forEventId: number | null }
+): Promise<void> {
+  const response = await fetch(`/api/phone/sessions/${code}/action-result`, {
+    method: "POST",
+    headers: hostHeaders(),
+    body: JSON.stringify({ suspectId, ...result }),
+  });
+  if (!response.ok) {
+    throw new Error("Failed to record action result");
   }
 }
 
@@ -132,7 +160,7 @@ export async function updateInspectorNoteAvailability(
 ): Promise<void> {
   const response = await fetch(`/api/phone/sessions/${code}/notes-availability`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: hostHeaders(),
     body: JSON.stringify(availability),
   });
   if (!response.ok) {
@@ -146,7 +174,7 @@ export async function updateInterruptionStatus(
 ): Promise<void> {
   const response = await fetch(`/api/phone/sessions/${code}/interruption`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: hostHeaders(),
     body: JSON.stringify(status),
   });
   if (!response.ok) {
@@ -162,7 +190,7 @@ export async function sendInspectorNoteResult(
 ): Promise<void> {
   const response = await fetch(`/api/phone/sessions/${code}/inspector-note`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: hostHeaders(),
     body: JSON.stringify({ suspectId, noteId, noteText }),
   });
   if (!response.ok) {

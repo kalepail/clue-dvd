@@ -35,6 +35,14 @@ export interface PhonePlayer {
     correctCount: number;
     updatedAt: string;
   } | null;
+  /** Host-reported outcome of this player's last physical turn action. */
+  lastActionResult?: {
+    action: string;
+    ok: boolean;
+    message: string;
+    forEventId: number | null;
+    updatedAt: string;
+  } | null;
   createdAt: string;
   lastSeenAt: string;
 }

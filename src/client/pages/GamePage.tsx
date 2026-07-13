@@ -12,10 +12,10 @@ import { Progress } from "@/client/components/ui/progress";
 import { IconStat } from "@/client/components/ui/icon-stat";
 import type { EliminationState } from "../../shared/api-types";
 import { getLocationName, getSuspectName } from "../../shared/game-elements";
-import { closeSession, sendAccusationResult, sendInspectorNoteResult, updateInspectorNoteAvailability, updateInterruptionStatus, updateSessionTurn } from "../phone/api";
+import { closeSession, sendAccusationResult, sendInspectorNoteResult, sendTurnActionResult, updateInspectorNoteAvailability, updateInterruptionStatus, updateSessionTurn } from "../phone/api";
 import { clearHostSessionCode, setHostAutoCreate } from "../phone/storage";
 import type { PhoneEvent, PhonePlayer, PhoneSessionStatus } from "../../phone/types";
-import { isEventFresh, matchesPendingSource, resolveCurrentActor } from "../hooks/turn-authority";
+import { createEventPipeline, matchesPendingSource, parseSuggestionCategories, resolveCurrentActor } from "../hooks/turn-authority";
 import { connectPhoneSessionSocket } from "../phone/ws";
 
 interface Props {
@@ -169,7 +169,6 @@ export default function GamePage({ gameId, onNavigate, onMusicPauseChange }: Pro
   const previousTurnKey = useRef<string | null>(null);
   const gameRef = useRef<GameDataFormatted | null>(null);
   const phonePlayersRef = useRef<PhonePlayer[]>([]);
-  const phoneEventChainRef = useRef<Promise<void>>(Promise.resolve());
   const phoneAccusationActorRef = useRef<{ name: string; suspectId: string; eventId: number } | null>(null);
   const accusationPenaltyTokenRef = useRef<string | null>(null);
   const pendingPhoneContinueRef = useRef<null | "use_secret_passage" | "make_suggestion" | "reveal_clue">(null);
@@ -178,7 +177,7 @@ export default function GamePage({ gameId, onNavigate, onMusicPauseChange }: Pro
   const showInterruptionIntroRef = useRef(false);
   const handleStartGameRef = useRef<() => void>(() => undefined);
   const handleRevealClueRef = useRef<(sourceEventId?: number) => void>(() => undefined);
-  const handleSecretPassageRef = useRef<() => boolean>(() => false);
+  const handleSecretPassageRef = useRef<() => { ok: boolean; message: string }>(() => ({ ok: false, message: "" }));
   const handleEndTurnRef = useRef<() => void>(() => undefined);
   const closeSecretPassageRef = useRef<() => void>(() => undefined);
   const acknowledgeInterruptionIntroRef = useRef<() => void>(() => undefined);
@@ -430,9 +429,18 @@ export default function GamePage({ gameId, onNavigate, onMusicPauseChange }: Pro
 
         if (action === "use_secret_passage") {
           if (currentGame.status !== "in_progress") return "handled";
-          if (!authorizePhoneActor(event)) return "handled";
-          const passageUsed = handleSecretPassageRef.current();
-          if (passageUsed) setPendingPhoneContinue("use_secret_passage");
+          const actor = authorizePhoneActor(event);
+          if (!actor) return "handled";
+          const passage = handleSecretPassageRef.current();
+          if (passage.ok) setPendingPhoneContinue("use_secret_passage");
+          // Report the authoritative outcome back to the phone so a rejected
+          // duplicate shows as a failure there, never as a false success.
+          sendTurnActionResult(phoneSessionCode, actor.suspectId, {
+            action: "use_secret_passage",
+            ok: passage.ok,
+            message: passage.message,
+            forEventId: event.id,
+          }).catch(() => undefined);
           return "handled";
         }
 
@@ -461,12 +469,14 @@ export default function GamePage({ gameId, onNavigate, onMusicPauseChange }: Pro
         if (action === "make_suggestion") {
           if (currentGame.status !== "in_progress") return "handled";
           if (!authorizePhoneActor(event)) return "handled";
-          const categories = Array.isArray(event.payload.categories)
-            ? event.payload.categories.filter((category): category is SuggestionCategory =>
-                typeof category === "string" && SUGGESTION_CATEGORIES.some((option) => option.id === category)
-              )
-            : [];
-          if (categories.length === 3) setSuggestionCategories(categories);
+          // A malformed payload is rejected outright; it must never open the
+          // confirmation armed with stale or default categories.
+          const categories = parseSuggestionCategories(event.payload.categories);
+          if (!categories) {
+            setHostNotice("Ignored a malformed suggestion request from the phone.");
+            return "handled";
+          }
+          setSuggestionCategories(categories);
           setShowEndTurnConfirm(true);
           setPendingPhoneContinue("make_suggestion");
           return "handled";
@@ -498,34 +508,47 @@ export default function GamePage({ gameId, onNavigate, onMusicPauseChange }: Pro
       return "handled";
     };
 
-    const disconnect = connectPhoneSessionSocket(
+    // Strictly ordered, lossless processing: when an event defers or fails,
+    // the pipeline blocks so later ids can never commit past it; recovery
+    // force-reconnects and the server replays from the persisted cursor.
+    let recoveryTimer: number | null = null;
+    const pipeline = createEventPipeline<PhoneEvent>({
+      getCursor: () => eventCursorRef.current,
+      commit: commitCursor,
+      process: processPhoneEvent,
+      requestRecovery: () => {
+        if (recoveryTimer !== null) return;
+        recoveryTimer = window.setTimeout(() => {
+          recoveryTimer = null;
+          socketHandle.reconnect();
+        }, 750);
+      },
+    });
+
+    const socketHandle = connectPhoneSessionSocket(
       phoneSessionCode,
       {
+        onOpen: () => {
+          // A fresh connection replays events in order from the cursor, so
+          // the pipeline may accept deliveries again.
+          pipeline.unblock();
+        },
         onSession: ({ session, players }) => {
           setPhoneLobbyStatus(session.status);
           phonePlayersRef.current = players ?? [];
         },
         onEvent: (event) => {
-          // Events are processed strictly serially; the cursor advances only
-          // after a definitive success or rejection, so a host refresh or
-          // reconnect can never replay already-processed history.
-          phoneEventChainRef.current = phoneEventChainRef.current
-            .then(async () => {
-              if (!isEventFresh(eventCursorRef.current, event.id)) return;
-              const outcome = await processPhoneEvent(event);
-              if (outcome !== "retry") commitCursor(event.id);
-            })
-            .catch(() => {
-              // Unexpected failure: leave the cursor so a reconnect can
-              // redeliver this event.
-            });
+          void pipeline.push(event);
         },
       },
       {
         getLastEventId: () => eventCursorRef.current,
       }
     );
-    return () => disconnect();
+    return () => {
+      if (recoveryTimer !== null) window.clearTimeout(recoveryTimer);
+      socketHandle();
+    };
   }, [
     gameId,
     phoneSessionCode,
@@ -854,15 +877,16 @@ export default function GamePage({ gameId, onNavigate, onMusicPauseChange }: Pro
     }
   };
 
-  const handleSecretPassage = (): boolean => {
+  const handleSecretPassage = (): { ok: boolean; message: string } => {
     try {
       const result = gameStore.useSecretPassage(gameId);
       setSecretPassageResult(result);
       loadGame();
-      return true;
+      return { ok: true, message: result.description };
     } catch (err) {
-      setHostNotice(err instanceof Error ? err.message : "Secret passage already used this turn.");
-      return false;
+      const message = err instanceof Error ? err.message : "Secret passage already used this turn.";
+      setHostNotice(message);
+      return { ok: false, message };
     }
   };
 
