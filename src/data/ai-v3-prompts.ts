@@ -138,7 +138,7 @@ ${params.fewshots.notes.map((note) => `"${note}"`).join("\n")}
 
 Write the opening: 2-4 sentences introducing the occasion (use the summary above) and ending on the discovery that something has been stolen. Do not name any suspect, valuable, room, or time-of-day card in the opening.
 
-Then write exactly ${butlerSeeds.length} butler testimonies, one per event below, in this order. Each is 1-3 sentences of concrete, first-hand household recollection — like the examples, they may open with a small greeting ("Coming --", "Hello --", "Good day --") on some but not all. Each testimony must faithfully convey its event, including exactly which people it covers; do not drop, soften, or extend the stated scope (if everyone was present, say so plainly).
+Then write exactly ${butlerSeeds.length} butler testimonies, one per event below, in this order. Each is 1-3 sentences of concrete, first-hand household recollection. Across all ten, use at most TWO greeting openings total ("Coming --", "Hello --", or "Good day --"). No two testimonies may begin with the same first word. Most should begin directly inside the remembered action, object, person, place, or time. Each testimony must faithfully convey its event, including exactly which people it covers; do not drop, soften, or extend the stated scope (if everyone was present, say so plainly).
 
 ${butlerSeeds.map((seed) => `Testimony ${seed.clueNumber}: ${seed.brief}\n  Card names you may use in this testimony: ${seed.allowedNames.length > 0 ? seed.allowedNames.join(", ") : "none — keep it generic"}.`).join("\n\n")}
 
@@ -156,6 +156,7 @@ ${ORIGINAL_MYSTERY_STYLE_GUIDE.map((rule) => `- ${rule}`).join("\n")}
 Card-name discipline is absolute: each testimony may name ONLY the card names listed for it (other proper names allowed: Mr. Boddy, Ashe, Inspector Brown, Dr. Black).
 
 Rules of craft, strictly:
+- Across the ten Butler testimonies, no opening first word may repeat and no more than two may use a greeting-style opener.
 - No two testimonies in this case may share a sentence skeleton. If one opens "During X, so-and-so were together in the Y…", no other may. Recast lists, vary openings, move the time to the middle or end of the sentence.
 - When an event says someone slipped off, was evasive, was seen with something, or was heard arguing, report it and STOP. Never supply their innocent explanation, never soften it with "it turned out…" — suspicion is the point, and the reveal at game's end settles it.
 - Some events describe an hour by the day's rhythm ("the lull after lunch", "the tail of the evening"). Keep that rhythm — do NOT sharpen it into a named hour.
@@ -191,7 +192,7 @@ ${params.problems.map((problem) => `- ${problem}`).join("\n")}
 Register examples from the original game:
 ${params.fewshotClues.map((clue) => `"${clue}"`).join("\n")}
 
-Rewrite it: ${isNote ? "one dry factual sentence, third person" : "1-3 sentences of first-hand butler recollection"}, faithfully conveying the event and its exact scope, using only the allowed names.`,
+Rewrite it: ${isNote ? "one dry factual sentence, third person" : "1-3 sentences of first-hand butler recollection"}, faithfully conveying the event and its exact scope, using only the allowed names. If the problems mention its opener, begin with a genuinely different first word and do not use Hello, Coming, or Good day.`,
   };
 }
 

@@ -1,3 +1,9 @@
+07/12/26 (4)
+- Scene & Occasion phase: opening variety foundation
+        - Renderer now budgets at most two classic greeting openings across ten Butler clues
+        - Package-level verifier rejects repeated first words and excess greetings, then reuses the surgical single-clue repair path
+        - Added verifier and engine regression coverage; no whole-mystery rewrite required
+
 07/12/26 (3)
 - Statements are truth-ambiguous (anti-meta-gaming):
         - Innocents make TRUE claims in the identical wrapper as the thief's lie; the thief sometimes truthfully accounts for an innocent hour

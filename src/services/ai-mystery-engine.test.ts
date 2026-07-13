@@ -53,13 +53,17 @@ function buildMockProvider(overrides?: {
         },
       };
     } else if (params.toolName === "submit_rendered_mystery") {
+      const openings = [
+        "Hello --", "Coming --", "Before luncheon,", "While passing,", "Near the windows,",
+        "Later,", "According to Ashe,", "Mrs. White recalled", "By dusk,", "Nobody doubted",
+      ];
       const clueTexts = seeds
         .filter((seed) => seed.deliverAs === "butler")
         .sort((a, b) => (a.clueNumber ?? 0) - (b.clueNumber ?? 0))
         .map((seed) =>
           seed.clueNumber === overrides?.breakClueNumber
             ? `I distinctly remember the ${answerNames.item} beside the ${answerNames.location} at ${answerNames.time}.`
-            : `Hello -- I recall that ${seed.allowedNames.slice(0, 3).join(" and ") || "the household"} figured in the day's little events.`
+            : `${openings[(seed.clueNumber ?? 1) - 1]} ${seed.allowedNames.slice(0, 3).join(" and ") || "the household"} figured in the day's little events.`
         );
       const noteFor = (slot: "note1" | "note2"): string => {
         const seed = seeds.find((candidate) => candidate.deliverAs === slot);
@@ -79,7 +83,7 @@ function buildMockProvider(overrides?: {
             closing: `Fine work, detectives: ${answerNames.suspect} took the ${answerNames.item} from the ${answerNames.location} at ${answerNames.time}, just as the evidence showed.`,
           };
     } else if (params.toolName === "submit_repaired_text") {
-      value = { text: "Hello -- the household went about its day quite ordinarily, nothing amiss that I saw myself." };
+      value = { text: "Reconsidering the matter, the household went about its day quite ordinarily, nothing amiss that I saw myself." };
     } else {
       throw new Error(`Unexpected tool ${params.toolName}`);
     }

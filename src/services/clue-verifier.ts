@@ -27,6 +27,13 @@ export type TextVerification = {
   warnings: string[];
 };
 
+export type ClueSetProblem = {
+  clueNumber: number;
+  problem: string;
+};
+
+const GREETING_OPENING = /^(?:hello|coming|good\s+day)\s*--/i;
+
 const ALL_CARD_NAMES: Array<{ name: string; category: string }> = [
   ...SUSPECTS.map((suspect) => ({ name: suspect.displayName, category: "suspect" })),
   ...ITEMS.map((item) => ({ name: item.nameUS, category: "item" })),
@@ -97,6 +104,47 @@ export function verifyClueText(text: string, seed: StorySeed): TextVerification 
     warnings.push(`Inspector notes are single dry sentences in the original; this has ${sentences}.`);
   }
   return { target, problems, warnings };
+}
+
+/**
+ * Cross-clue style checks need the complete Butler package. Keep the first
+ * occurrence of an opening word and the first two greeting openings; later
+ * collisions are repaired surgically through the same per-clue path as card
+ * leakage. Inspector notes are intentionally excluded.
+ */
+export function verifyClueOpeningVariety(clues: string[]): ClueSetProblem[] {
+  const problems: ClueSetProblem[] = [];
+  const firstWordOwner = new Map<string, number>();
+  let greetingCount = 0;
+
+  clues.forEach((clue, index) => {
+    const clueNumber = index + 1;
+    const trimmed = clue.trim();
+    const firstWord = trimmed.match(/[A-Za-z]+(?:'[A-Za-z]+)?/)?.[0]?.toLowerCase();
+    if (firstWord) {
+      const owner = firstWordOwner.get(firstWord);
+      if (owner !== undefined) {
+        problems.push({
+          clueNumber,
+          problem: `Opens with "${firstWord}", already used by clue ${owner}. Start with a different first word and sentence shape.`,
+        });
+      } else {
+        firstWordOwner.set(firstWord, clueNumber);
+      }
+    }
+
+    if (GREETING_OPENING.test(trimmed)) {
+      greetingCount += 1;
+      if (greetingCount > 2) {
+        problems.push({
+          clueNumber,
+          problem: "Uses a greeting-style opener, but this case already has two. Begin directly with the remembered event.",
+        });
+      }
+    }
+  });
+
+  return problems;
 }
 
 /** The closing must name all four answer cards. */

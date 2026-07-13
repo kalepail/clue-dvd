@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { findCardMentions, verifyClosing, verifyClueText, verifyOpening } from "./clue-verifier";
+import { findCardMentions, verifyClosing, verifyClueOpeningVariety, verifyClueText, verifyOpening } from "./clue-verifier";
 import type { StorySeed } from "../data/ai-v3-prompts";
 
 const seed = (allowedNames: string[], deliverAs: StorySeed["deliverAs"] = "butler"): StorySeed => ({
@@ -61,5 +61,32 @@ describe("clue verification", () => {
     expect(good.problems).toEqual([]);
     const bad = verifyClosing("Mrs. Peacock took something somewhere.", answer);
     expect(bad.problems.length).toBeGreaterThanOrEqual(3);
+  });
+
+  it("flags repeated first words and greeting openers beyond the first two", () => {
+    const problems = verifyClueOpeningVariety([
+      "Hello -- Mrs. White remembered the flowers.",
+      "Coming -- Rusty crossed the lawn.",
+      "Good day -- The guests gathered quietly.",
+      "During Tea Time the room was crowded.",
+      "During Dinner the room had emptied.",
+    ]);
+    expect(problems.some((problem) => problem.clueNumber === 3 && problem.problem.includes("already has two"))).toBe(true);
+    expect(problems.some((problem) => problem.clueNumber === 5 && problem.problem.includes("already used"))).toBe(true);
+  });
+
+  it("accepts ten distinct openings with no more than two greetings", () => {
+    expect(verifyClueOpeningVariety([
+      "Hello -- The first recollection.",
+      "Coming -- The second recollection.",
+      "Before luncheon, something changed.",
+      "While the guests waited, Ashe watched.",
+      "Near the windows stood a display.",
+      "Later, two voices crossed the hall.",
+      "According to Rusty, nothing moved.",
+      "Mrs. White recalled the ribbons.",
+      "By dusk the room was quiet.",
+      "Nobody mentioned the missing paper.",
+    ])).toEqual([]);
   });
 });

@@ -45,7 +45,7 @@ import {
   type Dossier,
   type RenderedMystery,
 } from "./ai-mystery-schemas";
-import { verifyClosing, verifyClueText, verifyOpening, type TextVerification } from "./clue-verifier";
+import { verifyClosing, verifyClueOpeningVariety, verifyClueText, verifyOpening, type TextVerification } from "./clue-verifier";
 import { callStructured, MysteryStageError, type StructuredCallResult } from "./ai-mystery-provider";
 import type { MysterySetup } from "./ai-mystery-setup";
 import { SeededRandom } from "./seeded-random";
@@ -327,6 +327,10 @@ export async function generateMysteryV2(apiKey: string, params: {
           seed.deliverAs === "butler" ? texts.clues[(seed.clueNumber ?? 1) - 1] :
           seed.deliverAs === "note1" ? texts.note1 : texts.note2;
         results.push(verifyClueText(text, seed));
+      }
+      for (const openingProblem of verifyClueOpeningVariety(texts.clues)) {
+        const target = results.find((entry) => entry.target === `clue-${openingProblem.clueNumber}`);
+        target?.problems.push(openingProblem.problem);
       }
       results.push(verifyClosing(texts.closing, answer));
       return results;

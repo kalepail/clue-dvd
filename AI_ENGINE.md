@@ -44,6 +44,7 @@ Three Sonnet calls in the typical case; +1 small call per repaired line.
 - Even story reveal: each clue carries roughly its fair share of the day's information — no whisper-whisper-thunder pacing.
 - Every game seeds motives for several suspects (the thief's is revealed in the closing), size-aware social reasons for pairs through parties, dispersal hours where guests are ordinarily alone, and sometimes a catchable lie or a foggy memory.
 - Few-shot lines are drawn across all ten original disc mysteries, plus a per-game narrative register for Ashe (fond, clipped, wry, flustered, confiding).
+- Butler opening variety is machine-checked across the whole package: no first word repeats and at most two of ten clues may use the classic greeting openers. Violations repair only the offending clue.
 
 ## Main files
 
@@ -79,3 +80,4 @@ Manual acceptance stays human: generate several seeds, compare signatures, play 
 - Checkpoint bounds (≥4 at position 6, ≥3 at position 9) in clue-scheduler.ts.
 - World texture catalogs (gathering options, pair/group reasons, motives, foggy sensations, thread causes) in world-sim.ts; `HOUR_STANDINS` rhythm phrases in fact-harvest.ts.
 - Few-shot rotation count in ai-v3-prompts.ts `pickFewshots`.
+- Butler opener policy in `clue-verifier.ts` `verifyClueOpeningVariety` (unique first words, at most two greeting-style openings).
