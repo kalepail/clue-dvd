@@ -14,6 +14,7 @@
  */
 
 import { ITEMS, LOCATIONS, SUSPECTS, TIME_PERIODS } from "../data/game-elements";
+import { beatPhrasesForTime } from "../data/occasion-catalog";
 import { SeededRandom } from "./seeded-random";
 import type { Answer } from "./ai-mystery-schemas";
 import {
@@ -209,6 +210,7 @@ export function harvestFacts(world: WorldState): Fact[] {
   const answerHourId = world.answer.timeId;
   const answerOrder = requireTime(answerHourId).order;
   const standinCycle: string[] = [];
+  const beatCycles = new Map<string, string[]>();
   /**
    * How a brief refers to an hour. Every hour keeps its card name EXCEPT the
    * theft hour, which gets a rhythm-of-the-day stand-in and no time card in
@@ -216,18 +218,29 @@ export function harvestFacts(world: WorldState): Fact[] {
    */
   const refName = (timeId: string): { text: string; mention: string | null } => {
     const order = requireTime(timeId).order;
+    const beatPhrases = beatPhrasesForTime(world.occasionSpine, timeId);
+    const vaguePhrase = (): string => {
+      let cycle = beatCycles.get(timeId);
+      if (!cycle || cycle.length === 0) {
+        cycle = phraseRng.shuffle([...beatPhrases, ...HOUR_STANDINS[order]]);
+        beatCycles.set(timeId, cycle);
+      }
+      return cycle.shift()!;
+    };
     if (timeId !== answerHourId) {
       // Vague timing must be the HOUSE STYLE, not a fingerprint: if rhythm
       // phrases only ever marked the theft hour, the phrasing itself would
-      // become the tell. So innocent hours speak in the day's rhythm too,
-      // about a third of the time.
-      if (phraseRng.nextBool(0.3)) {
-        return { text: phraseRng.pick(HOUR_STANDINS[order]), mention: null };
+      // become the tell. So innocent hours speak through occasion beats or
+      // the day's rhythm too, about forty percent of the time.
+      if (phraseRng.nextBool(0.4)) {
+        return { text: vaguePhrase(), mention: null };
       }
       const name = requireTime(timeId).name;
       return { text: name, mention: name };
     }
-    if (standinCycle.length === 0) standinCycle.push(...phraseRng.shuffle([...HOUR_STANDINS[answerOrder]]));
+    if (standinCycle.length === 0) {
+      standinCycle.push(...phraseRng.shuffle([...beatPhrases, ...HOUR_STANDINS[answerOrder]]));
+    }
     return { text: standinCycle.shift()!, mention: null };
   };
   const phraseCycles = new Map<string, number[]>();
@@ -244,7 +257,6 @@ export function harvestFacts(world: WorldState): Fact[] {
     suspect: (id: string) => requireSuspect(id).displayName,
     item: (id: string) => requireItem(id).nameUS,
     location: (id: string) => requireLocation(id).name,
-    time: (id: string) => requireTime(id).name,
   };
   const texture = (
     field: "gatheringDetails" | "inspectionContexts" | "observationContexts",
@@ -260,7 +272,7 @@ export function harvestFacts(world: WorldState): Fact[] {
   // Gatherings ---------------------------------------------------------------
   for (const gathering of world.gatherings) {
     const everyone = gathering.suspectIds.length === SUSPECTS.length;
-    const timeName = names.time(gathering.timeId);
+    const timeRef = refName(gathering.timeId);
     const gatheringDetail = gathering.kind === "retired"
       ? null
       : texture("gatheringDetails", 300 + requireTime(gathering.timeId).order);
@@ -272,12 +284,12 @@ export function harvestFacts(world: WorldState): Fact[] {
     let brief: string;
     if (gathering.kind === "retired") {
       brief = everyone
-        ? `At ${timeName}, ${gathering.label} — every bedroom door shut, the halls empty, not a soul about.`
-        : `At ${timeName}, ${gathering.label}; only ${listNames(gathering.suspectIds.map(names.suspect))} were on the premises at that hour, and they were about their usual routine together.`;
+        ? `At ${timeRef.text}, ${gathering.label} — every bedroom door shut, the halls empty, not a soul about.`
+        : `At ${timeRef.text}, ${gathering.label}; only ${listNames(gathering.suspectIds.map(names.suspect))} were on the premises at that hour, and they were about their usual routine together.`;
     } else if (everyone) {
-      brief = `During ${timeName}, every single person — guests, plus Mrs. White and Rusty — was together at ${gathering.label}${roomSuffix}${detailSuffix}. Nobody slipped out.`;
+      brief = `During ${timeRef.text}, every single person — guests, plus Mrs. White and Rusty — was together at ${gathering.label}${roomSuffix}${detailSuffix}. Nobody slipped out.`;
     } else {
-      brief = `During ${timeName}, ${listNames(gathering.suspectIds.map(names.suspect))} were all together at ${gathering.label}${roomSuffix}${detailSuffix}.`;
+      brief = `During ${timeRef.text}, ${listNames(gathering.suspectIds.map(names.suspect))} were all together at ${gathering.label}${roomSuffix}${detailSuffix}.`;
     }
     facts.push({
       id: nextId(),
@@ -291,7 +303,7 @@ export function harvestFacts(world: WorldState): Fact[] {
         suspects: everyone ? ["Mrs. White", "Rusty"] : gathering.suspectIds.map(names.suspect),
         items: [],
         locations: gathering.locationId ? [names.location(gathering.locationId)] : [],
-        times: [timeName],
+        times: timeRef.mention ? [timeRef.mention] : [],
       },
       writerBrief: brief,
       noteSuitable: true,
@@ -535,6 +547,7 @@ export function harvestFacts(world: WorldState): Fact[] {
 
   // Departures / arrival -------------------------------------------------------
   for (const departure of world.departures) {
+    const departureRef = refName(departure.timeId);
     facts.push({
       id: nextId(),
       kind: "departure",
@@ -548,13 +561,14 @@ export function harvestFacts(world: WorldState): Fact[] {
         suspects: departure.suspectIds.map(names.suspect),
         items: [],
         locations: [],
-        times: [names.time(departure.timeId)],
+        times: departureRef.mention ? [departureRef.mention] : [],
       },
-      writerBrief: `${listNames(departure.suspectIds.map(names.suspect))} left the mansion during ${names.time(departure.timeId)}, ${departure.cause}, and did not return that day.`,
+      writerBrief: `${listNames(departure.suspectIds.map(names.suspect))} left the mansion during ${departureRef.text}, ${departure.cause}, and did not return that day.`,
       noteSuitable: true,
     });
   }
   if (world.arrival) {
+    const arrivalRef = refName(world.arrival.timeId);
     facts.push({
       id: nextId(),
       kind: "guests_arrived",
@@ -568,9 +582,9 @@ export function harvestFacts(world: WorldState): Fact[] {
         suspects: ["Mrs. White", "Rusty"],
         items: [],
         locations: [],
-        times: [names.time(world.arrival.timeId)],
+        times: arrivalRef.mention ? [arrivalRef.mention] : [],
       },
-      writerBrief: `The guests only began arriving at ${names.time(world.arrival.timeId)}; before that, just the household — Mrs. White and Rusty — were about the mansion.`,
+      writerBrief: `The guests only began arriving during ${arrivalRef.text}; before that, just the household — Mrs. White and Rusty — were about the mansion.`,
       noteSuitable: true,
     });
   }
@@ -670,6 +684,7 @@ export function harvestFacts(world: WorldState): Fact[] {
       return true;
     });
     const lockupTime = TIME_PERIODS.find((slot) => slot.order === 9)!;
+    const lockupRef = refName(lockupTime.id);
     if (lockedItems.length > 0) {
       facts.push({
         id: nextId(),
@@ -684,9 +699,9 @@ export function harvestFacts(world: WorldState): Fact[] {
           suspects: [],
           items: lockedItems.map((item) => item.nameUS),
           locations: [],
-          times: [lockupTime.name],
+          times: lockupRef.mention ? [lockupRef.mention] : [],
         },
-        writerBrief: `Before retiring at ${lockupTime.name}, the display cases through the house were locked for the night, the valuables inside them all accounted for — the usual final round.`,
+        writerBrief: `Before retiring during ${lockupRef.text}, the display cases through the house were locked for the night, the valuables inside them all accounted for — the usual final round.`,
         noteSuitable: true,
       });
     }
@@ -718,6 +733,7 @@ export function harvestFacts(world: WorldState): Fact[] {
     const closure = world.roomClosure;
     const closedTimeIds = closure.timeIds === "all" ? [] : [...closure.timeIds];
     const allDay = closure.timeIds === "all";
+    const closureRef = allDay ? null : refName(closedTimeIds[closedTimeIds.length - 1]);
     facts.push({
       id: nextId(),
       kind: "room_closed",
@@ -730,11 +746,11 @@ export function harvestFacts(world: WorldState): Fact[] {
         suspects: [],
         items: [],
         locations: [names.location(closure.locationId)],
-        times: closedTimeIds.map(names.time),
+        times: closureRef?.mention ? [closureRef.mention] : [],
       },
       writerBrief: allDay
         ? `The ${names.location(closure.locationId)} was shut up the entire day — ${closure.cause} — and nobody could get in.`
-        : `The ${names.location(closure.locationId)} was closed off through ${names.time(closedTimeIds[closedTimeIds.length - 1])} — ${closure.cause}.`,
+        : `The ${names.location(closure.locationId)} was closed off through ${closureRef!.text} — ${closure.cause}.`,
       noteSuitable: true,
     });
   }
@@ -871,6 +887,7 @@ export function harvestFacts(world: WorldState): Fact[] {
   }
 
   if (world.discovery) {
+    const discoveryRef = refName(world.discovery.timeId);
     facts.push({
       id: nextId(),
       kind: "discovery",
@@ -880,8 +897,8 @@ export function harvestFacts(world: WorldState): Fact[] {
       locationIds: [],
       timeIds: [world.discovery.timeId],
       cutoffOrder: requireTime(world.discovery.timeId).order,
-      mentions: { suspects: [], items: [], locations: [], times: [names.time(world.discovery.timeId)] },
-      writerBrief: `It was during ${names.time(world.discovery.timeId)} that ${world.discovery.noticedBy} first noticed something was missing — so whatever happened had already happened by then.`,
+      mentions: { suspects: [], items: [], locations: [], times: discoveryRef.mention ? [discoveryRef.mention] : [] },
+      writerBrief: `It was during ${discoveryRef.text} that ${world.discovery.noticedBy} first noticed something was missing — so whatever happened had already happened by then.`,
       noteSuitable: true,
     });
   }

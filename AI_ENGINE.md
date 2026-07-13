@@ -11,7 +11,9 @@ Every earlier engine asked one system to be both the logician and the novelist, 
 ## Pipeline
 
 ```
-deterministic  1. world-sim.ts        seeded day: movement grid (social circles,
+deterministic  0. occasion-catalog.ts authored occasion spine: named beats,
+                                      activities, excuses, props, set dressing
+               1. world-sim.ts        seeded day: movement grid (social circles,
                                       gatherings, quiet dawn/retired nights),
                                       item lifecycles, decoy items, innocent threads,
                                       theft embedded as one thread among many
@@ -42,13 +44,15 @@ Three Sonnet calls in the typical case; +1 small call per repaired line.
 
 - Clue selection is people-first: company, absences, and comings-and-goings outrank item bookkeeping wherever either would do; redundant tallies are pruned; the Inspector's notes carry the lists.
 - Even story reveal: each clue carries roughly its fair share of the day's information — no whisper-whisper-thunder pacing.
-- Every game seeds motives for several suspects (the thief's is revealed in the closing), size-aware social reasons for pairs through parties, dispersal hours where guests are ordinarily alone, and sometimes a catchable lie or a foggy memory.
+- Every game begins with an answer-blind authored occasion spine. Its beats, activity vocabulary, props, excuses, and gathering labels are world truth before movements or clues exist; the dossier elaborates that same day instead of inventing flavor afterward.
+- Every game seeds motives for several suspects (the thief's is revealed in the closing), occasion-native social activities, dispersal hours where guests are ordinarily alone, and sometimes a catchable lie or a foggy memory.
 - Few-shot lines are drawn across all ten original disc mysteries, plus a per-game narrative register for Ashe (fond, clipped, wry, flustered, confiding).
 - Butler opening variety is machine-checked across the whole package: no first word repeats and at most two of ten clues may use the classic greeting openers. Violations repair only the offending clue.
 
 ## Main files
 
 - `src/services/world-sim.ts` — seeded WorldState generator.
+- `src/data/occasion-catalog.ts` — authored occasion families and deterministic spines.
 - `src/services/fact-harvest.ts` — fact taxonomy, semantics, mention licenses.
 - `src/services/clue-scheduler.ts` — joint-space solver, checkpoints, ordering.
 - `src/services/ai-mystery-engine.ts` — orchestration, progress, diagnostics.
@@ -78,6 +82,7 @@ Manual acceptance stays human: generate several seeds, compare signatures, play 
 
 - `FINAL_TARGET` in clue-scheduler.ts — final candidate windows; `PEOPLE_BIAS` — the people-vs-bookkeeping lean.
 - Checkpoint bounds (≥4 at position 6, ≥3 at position 9) in clue-scheduler.ts.
-- World texture catalogs (gathering options, pair/group reasons, motives, foggy sensations, thread causes) in world-sim.ts; `HOUR_STANDINS` rhythm phrases in fact-harvest.ts.
+- Occasion beats, activity/prop vocabularies, excuses, anonymity devices, and thread causes in `occasion-catalog.ts`; motives and physical-world catalogs in world-sim.ts.
+- `HOUR_STANDINS` in fact-harvest.ts plus each occasion's beat phrases. Innocent-hour vague-reference rate: 40%; the answer hour is always a beat/rhythm stand-in and never a printed card name.
 - Few-shot rotation count in ai-v3-prompts.ts `pickFewshots`.
 - Butler opener policy in `clue-verifier.ts` `verifyClueOpeningVariety` (unique first words, at most two greeting-style openings).

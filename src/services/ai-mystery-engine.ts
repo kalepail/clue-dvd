@@ -34,6 +34,7 @@ import {
   pickFewshots,
   type StorySeed,
 } from "../data/ai-v3-prompts";
+import { instantiateOccasionSpine, OCCASION_FAMILIES, type OccasionSpine } from "../data/occasion-catalog";
 import {
   ClosingSchema,
   ClueRepairSchema,
@@ -53,23 +54,6 @@ import { SeededRandom } from "./seeded-random";
 export const ENGINE_VERSION = "3.0-world";
 const MAX_WORLD_ATTEMPTS = 30;
 const MAX_REPAIRS_PER_TEXT = 2;
-
-const OCCASION_FAMILIES = [
-  "charitable benefit",
-  "private arts recital",
-  "family commemoration",
-  "county society exhibition",
-  "weekend house tournament",
-  "reception for a visiting dignitary",
-  "engagement celebration",
-  "scholarly demonstration",
-  "costume fete",
-  "reunion of old acquaintances",
-  "horticultural prize gathering",
-  "collector's private viewing",
-  "amateur theatrical rehearsal",
-  "subscription committee meeting",
-];
 
 export type MysteryProgressStage =
   | "occasion"
@@ -114,6 +98,7 @@ export type MysteryEngineDebug = {
     seed: number;
     answer: Answer;
     occasionFamily: string;
+    occasionSpine: OccasionSpine;
     recentSignatures: string[];
   };
   world?: WorldState;
@@ -149,10 +134,11 @@ export async function generateMysteryV2(apiKey: string, params: {
   const answer: Answer = { ...params.setup.solution };
   const recentSignatures = (params.recentSignatures ?? []).filter(Boolean).slice(0, 5);
   const occasionFamily = chooseOccasionFamily(params.setup.seed, recentSignatures);
+  const occasionSpine = instantiateOccasionSpine(occasionFamily, params.setup.seed);
   const debug: MysteryEngineDebug = {
     engineVersion: ENGINE_VERSION,
     startedAt: new Date(startedAt).toISOString(),
-    setup: { seed: params.setup.seed, answer, occasionFamily, recentSignatures },
+    setup: { seed: params.setup.seed, answer, occasionFamily, occasionSpine, recentSignatures },
   };
   lastMysteryEngineDebug = debug;
 
@@ -169,7 +155,7 @@ export async function generateMysteryV2(apiKey: string, params: {
     let worldAttempts = 0;
     for (let attempt = 1; attempt <= MAX_WORLD_ATTEMPTS && !schedule; attempt += 1) {
       worldAttempts = attempt;
-      const candidateWorld = simulateWorld({ seed: params.setup.seed, attempt, answer, occasionFamily });
+      const candidateWorld = simulateWorld({ seed: params.setup.seed, attempt, answer, occasionFamily, occasionSpine });
       const candidateFacts = harvestFacts(candidateWorld);
       const candidateSchedule = scheduleMystery({
         facts: candidateFacts,
@@ -201,6 +187,7 @@ export async function generateMysteryV2(apiKey: string, params: {
     await emit("relationships", "Inventing the occasion and its tensions.", 30);
     const dossierPrompt = buildDossierPrompt({
       occasionFamily,
+      occasionSpine,
       recentSignatures,
       cast: worldCast(),
       colorNotes: worldColorNotes(world),
@@ -217,9 +204,9 @@ export async function generateMysteryV2(apiKey: string, params: {
     });
     debug.dossier = toStageDebug(dossierPrompt, dossier);
 
-    // The dossier remains answer-blind, but its occasion palette is now made
-    // TRUE in the chosen world before any clue prose exists. Re-harvesting
-    // changes only writer briefs; fact IDs and deduction predicates stay put.
+    // The authored occasion spine was already true before simulation. The
+    // answer-blind dossier contributes cosmetic vocabulary for room/item
+    // observations only; it cannot rewrite movements, activities, or excuses.
     applyOccasionTexture(world, dossier.value.occasionTexture);
     facts = harvestFacts(world);
     const factById = new Map(facts.map((fact) => [fact.id, fact]));

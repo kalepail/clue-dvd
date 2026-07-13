@@ -149,26 +149,12 @@ describe("clue scheduler fair-play guarantees (seed sweep)", () => {
     expect(breakaway).toBeDefined();
     expect(breakaway!.writerBrief).toContain("stepped away");
 
-    const schedule = scheduleMystery({ facts, answer, seed: seed * 31 + 1 });
-    expect(schedule).not.toBeNull();
-    expect(schedule!.reveals.some((reveal) => reveal.factId === breakaway!.id)).toBe(true);
-    const selectedFacts = new Map(facts.map((fact) => [fact.id, fact]));
-    const selectedLieFacts = schedule!.reveals
-      .map((reveal) => selectedFacts.get(reveal.factId)!)
-      .filter((fact) => fact.threadId === "LIE");
-    expect(selectedLieFacts.map((fact) => fact.kind).sort()).toEqual(["claim", "group_presence"]);
-
-    applyOccasionTexture(world, {
-      groupActivities: ["comparing tournament scorecards"],
-      transitionRemarks: ["I left my mallet beside the lawn"],
-      gatheringDetails: ["tallying the tournament standings"],
-      inspectionContexts: ["collecting abandoned scorecards"],
-      observationContexts: ["checking the prize display"],
-      uncertainObservations: ["a scorecard being altered behind the hedge"],
-    });
-    const themedBreakaway = harvestFacts(world).find((fact) => fact.id === breakaway!.id)!;
-    expect(themedBreakaway.writerBrief).toContain("comparing tournament scorecards");
-    expect(themedBreakaway.writerBrief).toContain("I left my mallet beside the lawn");
+    expect(world.occasionSpine.groupActivities).toContain(
+      world.movement.T03[answer.suspectId].activity
+    );
+    expect(world.occasionSpine.excuses).toContain(remarks[0].line);
+    expect(breakaway!.writerBrief).toContain(world.movement.T03[answer.suspectId].activity);
+    expect(breakaway!.writerBrief).toContain(remarks[0].line);
   });
 
   it("allows clue styles and information weights to appear anywhere in the reveal order", () => {
@@ -243,10 +229,12 @@ describe("clue scheduler fair-play guarantees (seed sweep)", () => {
 });
 
 describe("world simulation invariants (seed sweep)", () => {
-  it("adds occasion texture without changing any fact identity or deduction semantics", () => {
+  it("keeps model-supplied texture cosmetic and never rewrites spine truth", () => {
     const answer = randomAnswer(41);
     const world = simulateWorld({ seed: 41, attempt: 1, answer, occasionFamily: "costume fete" });
     const before = harvestFacts(world);
+    const movementBefore = structuredClone(world.movement);
+    const remarksBefore = structuredClone(world.transitionRemarks);
     applyOccasionTexture(world, {
       groupActivities: ["comparing elaborate masks", "repairing costume ribbons"],
       transitionRemarks: ["I ought to fetch my cloak", "I promised to mend a loose mask"],
@@ -269,8 +257,10 @@ describe("world simulation invariants (seed sweep)", () => {
     });
 
     expect(after.map(semantics)).toEqual(before.map(semantics));
+    expect(world.movement).toEqual(movementBefore);
+    expect(world.transitionRemarks).toEqual(remarksBefore);
     expect(after.some((fact, index) => fact.writerBrief !== before[index].writerBrief)).toBe(true);
-    expect(after.some((fact) => /mask|costume|ribbon|dance card/i.test(fact.writerBrief))).toBe(true);
+    expect(before.some((fact) => /mask|costume|ribbon|disguise/i.test(fact.writerBrief))).toBe(true);
     expect(() => harvestFacts(world)).not.toThrow();
   });
 

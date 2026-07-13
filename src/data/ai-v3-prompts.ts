@@ -16,6 +16,7 @@ import type { SeededRandom } from "../services/seeded-random";
 import { ORIGINAL_MYSTERIES } from "./original-mysteries";
 import { ORIGINAL_MYSTERY_STYLE_GUIDE } from "./original-mystery-style";
 import { SUSPECTS } from "./game-elements";
+import type { OccasionSpine } from "./occasion-catalog";
 
 export type StorySeed = {
   /** 1..12 reveal position. */
@@ -30,6 +31,7 @@ export type StorySeed = {
 
 export type DossierInput = {
   occasionFamily: string;
+  occasionSpine: OccasionSpine;
   recentSignatures: string[];
   cast: Array<{ name: string; role: string; traits: string[] }>;
   colorNotes: string[]; // gathering labels, closures, repairs, thread causes
@@ -75,6 +77,15 @@ export function buildDossierPrompt(input: DossierInput): { system: string; promp
 
 Occasion family to build on: ${input.occasionFamily}
 
+The occasion spine below is FIXED WORLD TRUTH, authored before this call. Do
+not replace it with a different event. Build the social mood and opening around
+its main event, and reuse several of its activity and set-dressing nouns so the
+opening belongs to the same lived day as the later testimony.
+- Main event: ${input.occasionSpine.mainEvent}
+- Day beats: ${input.occasionSpine.beats.map((beat) => beat.name).join(" -> ")}
+- Activities already happening: ${input.occasionSpine.groupActivities.slice(0, 6).join(", ")}
+- Props and set dressing already present: ${input.occasionSpine.setDressing.slice(0, 6).join(", ")}
+
 The cast (all present):
 ${input.cast.map((member) => `- ${member.name}, ${member.role} (${member.traits.join(", ")})`).join("\n")}
 
@@ -88,11 +99,11 @@ ${input.recentSignatures.length > 0 ? input.recentSignatures.map((signature) => 
 
 Produce:
 - title: an evocative case title (like "The Monte Carlo Affair").
-- occasionName: what the day is called in conversation (e.g. "the subscription committee luncheon").
+- occasionName: what the fixed day is called in conversation.
 - occasionSummary: 2-3 sentences on why Mr. Boddy has gathered everyone and what the mood is.
 - hostReason: one sentence on what Mr. Boddy personally hopes the day achieves.
 - mysterySignature: a compact fingerprint of this case, pipe-separated (occasion | social tension | texture), used to avoid repeats in future games.
-- occasionTexture: a small factual palette the household genuinely uses during this occasion:
+- occasionTexture: a small cosmetic vocabulary derived from the fixed spine:
   - groupActivities: 5-7 varied lowercase gerund phrases people could do together in different rooms (for example, "comparing their marked programmes").
   - transitionRemarks: 4-5 short first-person excuses somebody might give when stepping away (for example, "I ought to fetch my wrap").
   - gatheringDetails: 3-4 lowercase gerund phrases the whole company might do during a meal or scheduled gathering.
@@ -100,7 +111,7 @@ Produce:
   - observationContexts: 3-4 lowercase gerund phrases Ashe or Mrs. White might be doing when noticing valuables still in place.
   - uncertainObservations: 3-4 ambiguous things a guest might half-see or half-hear amid this particular occasion (for example, "a masked guest hurrying away with a torn ribbon"); these may be mistaken or invented, so do not identify anyone.
 
-The texture entries are reusable world ingredients, NOT finished clues. Make every entry unmistakably specific to this occasion, but include no suspect names, card valuables, room names, or printed time names. Use ordinary non-card props freely (masks, scripts, scorecards, programmes, ribbons, flowers, pledge sheets, and so on when appropriate).`,
+The texture entries are reusable prose ingredients, NOT new world facts and NOT finished clues. Derive them from the fixed activities, props, and beats above rather than inventing a second theme. Include no suspect names, card valuables, room names, or printed time names.`,
   };
 }
 

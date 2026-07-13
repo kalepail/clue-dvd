@@ -1,3 +1,11 @@
+07/12/26 (5)
+- Scene & Occasion Phase 0: deterministic occasion spine
+        - Added authored beats, activities, excuses, anonymity devices, props, and thread causes for all 14 occasion families
+        - Occasion truth now exists before world simulation; gatherings, social groups, solo activity, threads, and step-away remarks draw from the selected spine
+        - The answer-blind dossier receives and elaborates the fixed spine instead of inventing an unrelated theme after clue scheduling
+        - Beat phrases join rhythm stand-ins for time references; innocent hours use the same vague house style and the answer hour remains unnamed
+        - Dossier texture is cosmetic only and can no longer rewrite movement truth
+
 07/12/26 (4)
 - Scene & Occasion phase: opening variety foundation
         - Renderer now budgets at most two classic greeting openings across ten Butler clues

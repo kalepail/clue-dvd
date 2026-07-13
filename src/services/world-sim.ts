@@ -22,6 +22,7 @@
 
 import { ITEMS, LOCATIONS, SUSPECTS, TIME_PERIODS } from "../data/game-elements";
 import type { Item, Location, Suspect, TimePeriod } from "../data/game-elements";
+import { instantiateOccasionSpine, type OccasionSpine } from "../data/occasion-catalog";
 import { SeededRandom } from "./seeded-random";
 import type { Answer, OccasionTexture } from "./ai-mystery-schemas";
 
@@ -92,7 +93,9 @@ export type WorldState = {
   attempt: number;
   answer: Answer;
   occasionFamily: string;
-  /** Answer-blind occasion details promoted to world truth after dossier design. */
+  /** Answer-blind authored story spine fixed before the world is simulated. */
+  occasionSpine: OccasionSpine;
+  /** Answer-blind AI vocabulary retained for cosmetic room/item observations only. */
   occasionTexture: OccasionTexture | null;
   partyMode: PartyMode;
   /** Order-indexed time periods for convenience. */
@@ -144,52 +147,6 @@ export type WorldState = {
 // Catalogs (world texture, all seeded)
 // ---------------------------------------------------------------------------
 
-const GATHERING_OPTIONS: Array<{ timeId: string; kind: "meal" | "social"; options: Array<{ locationId: string; label: string }> }> = [
-  { timeId: "T02", kind: "meal", options: [{ locationId: "L03", label: "breakfast" }] },
-  { timeId: "T03", kind: "social", options: [{ locationId: "L10", label: "a turn about the gardens" }, { locationId: "L11", label: "photographs by the fountain" }, { locationId: "L06", label: "a tour of the orchids" }] },
-  { timeId: "T04", kind: "meal", options: [{ locationId: "L03", label: "luncheon" }, { locationId: "L10", label: "luncheon in the garden" }] },
-  { timeId: "T05", kind: "social", options: [{ locationId: "L10", label: "lawn games" }, { locationId: "L05", label: "charades in the Ballroom" }, { locationId: "L11", label: "boules by the fountain" }] },
-  { timeId: "T06", kind: "social", options: [{ locationId: "L10", label: "afternoon tea among the roses" }, { locationId: "L06", label: "tea in the Conservatory" }, { locationId: "L02", label: "afternoon tea" }] },
-  { timeId: "T07", kind: "social", options: [{ locationId: "L02", label: "cocktails before dinner" }, { locationId: "L05", label: "an early musical interlude" }] },
-  { timeId: "T08", kind: "meal", options: [{ locationId: "L03", label: "dinner" }] },
-  { timeId: "T09", kind: "social", options: [{ locationId: "L05", label: "the evening's entertainment" }, { locationId: "L08", label: "readings in the Library" }, { locationId: "L02", label: "after-dinner coffee" }] },
-];
-
-const ROOM_ACTIVITIES: Record<string, string[]> = {
-  L01: ["admiring the portraits", "waiting for the post", "greeting late arrivals"],
-  L02: ["taking coffee", "leafing through magazines", "chatting by the fire"],
-  L03: ["lingering over the table", "helping set the service", "sampling the preserves"],
-  L04: ["fetching warm water", "consulting the cook", "sneaking a taste of dessert"],
-  L05: ["practising a duet at the piano", "arranging chairs", "dancing a few steps"],
-  L06: ["admiring the orchids", "sketching the ferns", "taking the warm air"],
-  L07: ["playing billiards", "keeping score", "debating a trick shot"],
-  L08: ["reading quietly", "hunting for an atlas", "comparing editions"],
-  L09: ["writing letters", "examining the collection", "settling accounts"],
-  L10: ["strolling among the roses", "cutting blooms for the table", "taking photographs"],
-  L11: ["feeding the goldfish", "taking the air", "admiring the stonework"],
-};
-
-const TRANSITION_REMARKS = {
-  morning: [
-    "I ought to fetch my spectacles",
-    "I promised to look for a missing letter",
-    "I left my gloves upstairs",
-    "I must see whether the morning post has come",
-  ],
-  afternoon: [
-    "I must make a telephone call",
-    "I promised to find Mr. Boddy's programme",
-    "I ought to fetch my notes",
-    "I left my gloves in another room",
-  ],
-  evening: [
-    "I ought to fetch my coat",
-    "I left my cigarette case upstairs",
-    "I must see whether my motorcar has come round",
-    "I promised to find the evening programme",
-  ],
-} as const;
-
 const DEFAULT_OCCASION_TEXTURE: OccasionTexture = {
   groupActivities: ["comparing the day's programmes", "helping with the arrangements", "rehearsing a short presentation"],
   transitionRemarks: ["I ought to fetch my notes", "I must make a telephone call", "I left my gloves in another room"],
@@ -204,35 +161,6 @@ const DEFAULT_OCCASION_TEXTURE: OccasionTexture = {
  * alongside the room flavor so a pair in the Library reads differently from
  * a pair in the Rose Garden, and no two games lean on the same three reasons.
  */
-const PAIR_REASONS = [
-  "deep in a game of chess",
-  "catching up on years of family news",
-  "comparing notes on the racing form",
-  "rehearsing a toast neither would let the other hear",
-  "arguing amiably over a crossword",
-  "trading investment advice neither will follow",
-  "swapping stories about Mr. Boddy's younger days",
-  "mending the hem of an evening coat between them",
-  "conspiring over the menu for a future dinner of their own",
-  "teaching one another a card trick",
-];
-const SMALL_GROUP_REASONS = [
-  "three-handed whist with running commentary",
-  "a heated round of charades practice",
-  "debating the merits of Mr. Boddy's port",
-  "planning a subscription none of them will pay for",
-  "taking turns reading the society pages aloud",
-  "a gramophone recital of dubious quality",
-  "comparing photographs from past summers",
-  "an impromptu committee on the evening's entertainment",
-];
-const LARGE_GROUP_REASONS = [
-  "a noisy parlor game that kept score in laughter",
-  "listening to Professor Plum hold forth at length",
-  "a sing-along around the piano",
-  "a tournament of anagrams that nearly came to blows",
-];
-
 /** Motives — every good suspect has one; only one acted on it. */
 const MOTIVE_CATALOG = [
   "gambling debts that have grown past politeness",
@@ -258,14 +186,6 @@ const FOGGY_SENSATIONS = [
   "a light where no light should have been",
 ];
 
-const SOLO_ACTIVITIES = [
-  "resting with a headache",
-  "writing a private letter",
-  "placing a telephone call",
-  "looking for a mislaid glove",
-  "taking a quiet walk",
-];
-
 const OFFSITE_REASONS = [
   "away with a repairer in the village",
   "sent out for professional cleaning",
@@ -282,24 +202,6 @@ const DEPARTURE_CAUSES = [
   "called away by an urgent telegram",
   "pleading a dreadful headache",
   "expected at another engagement",
-];
-
-const ERRAND_CAUSES = [
-  "wrapping a small gift meant as a surprise",
-  "rehearsing a toast in private",
-  "placing a discreet telephone call to a solicitor",
-  "resting quietly on doctor's orders",
-];
-
-const QUARREL_CAUSES = [
-  "an old disagreement over a card debt",
-  "a business proposal gone sour",
-  "a pointed remark at luncheon neither would forgive",
-];
-
-const SURPRISE_CAUSES = [
-  "arranging a surprise presentation for Mr. Boddy",
-  "planning tomorrow's menu as a treat",
 ];
 
 /**
@@ -323,13 +225,40 @@ const MEDAL_NOTE = "given to Mr. Boddy by his late uncle, Dr. Black";
 // Simulation
 // ---------------------------------------------------------------------------
 
+type GatheringOption = {
+  timeId: string;
+  kind: "meal" | "social";
+  locationId: string;
+  label: string;
+};
+
+function gatheringOptionsForSpine(spine: OccasionSpine): GatheringOption[] {
+  const socialSlots = TIME_PERIODS.filter((slot) => slot.order >= 2 && slot.order <= 9);
+  return socialSlots.map((slot) => {
+    const direct = spine.beats.find((beat) => beat.timeIds.includes(slot.id));
+    const beat = direct ?? spine.beats.reduce((nearest, candidate) => {
+      const nearestDistance = Math.min(...nearest.timeIds.map((timeId) => Math.abs(requireTime(timeId).order - slot.order)));
+      const candidateDistance = Math.min(...candidate.timeIds.map((timeId) => Math.abs(requireTime(timeId).order - slot.order)));
+      return candidateDistance < nearestDistance ? candidate : nearest;
+    });
+    return {
+      timeId: slot.id,
+      kind: [2, 4, 8].includes(slot.order) ? "meal" : "social",
+      locationId: beat.locationId,
+      label: beat.gatheringLabel,
+    };
+  });
+}
+
 export function simulateWorld(params: {
   seed: number;
   attempt: number;
   answer: Answer;
   occasionFamily: string;
+  occasionSpine?: OccasionSpine;
 }): WorldState {
   const { answer, occasionFamily } = params;
+  const occasionSpine = params.occasionSpine ?? instantiateOccasionSpine(occasionFamily, params.seed);
   const rng = new SeededRandom(hashSeed(params.seed, params.attempt));
   const slots = [...TIME_PERIODS].sort((a, b) => a.order - b.order);
   const answerTime = requireTime(answer.timeId);
@@ -391,18 +320,21 @@ export function simulateWorld(params: {
   }
 
   // --- Gatherings (never at the answer time) ------------------------------
-  const gatheringPool = GATHERING_OPTIONS.filter((option) => option.timeId !== answer.timeId)
+  const gatheringPool = gatheringOptionsForSpine(occasionSpine).filter((option) => option.timeId !== answer.timeId)
     .filter((option) => isSlotAttended(option.timeId, arrival, departures));
   const gatheringCount = Math.min(rng.nextInt(3, 5), gatheringPool.length);
   const chosenGatherings = rng.pickMultiple(gatheringPool, gatheringCount)
     .sort((a, b) => requireTime(a.timeId).order - requireTime(b.timeId).order);
   const gatherings: Gathering[] = chosenGatherings.map((option) => {
-    const pick = rng.pick(option.options);
+    // Preserve one texture draw per gathering. Keeping structural randomness
+    // on the same stream means an occasion wording change cannot reshuffle
+    // the rest of an otherwise identical day.
+    rng.next();
     return {
       timeId: option.timeId,
-      locationId: pick.locationId,
+      locationId: option.locationId,
       kind: option.kind,
-      label: pick.label,
+      label: option.label,
       suspectIds: presentSuspects(option.timeId, arrival, departures),
     };
   });
@@ -430,16 +362,17 @@ export function simulateWorld(params: {
   }
 
   // --- Innocent threads ----------------------------------------------------
-  const threads = buildThreads(rng, answer, arrival, departures);
+  const threads = buildThreads(rng, answer, arrival, departures, occasionSpine);
 
   // --- Movement grid -------------------------------------------------------
-  const movement = buildMovementGrid(rng, slots, answer, gatherings, threads, arrival, departures);
+  const movement = buildMovementGrid(rng, slots, answer, gatherings, threads, arrival, departures, occasionSpine);
   // Dialogue is generated from a separate stream so adding prose texture can
   // never alter the actual movements or deduction structure of the day.
   const transitionRemarks = buildTransitionRemarks(
     new SeededRandom(hashSeed(params.seed ^ 0x4f1bbcdc, params.attempt)),
     slots,
-    movement
+    movement,
+    occasionSpine
   );
 
   // --- Item lifecycles ------------------------------------------------------
@@ -576,6 +509,7 @@ export function simulateWorld(params: {
     attempt: params.attempt,
     answer,
     occasionFamily,
+    occasionSpine,
     occasionTexture: null,
     partyMode,
     slots,
@@ -597,52 +531,13 @@ export function simulateWorld(params: {
   };
 }
 
-/**
- * Promote the answer-blind dossier's creative palette into world truth.
- * Only narrative texture changes: placements, companions, rooms, times,
- * items, and every deduction predicate remain untouched.
- */
+/** Store answer-blind dossier vocabulary without letting it rewrite world truth. */
 export function applyOccasionTexture(world: WorldState, proposed: OccasionTexture): void {
-  const texture = normalizeOccasionTexture(proposed);
-  world.occasionTexture = texture;
-
-  const threadMoments = new Set(
-    world.threads
-      .filter((thread) => thread.timeId)
-      .map((thread) => `${thread.timeId}|${thread.suspectIds.slice().sort().join("+")}`)
-  );
-  for (const slot of world.slots) {
-    const placements = world.movement[slot.id] ?? {};
-    const seen = new Set<string>();
-    for (const placement of Object.values(placements)) {
-      if (placement.social !== "group") continue;
-      const groupKey = placement.companions.slice().sort().join("+");
-      if (seen.has(groupKey) || threadMoments.has(`${slot.id}|${groupKey}`)) continue;
-      seen.add(groupKey);
-      const activity = pickTexture(texture.groupActivities, `${world.seed}|${world.attempt}|${slot.id}|${groupKey}`);
-      for (const suspectId of placement.companions) {
-        const companion = placements[suspectId];
-        if (companion?.social === "group" && companion.companions.slice().sort().join("+") === groupKey) {
-          companion.activity = activity;
-        }
-      }
-    }
-  }
-
-  world.transitionRemarks.forEach((remark, index) => {
-    remark.line = pickTexture(
-      texture.transitionRemarks,
-      `${world.seed}|${world.attempt}|remark|${index}|${remark.suspectId}|${remark.toTimeId}`
-    );
-  });
-  world.threads
-    .filter((thread) => thread.kind === "foggy_memory")
-    .forEach((thread, index) => {
-      thread.cause = pickTexture(
-        texture.uncertainObservations,
-        `${world.seed}|${world.attempt}|uncertain|${index}|${thread.suspectIds[0]}`
-      );
-    });
+  // The authored spine has already made activities, gatherings, threads, and
+  // excuses true. Dossier output is now cosmetic vocabulary only; allowing a
+  // model response to rewrite movement truth here would recreate the old
+  // theme-after-facts dependency that the occasion spine replaces.
+  world.occasionTexture = normalizeOccasionTexture(proposed);
 }
 
 // ---------------------------------------------------------------------------
@@ -656,7 +551,8 @@ function buildMovementGrid(
   gatherings: Gathering[],
   threads: InnocentThread[],
   arrival: WorldState["arrival"],
-  departures: WorldState["departures"]
+  departures: WorldState["departures"],
+  occasionSpine: OccasionSpine
 ): Record<string, Record<string, Placement>> {
   const grid: Record<string, Record<string, Placement>> = {};
   const gatheringByTime = new Map(gatherings.map((gathering) => [gathering.timeId, gathering]));
@@ -777,7 +673,7 @@ function buildMovementGrid(
           locationId: wanderRooms[index % wanderRooms.length].id,
           social: "solo",
           companions: [wanderer],
-          activity: rng.pick(SOLO_ACTIVITIES),
+          activity: rng.pick(occasionSpine.soloActivities),
         };
       });
       unplaced = unplaced.filter((id) => !wanderers.includes(id));
@@ -791,7 +687,7 @@ function buildMovementGrid(
           locationId: room.id,
           social: "solo",
           companions: [soloSuspect],
-          activity: rng.pick(SOLO_ACTIVITIES),
+          activity: rng.pick(occasionSpine.soloActivities),
         };
         unplaced = unplaced.filter((id) => id !== soloSuspect);
       }
@@ -817,16 +713,16 @@ function buildMovementGrid(
         const pool = fresh.length > 0 ? fresh : legalRooms;
         roomId = rng.pick(pool).id;
         circleRooms.set(circleIndex, roomId);
-        circleActivities.set(circleIndex, pickActivity(rng, roomId));
+        circleActivities.set(circleIndex, pickActivity(rng, occasionSpine));
       }
       occupiedRooms.add(roomId);
-      const activity = circleActivities.get(circleIndex) ?? pickGroupActivity(rng, roomId, members.length);
+      const activity = circleActivities.get(circleIndex) ?? pickGroupActivity(rng, occasionSpine);
       for (const member of members) {
         placements[member] = {
           locationId: roomId,
           social: members.length > 1 ? "group" : "solo",
           companions: [...members],
-          activity: members.length > 1 ? activity : rng.pick(SOLO_ACTIVITIES),
+          activity: members.length > 1 ? activity : rng.pick(occasionSpine.soloActivities),
         };
       }
       unplaced = unplaced.filter((id) => !members.includes(id));
@@ -855,7 +751,8 @@ function buildMovementGrid(
 function buildTransitionRemarks(
   rng: SeededRandom,
   slots: TimePeriod[],
-  movement: Record<string, Record<string, Placement>>
+  movement: Record<string, Record<string, Placement>>,
+  occasionSpine: OccasionSpine
 ): TransitionRemark[] {
   const remarks: TransitionRemark[] = [];
   for (let index = 0; index < slots.length - 1; index += 1) {
@@ -881,12 +778,11 @@ function buildTransitionRemarks(
         );
       });
       if (continuingCompanions.length < 2) continue;
-      const phase = to.order <= 3 ? "morning" : to.order <= 6 ? "afternoon" : "evening";
       remarks.push({
         suspectId: suspect.id,
         fromTimeId: from.id,
         toTimeId: to.id,
-        line: rng.pick([...TRANSITION_REMARKS[phase]]),
+        line: rng.pick(occasionSpine.excuses),
       });
     }
   }
@@ -963,7 +859,8 @@ function buildThreads(
   rng: SeededRandom,
   answer: Answer,
   arrival: WorldState["arrival"],
-  departures: WorldState["departures"]
+  departures: WorldState["departures"],
+  occasionSpine: OccasionSpine
 ): InnocentThread[] {
   const threads: InnocentThread[] = [];
   const count = rng.nextInt(2, 3);
@@ -988,7 +885,7 @@ function buildThreads(
         suspectIds: pickSuspects(1),
         locationId: rng.pick(threadRooms).id,
         timeId,
-        cause: rng.pick(ERRAND_CAUSES),
+        cause: rng.pick(occasionSpine.threadCauses),
       });
     } else if (kind === "borrowed_item") {
       const item = rng.pick(ITEMS.filter((candidate) => candidate.id !== answer.itemId));
@@ -1001,7 +898,7 @@ function buildThreads(
         suspectIds: pickSuspects(2),
         locationId: rng.pick(threadRooms).id,
         timeId,
-        cause: rng.pick(QUARREL_CAUSES),
+        cause: `a disagreement over ${rng.pick(occasionSpine.setDressing)} and the day's arrangements`,
       });
     } else if (kind === "foggy_memory") {
       // Fog of the day: a witness half-remembers something — at whatever
@@ -1012,22 +909,26 @@ function buildThreads(
       // reliably honest or reliably wrong.
       const rememberer = rng.nextBool(0.15) ? answer.suspectId : pickSuspects(1)[0];
       const memoryTimeId = rng.nextBool(0.3) ? answer.timeId : rng.pick(TIME_PERIODS).id;
+      const occasionFog = occasionSpine.anonymityDevices.map((device) => `a figure obscured by ${device}`);
       threads.push({
         id,
         kind,
         suspectIds: [rememberer],
         timeId: memoryTimeId,
-        cause: rng.pick(FOGGY_SENSATIONS),
+        cause: rng.pick([...occasionFog, ...FOGGY_SENSATIONS]),
       });
     } else {
       const timeId = rng.pick(TIME_PERIODS.filter((slot) => isSlotAttendedStrict(slot.id, arrival, departures))).id;
+      // One texture draw keeps world structure independent of whether this
+      // catalog happens to offer one or several preparations.
+      rng.pick(occasionSpine.threadCauses);
       threads.push({
         id,
         kind,
         suspectIds: pickSuspects(1),
         locationId: rng.pick([threadRooms.find((room) => room.id === "L04") ?? rng.pick(threadRooms), rng.pick(threadRooms)]).id,
         timeId,
-        cause: rng.pick(SURPRISE_CAUSES),
+        cause: `quietly preparing for ${occasionSpine.mainEvent}`,
       });
     }
   });
@@ -1070,28 +971,16 @@ function normalizeOccasionTexture(proposed: OccasionTexture): OccasionTexture {
   };
 }
 
-function pickTexture(values: string[], key: string): string {
-  let hash = 2_166_136_261;
-  for (let index = 0; index < key.length; index += 1) {
-    hash ^= key.charCodeAt(index);
-    hash = Math.imul(hash, 16_777_619);
-  }
-  return values[(hash >>> 0) % values.length];
-}
-
-function pickActivity(rng: SeededRandom, locationId: string): string {
-  const options = ROOM_ACTIVITIES[locationId] ?? ["passing the time"];
-  return rng.pick(options);
+function pickActivity(rng: SeededRandom, occasionSpine: OccasionSpine): string {
+  return rng.pick(occasionSpine.groupActivities);
 }
 
 /**
  * Group activities blend room flavor with size-appropriate social reasons —
  * a pair reads as a tête-à-tête, four reads as a card table, six as a party.
  */
-function pickGroupActivity(rng: SeededRandom, locationId: string, size: number): string {
-  const roomFlavor = ROOM_ACTIVITIES[locationId] ?? ["passing the time"];
-  const social = size <= 2 ? PAIR_REASONS : size <= 4 ? SMALL_GROUP_REASONS : LARGE_GROUP_REASONS;
-  return rng.nextBool(0.55) ? rng.pick(social) : rng.pick(roomFlavor);
+function pickGroupActivity(rng: SeededRandom, occasionSpine: OccasionSpine): string {
+  return rng.pick(occasionSpine.groupActivities);
 }
 
 export function presentSuspects(

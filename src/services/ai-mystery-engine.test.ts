@@ -55,7 +55,7 @@ function buildMockProvider(overrides?: {
     } else if (params.toolName === "submit_rendered_mystery") {
       const openings = [
         "Hello --", "Coming --", "Before luncheon,", "While passing,", "Near the windows,",
-        "Later,", "According to Ashe,", "Mrs. White recalled", "By dusk,", "Nobody doubted",
+        "Later,", "According to Ashe,", "Records recalled", "By dusk,", "Nobody doubted",
       ];
       const clueTexts = seeds
         .filter((seed) => seed.deliverAs === "butler")
@@ -108,7 +108,6 @@ describe("world-first AI mystery engine V3", () => {
       provider,
       onProgress: (event) => { progress.push(event.stage); },
     });
-
     expect(calls).toHaveLength(3);
     expect(calls.map((call) => call.toolName)).toEqual([
       "submit_case_dossier",
@@ -142,7 +141,7 @@ describe("world-first AI mystery engine V3", () => {
     expect(closingText).toContain(answerNames.item);
   });
 
-  it("promotes the dossier occasion palette into factual clue briefs without another model call", async () => {
+  it("builds factual clue briefs from the authored spine before the dossier call", async () => {
     const { provider, calls } = buildMockProvider();
     await generateMysteryV2("test-key", { setup, provider });
     const debug = getLastMysteryEngineDebug()!;
@@ -153,7 +152,9 @@ describe("world-first AI mystery engine V3", () => {
       "submit_case_closing",
     ]);
     expect(debug.world!.occasionTexture?.groupActivities).toContain("sorting pledge cards");
-    expect(debug.storySeeds!.some((seed) => /pledge|subscription/i.test(seed.brief))).toBe(true);
+    expect(debug.setup.occasionSpine.mainEvent).toContain("pledge");
+    expect(debug.storySeeds!.some((seed) => /pledge|benefit|auction|bid/i.test(seed.brief))).toBe(true);
+    expect(debug.dossier!.prompt).toContain(debug.setup.occasionSpine.mainEvent);
   });
 
   it("builds and audits the clue package before any model call without category targets", async () => {
