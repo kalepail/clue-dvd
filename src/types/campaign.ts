@@ -390,6 +390,8 @@ export interface GenerateCampaignRequest {
   excludeLocations?: string[];
   /** Exclude specific times from solution */
   excludeTimes?: string[];
+  /** Recent V2 novelty signatures to avoid repeating across local games */
+  recentMysterySignatures?: string[];
 }
 
 /**
@@ -409,7 +411,7 @@ export interface GeneratedClue {
   /** Which act */
   act: NarrativeAct;
   /** What this clue eliminates */
-  eliminates: {
+  eliminates?: {
     category: EliminationCategory;
     ids: string[];
     reason: string;
@@ -426,6 +428,18 @@ export interface GeneratedDramaticEvent {
   description: string;
   /** Suspects involved */
   affectedSuspects: string[];
+}
+
+/**
+ * Private inspector note (separate from the main clue sequence)
+ */
+export interface InspectorNote {
+  /** Note ID */
+  id: string;
+  /** Note text */
+  text: string;
+  /** Clue positions referenced by this note */
+  relatedClues?: number[];
 }
 
 /**
@@ -453,6 +467,10 @@ export interface GeneratedScenario {
   clues: GeneratedClue[];
   /** Dramatic events */
   dramaticEvents: GeneratedDramaticEvent[];
+  /** Locked rooms for this mystery (location IDs) */
+  lockedRooms: string[];
+  /** Inspector notes (private, turn-based) */
+  inspectorNotes: InspectorNote[];
   /** Narrative elements */
   narrative: {
     opening: string;
@@ -467,5 +485,9 @@ export interface GeneratedScenario {
     seed: number;
     createdAt: string;
     version: string;
+    /** Active AI generation engine */
+    engineVersion?: string;
+    /** Occasion/motive/relationship/deception novelty signature */
+    mysterySignature?: string;
   };
 }

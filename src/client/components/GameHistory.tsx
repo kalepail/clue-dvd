@@ -14,6 +14,8 @@ import {
   Flag,
   StickyNote,
   Users,
+  DoorOpen,
+  Bell,
 } from "lucide-react";
 import { gameStore } from "../hooks/useGameStore";
 import type { GameAction } from "../../shared/api-types";
@@ -22,9 +24,11 @@ import { Badge } from "@/client/components/ui/badge";
 
 interface Props {
   gameId: string;
+  maxItems?: number;
+  compact?: boolean;
 }
 
-export default function GameHistory({ gameId }: Props) {
+export default function GameHistory({ gameId, maxItems, compact = false }: Props) {
   const [actions, setActions] = useState<GameAction[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -65,6 +69,9 @@ export default function GameHistory({ gameId }: Props) {
 
   // Reverse order: most recent first
   const reversedActions = [...actions].reverse();
+  const visibleActions = typeof maxItems === "number"
+    ? reversedActions.slice(0, Math.max(0, maxItems))
+    : reversedActions;
 
   const getActionConfig = (type: string) => {
     switch (type) {
@@ -148,6 +155,30 @@ export default function GameHistory({ gameId }: Props) {
           borderColor: "border-purple-500/40",
           label: "Dramatic Event",
         };
+      case "secret_passage":
+        return {
+          icon: <DoorOpen className="h-4 w-4" />,
+          color: "text-amber-300",
+          bgColor: "bg-amber-500/10",
+          borderColor: "border-amber-500/40",
+          label: "Secret Passage",
+        };
+      case "inspector_interruption":
+        return {
+          icon: <Bell className="h-4 w-4" />,
+          color: "text-primary",
+          bgColor: "bg-primary/10",
+          borderColor: "border-primary/40",
+          label: "Inspector Interruption",
+        };
+      case "room_unlocked":
+        return {
+          icon: <Bell className="h-4 w-4" />,
+          color: "text-primary",
+          bgColor: "bg-primary/10",
+          borderColor: "border-primary/40",
+          label: "Rooms Unlocked",
+        };
       case "note_taken":
         return {
           icon: <StickyNote className="h-4 w-4" />,
@@ -198,22 +229,34 @@ export default function GameHistory({ gameId }: Props) {
     }
 
     // For accusations, format nicely
-    if (
-      action.actionType === "accusation_made" ||
-      action.actionType === "accusation_correct" ||
-      action.actionType === "accusation_wrong"
-    ) {
-      const parts: string[] = [];
-      if (details.suspectName) parts.push(String(details.suspectName));
-      if (details.itemName) parts.push(`with the ${details.itemName}`);
-      if (details.locationName) parts.push(`in the ${details.locationName}`);
-      if (details.timeName) parts.push(`at ${details.timeName}`);
-      return { text: parts.join(" "), meta: undefined };
+    if (action.actionType === "accusation_made") {
+      return { text: "An accusation was submitted.", meta: undefined };
+    }
+    if (action.actionType === "accusation_correct") {
+      return { text: "The accusation was correct.", meta: undefined };
+    }
+    if (action.actionType === "accusation_wrong") {
+      return { text: "The accusation was incorrect.", meta: undefined };
     }
 
     // For dramatic events
     if (action.actionType === "dramatic_event" && details.description) {
       return { text: String(details.description), meta: undefined };
+    }
+
+    // For secret passage
+    if (action.actionType === "secret_passage" && details.description) {
+      return { text: String(details.description), meta: undefined };
+    }
+
+    // For inspector interruptions
+    if (action.actionType === "inspector_interruption" && details.message) {
+      return { text: String(details.message), meta: undefined };
+    }
+
+    // For room unlocks
+    if (action.actionType === "room_unlocked" && details.message) {
+      return { text: String(details.message), meta: undefined };
     }
 
     // For notes
@@ -239,13 +282,16 @@ export default function GameHistory({ gameId }: Props) {
   };
 
   return (
-    <div className="max-h-[500px] overflow-auto">
+    <div>
       {/* Timeline container - pl-4 ensures nodes don't clip the card edge */}
-      <div className="relative pl-4 pt-2">
+      <div className={cn("relative pl-4 pt-2", compact && "pt-1")}>
         {/* Vertical timeline line - centered on 24px nodes (pl-4=16px + node-center=12px - half-line=1px = 27px) */}
-        <div className="absolute left-[27px] top-5 bottom-8 w-0.5 bg-gradient-to-b from-primary/60 via-border to-border/20 rounded-full" />
+        <div className={cn(
+          "absolute left-[27px] w-0.5 bg-gradient-to-b from-primary/60 via-border to-border/20 rounded-full",
+          compact ? "top-4 bottom-6" : "top-5 bottom-8"
+        )} />
 
-        {reversedActions.map((action, index) => {
+        {visibleActions.map((action, index) => {
           const config = getActionConfig(action.actionType);
           const { text, meta } = formatDetails(action);
           const isFirst = index === 0;
@@ -253,7 +299,7 @@ export default function GameHistory({ gameId }: Props) {
           return (
             <div
               key={action.sequenceNumber}
-              className="relative pl-8 pb-5"
+              className={cn("relative pl-8", compact ? "pb-3" : "pb-5")}
             >
               {/* Timeline node - z-10 to sit above line, solid bg-card (no transparent bgColor) */}
               <div
@@ -270,14 +316,15 @@ export default function GameHistory({ gameId }: Props) {
               {/* Event card */}
               <div
                 className={cn(
-                  "rounded-lg border p-4 transition-all",
+                  "rounded-lg border transition-all",
+                  compact ? "p-3" : "p-4",
                   config.bgColor,
                   config.borderColor,
                   "hover:shadow-lg hover:border-opacity-60"
                 )}
               >
                 {/* Header */}
-                <div className="flex items-start justify-between gap-3 mb-3">
+                <div className={cn("flex items-start justify-between gap-3", compact ? "mb-2" : "mb-3")}>
                   <div className="flex items-center gap-2 flex-wrap">
                     <Badge
                       variant="outline"
@@ -290,14 +337,20 @@ export default function GameHistory({ gameId }: Props) {
                       {config.label}
                     </Badge>
                     {action.actor && action.actor !== "system" && (
-                      <span className="text-sm text-muted-foreground flex items-center gap-1">
+                      <span className={cn(
+                        "text-muted-foreground flex items-center gap-1",
+                        compact ? "text-xs" : "text-sm"
+                      )}>
                         <Users className="h-3 w-3" />
                         {action.actor}
                       </span>
                     )}
                   </div>
-                  <span className="text-sm text-muted-foreground flex items-center gap-1.5 shrink-0">
-                    <Clock className="h-3.5 w-3.5" />
+                  <span className={cn(
+                    "text-muted-foreground flex items-center gap-1.5 shrink-0",
+                    compact ? "text-xs" : "text-sm"
+                  )}>
+                    <Clock className={compact ? "h-3 w-3" : "h-3.5 w-3.5"} />
                     {formatTime(action.createdAt)}
                   </span>
                 </div>
@@ -308,7 +361,8 @@ export default function GameHistory({ gameId }: Props) {
                     className={cn(
                       "border-l-2 pl-4 italic",
                       config.borderColor,
-                      "text-foreground"
+                      "text-foreground",
+                      compact && "text-sm"
                     )}
                   >
                     "{text}"
@@ -317,9 +371,9 @@ export default function GameHistory({ gameId }: Props) {
 
                 {/* Meta info - displayed as clean list */}
                 {meta && meta.length > 0 && (
-                  <div className={cn("space-y-1.5", text && "mt-3")}>
+                  <div className={cn("space-y-1.5", text && (compact ? "mt-2" : "mt-3"))}>
                     {meta.map((item, i) => (
-                      <div key={i} className="flex items-center gap-2 text-sm">
+                      <div key={i} className={cn("flex items-center gap-2", compact ? "text-xs" : "text-sm")}>
                         <span className="text-muted-foreground">{item.label}:</span>
                         <span className="text-foreground font-medium">{item.value}</span>
                       </div>
@@ -328,18 +382,20 @@ export default function GameHistory({ gameId }: Props) {
                 )}
 
                 {/* Event number footer */}
-                <div className="mt-3 pt-2 border-t border-border/30">
-                  <span className="text-xs text-muted-foreground">
-                    Event #{action.sequenceNumber}
-                  </span>
-                </div>
+                {!compact && (
+                  <div className="mt-3 pt-2 border-t border-border/30">
+                    <span className="text-xs text-muted-foreground">
+                      Event #{action.sequenceNumber}
+                    </span>
+                  </div>
+                )}
               </div>
             </div>
           );
         })}
 
         {/* Timeline end marker */}
-        <div className="relative pl-8 pt-1">
+        <div className={cn("relative pl-8", compact ? "pt-0" : "pt-1")}>
           <div className="absolute left-0 z-10 w-6 h-6 rounded-full bg-card border-2 border-border grid place-items-center">
             <div className="w-2 h-2 rounded-full bg-muted-foreground/50" />
           </div>

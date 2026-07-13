@@ -203,6 +203,7 @@ function validateCluesNotEliminateSolution(
   const { solution, clues } = scenario;
 
   for (const clue of clues) {
+    if (!clue.eliminates) continue;
     const { category, ids } = clue.eliminates;
 
     let solutionId: string | undefined;
@@ -529,6 +530,7 @@ function calculateScenarioCoverage(scenario: GeneratedScenario): NonNullable<Val
   };
 
   for (const clue of scenario.clues) {
+    if (!clue.eliminates) continue;
     const { category, ids } = clue.eliminates;
     const set = category === "suspect" ? covered.suspects :
                 category === "item" ? covered.items :

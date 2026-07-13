@@ -16,15 +16,16 @@ interface CardSymbolData {
 
 interface Props {
   solution: Solution;
+  forceReveal?: boolean;
 }
 
 // Symbol icons matching the physical card symbols
 const SYMBOL_ICONS: Record<string, string> = {
-  spyglass: "🔎",
-  fingerprint: "🫆",
-  whistle: "🎺",
-  notepad: "📝",
-  clock: "🕰️",
+  spyglass: "/images/Card Icon Assets/Magnifying_glass.svg.png",
+  fingerprint: "/images/Card Icon Assets/Fingerprint.svg",
+  whistle: "/images/Card Icon Assets/whistle.svg",
+  notepad: "/images/Card Icon Assets/notepad.svg",
+  clock: "/images/Card Icon Assets/Clock.svg",
 };
 
 // Grid positions for the 6 symbol slots
@@ -40,11 +41,14 @@ const POSITION_GRID: { position: number; row: number; col: number }[] = [
 function SolutionCard({
   cardData,
   label,
+  forceReveal = false,
 }: {
   cardData: CardSymbolData | null;
   label: string;
+  forceReveal?: boolean;
 }) {
   const [isRevealed, setIsRevealed] = useState(false);
+  const showReveal = forceReveal || isRevealed;
 
   if (!cardData) {
     return (
@@ -59,7 +63,7 @@ function SolutionCard({
 
   return (
     <div
-      className={`solution-card ${isRevealed ? "revealed" : ""}`}
+      className={`solution-card ${showReveal ? "revealed" : ""}`}
       onMouseEnter={() => setIsRevealed(true)}
       onMouseLeave={() => setIsRevealed(false)}
     >
@@ -72,6 +76,8 @@ function SolutionCard({
               (s) => s.position === position
             );
             const symbol = symbolData?.symbol || "";
+            const symbolIcon = symbol ? SYMBOL_ICONS[symbol] : null;
+            const needsMask = symbol === "spyglass";
             return (
               <div
                 key={position}
@@ -85,7 +91,21 @@ function SolutionCard({
                 {/* Red obfuscation layer */}
                 <div className="symbol-obfuscation" />
                 {/* Blue symbol underneath */}
-                <div className="symbol-icon">{SYMBOL_ICONS[symbol] || "?"}</div>
+                <div className="symbol-icon">
+                  {symbolIcon ? (
+                    needsMask ? (
+                      <span
+                        className="symbol-icon-masked"
+                        style={{ ["--symbol-icon" as never]: `url(\"${symbolIcon}\")` }}
+                        aria-hidden="true"
+                      />
+                    ) : (
+                      <img className="symbol-icon-image" src={symbolIcon} alt={symbol} />
+                    )
+                  ) : (
+                    "?"
+                  )}
+                </div>
               </div>
             );
           })}
@@ -94,14 +114,14 @@ function SolutionCard({
         {/* Magnifying glass hint */}
         <div className="magnifying-hint">
           <Search className="h-3 w-3" />
-          <span>Hover to reveal</span>
+          <span>{forceReveal ? "Reveal active" : "Hover to reveal"}</span>
         </div>
       </div>
     </div>
   );
 }
 
-export default function SolutionCards({ solution }: Props) {
+export default function SolutionCards({ solution, forceReveal = false }: Props) {
   const [symbolData, setSymbolData] = useState<{
     suspect: CardSymbolData | null;
     item: CardSymbolData | null;
@@ -157,18 +177,22 @@ export default function SolutionCards({ solution }: Props) {
         <SolutionCard
           cardData={symbolData.suspect}
           label="WHO"
+          forceReveal={forceReveal}
         />
         <SolutionCard
           cardData={symbolData.item}
           label="WHAT"
+          forceReveal={forceReveal}
         />
         <SolutionCard
           cardData={symbolData.location}
           label="WHERE"
+          forceReveal={forceReveal}
         />
         <SolutionCard
           cardData={symbolData.time}
           label="WHEN"
+          forceReveal={forceReveal}
         />
       </div>
 

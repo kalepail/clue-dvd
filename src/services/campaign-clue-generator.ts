@@ -24,6 +24,7 @@ import {
   type TimePeriod,
   type MysteryTheme,
 } from "../data/game-elements";
+import { SPECIAL_LOCATIONS } from "../data/game-constants";
 import type {
   CampaignPlan,
   PlannedClue,
@@ -45,12 +46,24 @@ import type {
 export function generateScenarioFromPlan(plan: CampaignPlan): GeneratedScenario {
   const rng = new SeededRandom(plan.seed);
   const theme = MYSTERY_THEMES.find(t => t.id === plan.themeId) || MYSTERY_THEMES[0];
+  const blockedNames = new Set(
+    SPECIAL_LOCATIONS.filter((location) => !location.isPlayableLocation).map(
+      (location) => location.name
+    )
+  );
+  const lockedRooms = theme.typicalLockedRooms
+    .filter((roomName) => !blockedNames.has(roomName))
+    .map((roomName) => LOCATIONS.find((location) => location.name === roomName)?.id)
+    .filter((id): id is string => Boolean(id));
 
   // Generate clue texts
   const clues = generateAllClues(rng, plan);
 
   // Generate dramatic event descriptions
   const dramaticEvents = generateDramaticEventDescriptions(rng, plan, theme);
+
+  // Generate inspector notes (private, turn-based)
+  const inspectorNotes = generateInspectorNotes(rng, plan);
 
   // Generate narrative elements
   const narrative = generateNarrativeElements(plan, theme);
@@ -66,6 +79,8 @@ export function generateScenarioFromPlan(plan: CampaignPlan): GeneratedScenario 
     solution: plan.solution,
     clues,
     dramaticEvents,
+    lockedRooms,
+    inspectorNotes,
     narrative,
     metadata: {
       difficulty: plan.difficulty,
@@ -509,3 +524,49 @@ export {
   getElementNames,
   getEliminationReason,
 };
+
+// ============================================
+// INSPECTOR NOTES
+// ============================================
+
+function generateInspectorNotes(
+  rng: SeededRandom,
+  plan: CampaignPlan
+): GeneratedScenario["inspectorNotes"] {
+  const notes: GeneratedScenario["inspectorNotes"] = [];
+
+  const butlerClues = plan.clues.filter((clue) => clue.delivery.type === "butler");
+  const fallbackClues = plan.clues;
+
+  const pickCluePair = () => {
+    const pool = butlerClues.length >= 2 ? butlerClues : fallbackClues;
+    const first = rng.pick(pool);
+    let second = rng.pick(pool);
+    if (pool.length > 1) {
+      while (second.position === first.position) {
+        second = rng.pick(pool);
+      }
+    }
+    return [first, second];
+  };
+
+  for (let i = 0; i < 2; i++) {
+    const [clueA, clueB] = pickCluePair();
+    const namesA = getElementNames(clueA.elimination.category, clueA.elimination.elementIds);
+    const namesB = getElementNames(clueB.elimination.category, clueB.elimination.elementIds);
+    const listA = namesA.slice(0, 3).join(", ");
+    const listB = namesB.slice(0, 3).join(", ");
+
+    const text = `Inspector's Note: Cross-check the testimony in clue #${clueA.position} with clue #${clueB.position}. ` +
+      `Together they clear ${listA || "several leads"} and ${listB || "additional possibilities"}, ` +
+      "which tightens the field more than it first appears.";
+
+    notes.push({
+      id: `N${i + 1}`,
+      text,
+      relatedClues: [clueA.position, clueB.position],
+    });
+  }
+
+  return notes;
+}

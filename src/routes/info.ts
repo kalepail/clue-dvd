@@ -50,7 +50,6 @@ info.get("/", (c) => {
       },
       scenarios: {
         generate: "POST /api/scenarios/generate",
-        generateEnhanced: "POST /api/scenarios/generate-enhanced",
         validate: "POST /api/scenarios/validate",
       },
       info: {

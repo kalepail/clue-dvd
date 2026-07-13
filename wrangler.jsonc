@@ -18,11 +18,28 @@
 		"binding": "AI",
 		"remote": true
 	},
+	"vars": {
+		"ANTHROPIC_API_KEY": ""
+	},
 	"d1_databases": [
 		{
 			"binding": "DB",
 			"database_name": "clue-dvd-games",
 			"database_id": "local"
+		}
+	],
+	"durable_objects": {
+		"bindings": [
+			{
+				"name": "PHONE_SESSION_HUB",
+				"class_name": "PhoneSessionHub"
+			}
+		]
+	},
+	"migrations": [
+		{
+			"tag": "v1",
+			"new_classes": ["PhoneSessionHub"]
 		}
 	]
 	/**

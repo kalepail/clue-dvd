@@ -273,6 +273,9 @@ export type ActionType =
   | "game_won"
   | "game_abandoned"
   | "dramatic_event"
+  | "inspector_interruption"
+  | "room_unlocked"
+  | "secret_passage"
   | "note_taken";
 
 export interface GameAction {
