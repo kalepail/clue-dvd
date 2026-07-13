@@ -165,6 +165,10 @@ describe("structured Anthropic provider", () => {
 });
 
 describe("structured Cloudflare provider", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it("keeps Opus 4.8 as both the direct and gateway default", () => {
     expect(AI_MYSTERY_MODEL).toBe("claude-opus-4-8");
     expect(DEFAULT_AI_MYSTERY_MODEL).toBe("anthropic/claude-opus-4.8");
@@ -229,6 +233,7 @@ describe("structured Cloudflare provider", () => {
         gatewayId: "production",
         accountId: "account",
         gatewayToken: "token",
+        reasoningEffort: "none",
       },
       stage: "renderer",
       system: "system",
@@ -246,12 +251,14 @@ describe("structured Cloudflare provider", () => {
       usage: { inputTokens: 21, outputTokens: 7 },
       model: "xai/grok-4.3",
       transport: "cloudflare-rest",
+      strictSchema: false,
     });
     const request = fetchImpl.mock.calls[0];
     expect(String(request[0])).toContain("/accounts/account/ai/run");
     const requestBody = JSON.parse(String(request[1]?.body));
     expect(requestBody.model).toBe("xai/grok-4.3");
     expect(requestBody.input.tool_choice.function.name).toBe("submit_test");
+    expect(requestBody.input).not.toHaveProperty("reasoning_effort");
     expect(requestBody).not.toHaveProperty("options");
     const headers = new Headers(request[1]?.headers);
     expect(headers.get("cf-aig-gateway-id")).toBe("production");
@@ -264,7 +271,11 @@ describe("structured Cloudflare provider", () => {
   });
 
   it("parses @cf tool calls from the Workers AI binding transport", async () => {
-    const run = vi.fn(async () => ({
+    const run = vi.fn(async (
+      _model: string,
+      _input: Record<string, unknown>,
+      _options?: Record<string, unknown>
+    ) => ({
       tool_calls: [{ name: "submit_test", arguments: { value: "workers \\u2026" } }],
       usage: { prompt_tokens: 13, completion_tokens: 5 },
     }));
@@ -273,6 +284,7 @@ describe("structured Cloudflare provider", () => {
         model: "@cf/meta/llama-3.3-70b-instruct-fp8-fast",
         gatewayId: "default",
         ai: { run },
+        reasoningEffort: "high",
       },
       stage: "architect",
       system: "system",
@@ -287,12 +299,14 @@ describe("structured Cloudflare provider", () => {
     expect(result).toMatchObject({
       value: { value: "workers …" },
       transport: "cloudflare-binding",
+      strictSchema: false,
     });
     expect(run).toHaveBeenCalledWith(
       "@cf/meta/llama-3.3-70b-instruct-fp8-fast",
       expect.objectContaining({ max_tokens: 100 }),
       expect.objectContaining({ gateway: expect.objectContaining({ id: "default" }) })
     );
+    expect(run.mock.calls[0][1]).not.toHaveProperty("reasoning_effort");
   });
 
   it("uses Anthropic Messages tools for unified Claude models", async () => {
@@ -321,9 +335,10 @@ describe("structured Cloudflare provider", () => {
       maxTokens: 100,
       fetchImpl,
     });
-    expect(result.value).toEqual({ value: "claude" });
+    expect(result).toMatchObject({ value: { value: "claude" }, strictSchema: true });
     const body = JSON.parse(String(fetchImpl.mock.calls[0][1]?.body));
     expect(body.input.tools[0].input_schema).toEqual({ type: "object" });
+    expect(body.input.tools[0].strict).toBe(true);
     expect(body.input.tool_choice).toEqual({ type: "tool", name: "submit_test" });
   });
 
@@ -358,7 +373,7 @@ describe("structured Cloudflare provider", () => {
       maxTokens: 100,
       fetchImpl,
     });
-    expect(result.value).toEqual({ value: "gpt" });
+    expect(result).toMatchObject({ value: { value: "gpt" }, strictSchema: true });
     const body = JSON.parse(String(fetchImpl.mock.calls[0][1]?.body));
     expect(body.input.max_output_tokens).toBe(100);
     expect(body.input.reasoning).toEqual({ effort: "medium" });
@@ -392,7 +407,7 @@ describe("structured Cloudflare provider", () => {
     expect(result).toMatchObject({ value: { value: "rest" }, transport: "cloudflare-rest" });
   });
 
-  it("falls back to direct Anthropic when Cloudflare transports fail", async () => {
+  it("falls back to direct Anthropic Opus when the default gateway model fails", async () => {
     const run = vi.fn(async () => { throw new Error("binding unavailable"); });
     const fetchImpl = vi.fn(async (input: RequestInfo | URL) => {
       if (String(input).includes("api.cloudflare.com")) return new Response("denied", { status: 401 });
@@ -400,7 +415,7 @@ describe("structured Cloudflare provider", () => {
     });
     const result = await callStructured({
       runtime: {
-        model: "xai/grok-4.3",
+        model: "anthropic/claude-opus-4.8",
         gatewayId: "default",
         ai: { run },
         accountId: "account",
@@ -422,6 +437,143 @@ describe("structured Cloudflare provider", () => {
       model: "claude-opus-4-8",
       transport: "anthropic-direct",
     });
+  });
+
+  it("does not replace an A/B model with direct Anthropic when Cloudflare fails", async () => {
+    const run = vi.fn(async () => { throw new Error("binding unavailable"); });
+    const fetchImpl = vi.fn(async (input: RequestInfo | URL) => {
+      if (String(input).includes("api.cloudflare.com")) return new Response("denied", { status: 401 });
+      return successResponse({ value: "must not run" });
+    });
+    await expect(callStructured({
+      runtime: {
+        model: "xai/grok-4.3",
+        gatewayId: "default",
+        ai: { run },
+        accountId: "account",
+        gatewayToken: "token",
+        anthropicApiKey: "anthropic-key",
+      },
+      stage: "renderer",
+      system: "system",
+      prompt: "prompt",
+      toolName: "submit_test",
+      toolDescription: "test",
+      inputSchema: { type: "object" },
+      outputSchema: OutputSchema,
+      maxTokens: 100,
+      fetchImpl,
+    })).rejects.toMatchObject({
+      stage: "renderer",
+      status: 401,
+    });
+    expect(fetchImpl).toHaveBeenCalledOnce();
+  });
+
+  it("does not use direct Anthropic for an A/B runtime with no Cloudflare transport", async () => {
+    const fetchImpl = vi.fn(async () => successResponse({ value: "must not run" }));
+    await expect(callStructured({
+      runtime: {
+        model: "openai/gpt-5.4",
+        gatewayId: "default",
+        anthropicApiKey: "anthropic-key",
+      },
+      stage: "renderer",
+      system: "system",
+      prompt: "prompt",
+      toolName: "submit_test",
+      toolDescription: "test",
+      inputSchema: { type: "object" },
+      outputSchema: OutputSchema,
+      maxTokens: 100,
+      fetchImpl,
+    })).rejects.toMatchObject({
+      stage: "renderer",
+      message: expect.stringContaining("No Cloudflare AI transport"),
+    });
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it("reports Cloudflare refusals with the failed stage", async () => {
+    const fetchImpl = vi.fn(async () => new Response(JSON.stringify({
+      success: true,
+      result: { content: [], stop_reason: "refusal" },
+    }), { status: 200 }));
+    await expect(callStructured({
+      runtime: {
+        model: "anthropic/claude-opus-4.8",
+        gatewayId: "default",
+        accountId: "account",
+        gatewayToken: "token",
+      },
+      stage: "architect",
+      system: "system",
+      prompt: "prompt",
+      toolName: "submit_test",
+      toolDescription: "test",
+      inputSchema: { type: "object" },
+      outputSchema: OutputSchema,
+      maxTokens: 100,
+      fetchImpl,
+    })).rejects.toMatchObject({
+      name: "MysteryStageError",
+      stage: "architect",
+      message: expect.stringContaining("Model refused while producing submit_test"),
+    });
+  });
+
+  it("fails fast on permanent binding errors", async () => {
+    const run = vi.fn(async () => {
+      throw new Error("invalid_request_error: model not found");
+    });
+    await expect(callStructured({
+      runtime: {
+        model: "xai/grok-4.3",
+        gatewayId: "default",
+        ai: { run },
+      },
+      stage: "renderer",
+      system: "system",
+      prompt: "prompt",
+      toolName: "submit_test",
+      toolDescription: "test",
+      inputSchema: { type: "object" },
+      outputSchema: OutputSchema,
+      maxTokens: 100,
+    })).rejects.toMatchObject({
+      stage: "renderer",
+      message: expect.stringContaining("model not found"),
+    });
+    expect(run).toHaveBeenCalledOnce();
+  });
+
+  it("retries transient binding failures", async () => {
+    vi.useFakeTimers();
+    const run = vi.fn()
+      .mockRejectedValueOnce(new Error("network connection reset"))
+      .mockRejectedValueOnce(new Error("temporary upstream outage"))
+      .mockResolvedValueOnce({
+        tool_calls: [{ name: "submit_test", arguments: { value: "recovered" } }],
+      });
+    const pending = callStructured({
+      runtime: {
+        model: "xai/grok-4.3",
+        gatewayId: "default",
+        ai: { run },
+      },
+      stage: "renderer",
+      system: "system",
+      prompt: "prompt",
+      toolName: "submit_test",
+      toolDescription: "test",
+      inputSchema: { type: "object" },
+      outputSchema: OutputSchema,
+      maxTokens: 100,
+    });
+    await vi.advanceTimersByTimeAsync(750);
+    await vi.advanceTimersByTimeAsync(2_000);
+    await expect(pending).resolves.toMatchObject({ value: { value: "recovered" } });
+    expect(run).toHaveBeenCalledTimes(3);
   });
 
   it("reports Responses token exhaustion from incomplete details", async () => {

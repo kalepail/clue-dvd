@@ -108,11 +108,15 @@ export async function callStructured<T>(params: StructuredCallParams<T>): Promis
         params as StructuredCallParams<T> & { runtime: MysteryProviderRuntime }
       );
     } catch (error) {
-      if (!params.runtime.anthropicApiKey) throw error;
+      if (!canUseDirectAnthropicFallback(params.runtime)) throw error;
       return callAnthropicStructured({ ...params, apiKey: params.runtime.anthropicApiKey });
     }
   }
-  const apiKey = params.apiKey ?? params.runtime?.anthropicApiKey;
+  const apiKey = params.runtime
+    ? canUseDirectAnthropicFallback(params.runtime)
+      ? params.runtime.anthropicApiKey
+      : undefined
+    : params.apiKey;
   if (apiKey) return callAnthropicStructured({ ...params, apiKey });
   throw new MysteryStageError(
     params.stage,
@@ -247,6 +251,7 @@ async function callCloudflareStructured<T>(
           });
           transport = "cloudflare-binding";
         } catch (bindingError) {
+          if (isPermanentCloudflareError(bindingError)) throw bindingError;
           if (!hasCloudflareRestCredentials(params.runtime)) throw bindingError;
           const rest = await callCloudflareRest(params, input);
           envelope = rest.envelope;
@@ -260,10 +265,10 @@ async function callCloudflareStructured<T>(
         transport = "cloudflare-rest";
       }
     } catch (error) {
-      const status = error instanceof CloudflareHttpError ? error.status : undefined;
+      const status = cloudflareErrorStatus(error);
       lastStatus = status;
       lastError = errorText(error);
-      if ((status === undefined || RETRYABLE_STATUSES.has(status)) && attempt < 2) {
+      if (!isPermanentCloudflareError(error) && isRetryableCloudflareError(status) && attempt < 2) {
         await waitForRetry(attempt);
         continue;
       }
@@ -275,6 +280,14 @@ async function callCloudflareStructured<T>(
     if (stopReason === "length" || stopReason === "max_tokens" || stopReason === "max_output_tokens") {
       throw tokenLimitError(params, normalized);
     }
+    if (stopReason === "refusal") {
+      throw new MysteryStageError(
+        params.stage,
+        `Model refused while producing ${params.toolName}.`,
+        undefined,
+        JSON.stringify(normalized, null, 2)
+      );
+    }
     const toolInput = cloudflareToolInput(normalized, params.toolName);
     return validateStructuredResult(params, {
       toolInput,
@@ -282,7 +295,7 @@ async function callCloudflareStructured<T>(
       startedAt,
       usage: cloudflareUsage(normalized),
       stopReason,
-      strictSchema: true,
+      strictSchema: cloudflareUsesStrictSchema(params.runtime.model),
       model: params.runtime.model,
       transport,
     });
@@ -302,6 +315,7 @@ function cloudflareInput<T>(
       tools: [{
         name: params.toolName,
         description: params.toolDescription,
+        strict: true,
         input_schema: params.inputSchema,
       }],
       tool_choice: { type: "tool", name: params.toolName },
@@ -328,6 +342,11 @@ function cloudflareInput<T>(
     };
   }
 
+  const reasoningEffort = !params.runtime.model.startsWith("@cf/") &&
+    params.runtime.reasoningEffort &&
+    params.runtime.reasoningEffort !== "none"
+    ? params.runtime.reasoningEffort
+    : undefined;
   return {
     messages: [
       { role: "system", content: params.system },
@@ -343,7 +362,7 @@ function cloudflareInput<T>(
     }],
     tool_choice: { type: "function", function: { name: params.toolName } },
     max_tokens: params.maxTokens,
-    ...(params.runtime.reasoningEffort ? { reasoning_effort: params.runtime.reasoningEffort } : {}),
+    ...(reasoningEffort ? { reasoning_effort: reasoningEffort } : {}),
   };
 }
 
@@ -569,6 +588,34 @@ function hasCloudflareRestCredentials(runtime: MysteryProviderRuntime): boolean 
 
 function hasCloudflareTransport(runtime: MysteryProviderRuntime): boolean {
   return Boolean(runtime.ai || hasCloudflareRestCredentials(runtime));
+}
+
+function canUseDirectAnthropicFallback(
+  runtime: MysteryProviderRuntime
+): runtime is MysteryProviderRuntime & { anthropicApiKey: string } {
+  return runtime.model === DEFAULT_AI_MYSTERY_MODEL && Boolean(runtime.anthropicApiKey);
+}
+
+function cloudflareUsesStrictSchema(model: string): boolean {
+  return model.startsWith("anthropic/") || model.startsWith("openai/");
+}
+
+function cloudflareErrorStatus(error: unknown): number | undefined {
+  if (error instanceof CloudflareHttpError) return error.status;
+  if (!error || typeof error !== "object") return undefined;
+  const status = (error as { status?: unknown }).status;
+  return typeof status === "number" && Number.isFinite(status) ? status : undefined;
+}
+
+function isRetryableCloudflareError(status: number | undefined): boolean {
+  return status === undefined || status === 408 || RETRYABLE_STATUSES.has(status);
+}
+
+function isPermanentCloudflareError(error: unknown): boolean {
+  const status = cloudflareErrorStatus(error);
+  if (status !== undefined && [400, 401, 402, 403, 404, 405, 422].includes(status)) return true;
+  return /\b(?:unauthorized|forbidden|authentication failed|invalid (?:api )?token|insufficient credits?|credit balance|billing|payment required|model (?:not found|does not exist)|unknown model|invalid[_ -]?request|bad request)\b/i
+    .test(errorText(error));
 }
 
 function isAiBinding(value: unknown): value is CloudflareAiBinding {
