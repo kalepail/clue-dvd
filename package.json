@@ -3,9 +3,10 @@
 	"type": "module",
 	"scripts": {
 		"dev": "vite dev",
-		"build": "vite build",
+		"build": "vite build && node scripts/clean-build-secrets.mjs && node scripts/check-build-artifacts.mjs",
 		"preview": "vite preview",
-		"deploy": "vite build && wrangler deploy",
+		"deploy": "pnpm run build && wrangler deploy",
+		"check:artifacts": "node scripts/check-build-artifacts.mjs",
 		"cf-typegen": "wrangler types --env-interface CloudflareBindings",
 		"typecheck": "tsc --noEmit",
 		"test": "vitest run",
