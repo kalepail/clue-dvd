@@ -1,6 +1,12 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod/v4";
-import { AI_MYSTERY_MODEL, callStructured } from "./ai-mystery-provider";
+import {
+  AI_MYSTERY_MODEL,
+  AI_MYSTERY_MODEL_CATALOG,
+  DEFAULT_AI_MYSTERY_MODEL,
+  callStructured,
+  mysteryProviderRuntimeFromEnv,
+} from "./ai-mystery-provider";
 import { toToolInputSchema } from "./ai-mystery-schemas";
 
 const OutputSchema = z.object({ value: z.string() });
@@ -40,9 +46,10 @@ describe("structured Anthropic provider", () => {
     expect(requestBody.tools[0].strict).toBe(true);
   });
 
-  it("decodes literal Unicode typography escapes at the provider boundary", async () => {
+  it("recursively decodes literal Unicode typography escapes at the provider boundary", async () => {
+    const nestedSchema = z.object({ nested: z.object({ values: z.array(z.string()) }) });
     const fetchImpl = vi.fn(async () => successResponse({
-      value: "One hears \\u2014 and then \\u201cthis\\u201d happened\\u2026",
+      nested: { values: ["One hears \\u2014", "and then \\u201cthis\\u201d happened\\u2026"] },
     }));
     const result = await callStructured({
       apiKey: "test",
@@ -52,12 +59,12 @@ describe("structured Anthropic provider", () => {
       toolName: "submit_test",
       toolDescription: "test",
       inputSchema: { type: "object" },
-      outputSchema: OutputSchema,
+      outputSchema: nestedSchema,
       maxTokens: 100,
       fetchImpl,
     });
 
-    expect(result.value.value).toBe("One hears — and then “this” happened…");
+    expect(result.value.nested.values).toEqual(["One hears —", "and then “this” happened…"]);
     expect(result.raw).not.toContain("\\\\u2014");
   });
 
@@ -154,5 +161,288 @@ describe("structured Anthropic provider", () => {
       Object.values(object).forEach(visit);
     };
     visit(schema);
+  });
+});
+
+describe("structured Cloudflare provider", () => {
+  it("keeps Opus 4.8 as both the direct and gateway default", () => {
+    expect(AI_MYSTERY_MODEL).toBe("claude-opus-4-8");
+    expect(DEFAULT_AI_MYSTERY_MODEL).toBe("anthropic/claude-opus-4.8");
+    expect(AI_MYSTERY_MODEL_CATALOG).toEqual(expect.arrayContaining([
+      "anthropic/claude-opus-4.8",
+      "anthropic/claude-sonnet-5",
+      "openai/gpt-5.6-luna",
+      "openai/gpt-5.6-terra",
+      "openai/gpt-5.6-sol",
+      "openai/gpt-5.4",
+      "xai/grok-4.3",
+      "@cf/openai/gpt-oss-120b",
+    ]));
+  });
+
+  it("selects runtime configuration from the worker environment", () => {
+    const run = vi.fn(async () => ({}));
+    expect(mysteryProviderRuntimeFromEnv({ AI: { run }, ANTHROPIC_API_KEY: "  fallback  " }))
+      .toEqual({
+        model: "anthropic/claude-opus-4.8",
+        gatewayId: "default",
+        reasoningEffort: undefined,
+        ai: { run },
+        accountId: undefined,
+        gatewayToken: undefined,
+        anthropicApiKey: "fallback",
+      });
+    expect(mysteryProviderRuntimeFromEnv({
+      AI_MYSTERY_MODEL: " openai/gpt-5.4 ",
+      AI_GATEWAY_ID: " production ",
+      AI_MYSTERY_REASONING_EFFORT: "high",
+    })).toMatchObject({
+      model: "openai/gpt-5.4",
+      gatewayId: "production",
+      reasoningEffort: "high",
+    });
+  });
+
+  it("parses xAI OpenAI-compatible tool calls from the REST transport", async () => {
+    const fetchImpl = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) => new Response(JSON.stringify({
+      success: true,
+      result: {
+        choices: [{
+          finish_reason: "tool_calls",
+          message: {
+            tool_calls: [{
+              type: "function",
+              function: {
+                name: "submit_test",
+                arguments: JSON.stringify({ value: "gateway \\u2014 normalized" }),
+              },
+            }],
+          },
+        }],
+        usage: { prompt_tokens: 21, completion_tokens: 7 },
+      },
+    }), { status: 200, headers: { "Content-Type": "application/json" } }));
+
+    const result = await callStructured({
+      runtime: {
+        model: "xai/grok-4.3",
+        gatewayId: "default",
+        accountId: "account",
+        gatewayToken: "token",
+      },
+      stage: "renderer",
+      system: "system",
+      prompt: "prompt",
+      toolName: "submit_test",
+      toolDescription: "test",
+      inputSchema: { type: "object" },
+      outputSchema: OutputSchema,
+      maxTokens: 100,
+      fetchImpl,
+    });
+
+    expect(result).toMatchObject({
+      value: { value: "gateway — normalized" },
+      usage: { inputTokens: 21, outputTokens: 7 },
+      model: "xai/grok-4.3",
+      transport: "cloudflare-rest",
+    });
+    const request = fetchImpl.mock.calls[0];
+    expect(String(request[0])).toContain("/accounts/account/ai/run");
+    const requestBody = JSON.parse(String(request[1]?.body));
+    expect(requestBody.model).toBe("xai/grok-4.3");
+    expect(requestBody.input.tool_choice.function.name).toBe("submit_test");
+  });
+
+  it("parses @cf tool calls from the Workers AI binding transport", async () => {
+    const run = vi.fn(async () => ({
+      tool_calls: [{ name: "submit_test", arguments: { value: "workers \\u2026" } }],
+      usage: { prompt_tokens: 13, completion_tokens: 5 },
+    }));
+    const result = await callStructured({
+      runtime: {
+        model: "@cf/meta/llama-3.3-70b-instruct-fp8-fast",
+        gatewayId: "default",
+        ai: { run },
+      },
+      stage: "architect",
+      system: "system",
+      prompt: "prompt",
+      toolName: "submit_test",
+      toolDescription: "test",
+      inputSchema: { type: "object" },
+      outputSchema: OutputSchema,
+      maxTokens: 100,
+    });
+
+    expect(result).toMatchObject({
+      value: { value: "workers …" },
+      transport: "cloudflare-binding",
+    });
+    expect(run).toHaveBeenCalledWith(
+      "@cf/meta/llama-3.3-70b-instruct-fp8-fast",
+      expect.objectContaining({ max_tokens: 100 }),
+      expect.objectContaining({ gateway: expect.objectContaining({ id: "default" }) })
+    );
+  });
+
+  it("uses Anthropic Messages tools for unified Claude models", async () => {
+    const fetchImpl = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) => new Response(JSON.stringify({
+      success: true,
+      result: {
+        content: [{ type: "tool_use", name: "submit_test", input: { value: "claude" } }],
+        stop_reason: "tool_use",
+        usage: { input_tokens: 31, output_tokens: 8 },
+      },
+    }), { status: 200 }));
+    const result = await callStructured({
+      runtime: {
+        model: "anthropic/claude-opus-4.8",
+        gatewayId: "default",
+        accountId: "account",
+        gatewayToken: "token",
+      },
+      stage: "renderer",
+      system: "system",
+      prompt: "prompt",
+      toolName: "submit_test",
+      toolDescription: "test",
+      inputSchema: { type: "object" },
+      outputSchema: OutputSchema,
+      maxTokens: 100,
+      fetchImpl,
+    });
+    expect(result.value).toEqual({ value: "claude" });
+    const body = JSON.parse(String(fetchImpl.mock.calls[0][1]?.body));
+    expect(body.input.tools[0].input_schema).toEqual({ type: "object" });
+    expect(body.input.tool_choice).toEqual({ type: "tool", name: "submit_test" });
+  });
+
+  it("uses Responses tools and reasoning for unified OpenAI models", async () => {
+    const fetchImpl = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) => new Response(JSON.stringify({
+      success: true,
+      result: {
+        status: "completed",
+        output: [{
+          type: "function_call",
+          name: "submit_test",
+          arguments: JSON.stringify({ value: "gpt" }),
+        }],
+        usage: { input_tokens: 24, output_tokens: 6 },
+      },
+    }), { status: 200 }));
+    const result = await callStructured({
+      runtime: {
+        model: "openai/gpt-5.6-sol",
+        gatewayId: "default",
+        accountId: "account",
+        gatewayToken: "token",
+        reasoningEffort: "medium",
+      },
+      stage: "renderer",
+      system: "system",
+      prompt: "prompt",
+      toolName: "submit_test",
+      toolDescription: "test",
+      inputSchema: { type: "object" },
+      outputSchema: OutputSchema,
+      maxTokens: 100,
+      fetchImpl,
+    });
+    expect(result.value).toEqual({ value: "gpt" });
+    const body = JSON.parse(String(fetchImpl.mock.calls[0][1]?.body));
+    expect(body.input.max_output_tokens).toBe(100);
+    expect(body.input.reasoning).toEqual({ effort: "medium" });
+    expect(body.input.tools[0]).toMatchObject({ type: "function", name: "submit_test", strict: true });
+  });
+
+  it("falls back from the Workers binding to REST", async () => {
+    const run = vi.fn(async () => { throw new Error("binding unavailable"); });
+    const fetchImpl = vi.fn(async () => new Response(JSON.stringify({
+      success: true,
+      result: { tool_calls: [{ name: "submit_test", arguments: { value: "rest" } }] },
+    }), { status: 200 }));
+    const result = await callStructured({
+      runtime: {
+        model: "xai/grok-4.3",
+        gatewayId: "default",
+        ai: { run },
+        accountId: "account",
+        gatewayToken: "token",
+      },
+      stage: "renderer",
+      system: "system",
+      prompt: "prompt",
+      toolName: "submit_test",
+      toolDescription: "test",
+      inputSchema: { type: "object" },
+      outputSchema: OutputSchema,
+      maxTokens: 100,
+      fetchImpl,
+    });
+    expect(result).toMatchObject({ value: { value: "rest" }, transport: "cloudflare-rest" });
+  });
+
+  it("falls back to direct Anthropic when Cloudflare transports fail", async () => {
+    const run = vi.fn(async () => { throw new Error("binding unavailable"); });
+    const fetchImpl = vi.fn(async (input: RequestInfo | URL) => {
+      if (String(input).includes("api.cloudflare.com")) return new Response("denied", { status: 401 });
+      return successResponse({ value: "direct fallback" });
+    });
+    const result = await callStructured({
+      runtime: {
+        model: "xai/grok-4.3",
+        gatewayId: "default",
+        ai: { run },
+        accountId: "account",
+        gatewayToken: "token",
+        anthropicApiKey: "anthropic-key",
+      },
+      stage: "renderer",
+      system: "system",
+      prompt: "prompt",
+      toolName: "submit_test",
+      toolDescription: "test",
+      inputSchema: { type: "object" },
+      outputSchema: OutputSchema,
+      maxTokens: 100,
+      fetchImpl,
+    });
+    expect(result).toMatchObject({
+      value: { value: "direct fallback" },
+      model: "claude-opus-4-8",
+      transport: "anthropic-direct",
+    });
+  });
+
+  it("reports Responses token exhaustion from incomplete details", async () => {
+    const fetchImpl = vi.fn(async () => new Response(JSON.stringify({
+      success: true,
+      result: {
+        status: "incomplete",
+        incomplete_details: { reason: "max_output_tokens" },
+        output: [],
+      },
+    }), { status: 200 }));
+    await expect(callStructured({
+      runtime: {
+        model: "openai/gpt-5.6-terra",
+        gatewayId: "default",
+        accountId: "account",
+        gatewayToken: "token",
+      },
+      stage: "renderer",
+      system: "system",
+      prompt: "prompt",
+      toolName: "submit_test",
+      toolDescription: "test",
+      inputSchema: { type: "object" },
+      outputSchema: OutputSchema,
+      maxTokens: 100,
+      fetchImpl,
+    })).rejects.toMatchObject({
+      stage: "renderer",
+      message: expect.stringContaining("100-token output limit"),
+    });
   });
 });
