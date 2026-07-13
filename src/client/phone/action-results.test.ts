@@ -83,6 +83,43 @@ describe("classifyActionResult", () => {
   });
 });
 
+describe("deferred-result orchestration", () => {
+  it("applies a result deferred before hydration once hydration re-evaluates it", () => {
+    // Mirrors the component contract: the latest result is retained, seen is
+    // marked only on apply/ignore, and hydration MUST re-evaluate because no
+    // further snapshot is guaranteed to arrive.
+    let seen: string | null = null;
+    let own: { eventId: number | null; requestId: string | null } = { eventId: null, requestId: null };
+    let applied: TurnActionResult | null = null;
+    const latest = result({ requestId: "pr-abc12345", forEventId: 99 });
+
+    const evaluate = () => {
+      const verdict = classifyActionResult(latest, own, seen);
+      if (!verdict || verdict.decision === "defer") return;
+      seen = verdict.key;
+      if (verdict.decision === "apply") applied = latest;
+    };
+
+    // 1. The result snapshot arrives before persisted request state hydrates:
+    //    deferred, nothing marked seen, nothing applied.
+    evaluate();
+    expect(applied).toBeNull();
+    expect(seen).toBeNull();
+
+    // 2. Hydration restores the persisted request identity and re-evaluates
+    //    the retained result — it applies without any new snapshot.
+    own = { eventId: null, requestId: "pr-abc12345" };
+    evaluate();
+    expect(applied).toBe(latest);
+    expect(seen).not.toBeNull();
+
+    // 3. Further evaluations are no-ops on the seen result.
+    applied = null;
+    evaluate();
+    expect(applied).toBeNull();
+  });
+});
+
 describe("restorePassageState (durable turn identity)", () => {
   it("keeps pending state only for a same-turn refresh", () => {
     const record = stored({ passagePending: true, passageRequestId: "pr-abc12345", passageTurnNumber: 5 });

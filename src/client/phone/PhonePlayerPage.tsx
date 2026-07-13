@@ -1303,6 +1303,11 @@ export default function PhonePlayerPage({ code, onNavigate }: Props) {
       }
       passageUsedTurnNumberRef.current = stored.passageUsedTurnNumber;
       if (restored.usedThisTurn) setSecretPassageUsedThisTurn(true);
+      // A result snapshot may have arrived before this hydration and been
+      // deferred (never marked seen). No further snapshot is guaranteed, so
+      // re-evaluate the retained result now that the request identity is
+      // restored.
+      evaluateActionResult();
       return;
     }
 
