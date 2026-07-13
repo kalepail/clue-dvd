@@ -130,6 +130,22 @@ Extend threads/groups into **episodes**: multi-hour arcs with roles.
 - Shape: participants + activity (from spine) + room + hour span; optionally
   one **step-away**: a member leaves mid-arc with an excuse (from spine),
   return left ambiguous; the rest continue.
+- **Featured cast (owner-requested, calibrated):** each world picks 3–5
+  featured suspects UNIFORMLY, WITHOUT reading the answer. They get the full
+  narrative treatment — motive, opportunity, episode presence, recurring
+  props/tensions — and Phase 3 recipes draw texture from them first, so clues
+  genuinely revolve around the same few people all game. The thief is featured
+  only at natural chance (cast_size/10). Do NOT guarantee the thief a cast
+  seat: any property guaranteed true of the thief is evidence pointing at the
+  thief, and a rule-aware player collapses 10 suspects to the cast instantly.
+  Variance is the point — some games the storied one did it, some games the
+  quiet one did. Motives MUST be allowed to land on suspects the schedule
+  later eliminates ("he wanted it badly, but he was at cards all evening") —
+  the cleared-with-motive red herring is desired texture, and it keeps
+  texture uncorrelated with survival (the thief always survives, so anything
+  reserved for survivors would enrich toward the thief). Motive facts stay
+  mention-only. AUDIT in Phase 4: P(featured | thief) ≈ P(featured |
+  innocent), and no kind/wording difference conditional on thief-in-cast.
 - **Symmetry (critical):** innocents get step-away episodes routinely (they
   really did the errand). The thief's slip-away before the theft is generated
   by the SAME machinery with no special richness. Target: 1–3 step-away
@@ -182,6 +198,8 @@ Replace that allocation order with a two-pass scheduler:
   narrative core: sample a per-game RECIPE from a tuned distribution — e.g.
   one game is witness-centric (witness_account + its episode's setup +
   excuse), another lie-driven (false alibi + motive), another motive-and-fog.
+  Recipes draw their people-texture from the featured cast (Phase 1), so the
+  same 3-5 suspects recur across the game's clues.
   Reserve 3–5 of the 10 butler slots for it: the episode arc fragments plus
   2–3 deception/texture facts. The recipe is sampled ANSWER-BLIND from world
   supply, so it cannot correlate with the solution — games differ from each
@@ -232,6 +250,9 @@ attempts). Metrics to print per 80–120 seed sweep:
 - recipe distribution across the sweep (no single recipe >40% of games);
 - % of games with ≥1 episode of ≥2 dealt fragments (target ≥60%);
 - witness_account truth-variant distribution vs targets; thief-as-witness rate;
+- featured-cast audit: thief-in-cast rate ≈ cast_size/10 across the sweep; at
+  least one dealt motive belongs to a suspect the schedule eliminates
+  (cleared-with-motive red herrings occur regularly);
 - every texture kind (claim/fog/motive/witness/excuse) still appears across
   the sweep (no starvation);
 - spine-noun overlap: ≥3 clues per game contain a beat/activity/prop noun that
@@ -265,6 +286,10 @@ theory dominates by clue 5; the closing feels earned.
   mode; unverifiable leakage).
 - Mandatory lie↔contradiction pairing.
 - Replacing checkpoints with "more than one solution remains".
+- Guaranteeing the thief a featured-cast seat (or any "3 suspects, one
+  guilty" pre-binding) — collapses the suspect field via meta-knowledge. An
+  ANNOUNCED Inspector's-shortlist variant could someday be a preset mode, but
+  it is a different game, not the flagship.
 - An AI "Evidence Director" selection call — parked until after this plan
   ships; selection taste is not the bottleneck, material is. Revisit only if
   episode-rich games still feel same-y, and keep it answer-blind choosing
