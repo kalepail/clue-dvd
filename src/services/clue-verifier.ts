@@ -117,7 +117,7 @@ export function verifyClueText(text: string, seed: StorySeed): TextVerification 
   }
   const wordCount = text.trim().split(/\s+/).filter(Boolean).length;
   const complexScene = Boolean(seed.episodeId) || /^Render these as ONE connected lived recollection/i.test(seed.brief);
-  const wordLimit = complexScene ? 60 : 48;
+  const wordLimit = complexScene ? 54 : 48;
   if (seed.deliverAs === "butler" && wordCount > wordLimit) {
     problems.push(`Runs to ${wordCount} words. Keep this testimony within ${wordLimit} words without dropping any stated fact or scope.`);
   }
@@ -132,6 +132,43 @@ export function verifyClueText(text: string, seed: StorySeed): TextVerification 
   }
   if (seed.deliverAs === "butler" && /\b(?:he|she|they)\s+[a-z]+ing\b/i.test(text)) {
     problems.push("Contains a bare pronoun-plus-participle fragment (for example, 'he drifting back'). Give the action a finite verb or attach the participle grammatically without changing the fact.");
+  }
+  if (seed.deliverAs === "butler" && /^[A-Z][A-Za-z'-]+ing\b[^.!?]{0,100},\s+(?:it|there)\s+(?:was|were|is|are)\b/i.test(text.trim())) {
+    problems.push("Opens with a dangling action attached to impersonal 'it' or 'there'. Make Ashe the person doing the opening action or begin from the observed fact.");
+  }
+  if (seed.deliverAs === "butler" && /^Checking\b(?!\s+(?:that|whether|to see)\b)[^,]{0,100}\b(?:lay|sat|stood|hung|was|were)\b[^,]*,/i.test(text.trim())) {
+    problems.push("Uses 'Checking [object] was/sat/lay...' without 'that'. Write 'Checking that...' or make Ashe's action and observation separate clauses.");
+  }
+  if (seed.deliverAs === "butler" && /\bone\s+(?:found|saw|noticed|observed|heard)\b|\banyone\s+(?:passing|looking)\b/i.test(text)) {
+    problems.push("Uses an impersonal 'one found' or 'anyone passing' construction for Ashe's testimony. State the observation directly in Ashe's first-person voice.");
+  }
+  if (seed.deliverAs === "butler" && /\b(?:the|that)\s+(?:Late Morning|Early Afternoon|Tea Time)\b/.test(text)) {
+    problems.push("Places an article before a printed time-period name. Use Late Morning, Early Afternoon, or Tea Time directly (for example, 'during Early Afternoon').");
+  }
+  const licensedSuspects = seed.allowedNames.filter((name) =>
+    SUSPECTS.some((suspect) => suspect.displayName === name)
+  );
+  if (
+    seed.deliverAs === "butler" &&
+    seed.questionedNames?.length &&
+    licensedSuspects.length > 1 &&
+    /\b(?:until|when|while|before|after|and|but|then)\s+(?:he|she|they)\s+(?:step(?:ped)?\s+(?:off|out|away)|slip(?:ped)?\s+(?:off|out|away)|excus(?:e|ed)\s+(?:himself|herself|themselves)|left|broke\s+away|went\s+(?:off|away))\b/i.test(text)
+  ) {
+    problems.push(`Makes the questioned departure actor ambiguous. Name ${seed.questionedNames.join(" and ")} explicitly at the action.`);
+  }
+  if (seed.deliverAs === "butler" && seed.continuationNames?.length) {
+    const namedDeparture = text.match(/\b(?:step(?:ped)?\s+(?:off|out|away)|slip(?:ped)?\s+(?:off|out|away)|excus(?:e|ed)\s+(?:himself|herself|themselves)|left\b|broke\s+away|went\s+(?:off|away))\b/i);
+    const afterDeparture = namedDeparture?.index === undefined
+      ? ""
+      : text.slice(namedDeparture.index + namedDeparture[0].length);
+    const namesContinue = seed.continuationNames.every((name) =>
+      afterDeparture.toLowerCase().includes(name.toLowerCase())
+    );
+    const genericContinuation = /\b(?:leaving|while)\s+(?:the\s+)?(?:other|others|remaining|rest)\b|\b(?:the\s+)?(?:other|others|remaining|rest)\b[^.!?]{0,60}\b(?:remained|stayed|kept|continued|carried on|lingered|were still)\b/i.test(afterDeparture);
+    const explicitContinuation = namesContinue && /\b(?:leaving|remained|stayed|kept|continued|carried on|lingered|were still)\b/i.test(afterDeparture);
+    if (!namedDeparture || (!genericContinuation && !explicitContinuation)) {
+      problems.push(`Drops the continuation after the departure. State that ${seed.continuationNames.join(" and ")} remained together and continued the scene's activity.`);
+    }
   }
   if (seed.deliverAs === "butler" && /\b(?:forgive me|pardon me)\b/i.test(text)) {
     problems.push("Contains an apologetic aside that adds no evidence. Remove it and state the recollection directly.");
@@ -149,10 +186,13 @@ export function verifyClueText(text: string, seed: StorySeed): TextVerification 
   if (seed.scopeMode === "whole_household" && !claimsWholeHousehold) {
     problems.push("Drops the event's whole-household scope. State explicitly that every guest, Mrs. White, and Rusty were covered.");
   }
-  if (
-    seed.mustRemainPresent &&
-    /\b(?:slip(?:ped|ping)?\s+(?:off|away|out)|step(?:ped|ping)?\s+(?:out|away)|left\s+(?:the\s+)?(?:room|gathering|company)|broke\s+away|wandered\s+(?:off|away)|went\s+(?:off|away))\b/i.test(text)
-  ) {
+  const departureLanguage = /\b(?:slip(?:ped|ping)?\s+(?:off|away|out)|step(?:ped|ping)?\s+(?:out|away)|left\s+(?:the\s+)?(?:room|gathering|company)|broke\s+away|wandered\s+(?:off|away)|went\s+(?:off|away))\b/i;
+  const departureMatch = text.match(departureLanguage);
+  const departurePrefix = departureMatch?.index === undefined
+    ? ""
+    : text.slice(Math.max(0, departureMatch.index - 70), departureMatch.index);
+  const explicitlyNegatedDeparture = /(?:\bno one\b|\bnobody\b|\bnot one(?:\s+of\s+them|\s+person)?\b|\bnone(?:\s+of\s+them)?\b|\bneither(?:\s+of\s+them)?\b|\bwithout\b)[^.!?]{0,65}$/i.test(departurePrefix);
+  if (seed.mustRemainPresent && departureMatch && !explicitlyNegatedDeparture) {
     problems.push("Contradicts a continuous-presence scene by implying that a covered person left. Keep every named person within the stated scene for the full span.");
   }
   if (seed.locationSetting === "outdoor" && /\b(?:the|that|this|same)\s+room\b|\bindoors?\b/i.test(text)) {
@@ -170,7 +210,7 @@ export function verifyClueText(text: string, seed: StorySeed): TextVerification 
 
 /**
  * Cross-clue style checks need the complete Butler package. Keep the first
- * first two occurrences of an opening word; later collisions and every canned greeting are
+ * occurrence of an opening word; later collisions and every canned greeting are
  * repaired surgically through the same per-clue path as card
  * leakage. Inspector notes are intentionally excluded.
  */
@@ -183,13 +223,13 @@ export function verifyClueOpeningVariety(clues: string[]): ClueSetProblem[] {
     const firstWord = trimmed.match(/[A-Za-z]+(?:'[A-Za-z]+)?/)?.[0]?.toLowerCase();
     if (firstWord) {
       const owners = firstWordOwner.get(firstWord);
-      if (owners !== undefined && owners >= 2) {
+      if (owners !== undefined) {
         problems.push({
           clueNumber,
-          problem: `Opens with "${firstWord}", already used twice in this case. Start with a different first word and sentence shape.`,
+          problem: `Opens with "${firstWord}", already used in clue ${owners}. Start with a different first word and sentence shape.`,
         });
       }
-      firstWordOwner.set(firstWord, (owners ?? 0) + 1);
+      if (owners === undefined) firstWordOwner.set(firstWord, clueNumber);
     }
 
     if (GREETING_OPENING.test(trimmed)) {

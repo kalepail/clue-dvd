@@ -460,14 +460,25 @@ export function simulateWorld(params: {
   const threads = buildThreads(rng, answer, arrival, departures, occasionSpine);
 
   // --- Movement grid -------------------------------------------------------
-  const movement = buildMovementGrid(rng, slots, answer, gatherings, threads, arrival, departures, occasionSpine);
+  const movement = buildMovementGrid(
+    rng,
+    new SeededRandom(hashSeed(params.seed ^ 0x63e5a91d, params.attempt)),
+    slots,
+    answer,
+    gatherings,
+    threads,
+    arrival,
+    departures,
+    occasionSpine
+  );
   // Dialogue is generated from a separate stream so adding prose texture can
   // never alter the actual movements or deduction structure of the day.
   const transitionRemarks = buildTransitionRemarks(
     new SeededRandom(hashSeed(params.seed ^ 0x4f1bbcdc, params.attempt)),
     slots,
     movement,
-    occasionSpine
+    occasionSpine,
+    answer
   );
   const episodes = deriveSceneEpisodes(
     new SeededRandom(hashSeed(params.seed ^ 0x718a6d35, params.attempt)),
@@ -690,6 +701,7 @@ export function applyOccasionTexture(world: WorldState, proposed: OccasionTextur
 
 function buildMovementGrid(
   rng: SeededRandom,
+  activityRng: SeededRandom,
   slots: TimePeriod[],
   answer: Answer,
   gatherings: Gathering[],
@@ -708,13 +720,31 @@ function buildMovementGrid(
   const guests = SUSPECTS.map((s) => s.id).filter((id) => !(STAFF_SUSPECT_IDS as readonly string[]).includes(id));
   const circles: string[][] = [];
   const shuffledGuests = rng.shuffle([...guests]);
+  // Two substantial guest circles make ordinary social breakaways possible
+  // even when one or two members are occupied by side threads. The former
+  // 3/3/2 partition frequently left no group from which one person could
+  // depart while two witnesses truthfully remained; the culprit's forced
+  // theft cell had been masking that shortage. The membership is still fully
+  // shuffled, and later threads, gatherings, dispersal, and room drift reshape
+  // the visible company.
   while (shuffledGuests.length > 0) {
-    const size = shuffledGuests.length <= 4 ? shuffledGuests.length : rng.nextInt(3, 4);
+    const size = circles.length === 0 ? Math.min(5, shuffledGuests.length) : shuffledGuests.length;
     circles.push(shuffledGuests.splice(0, Math.min(size, shuffledGuests.length)));
   }
   circles.push([...STAFF_SUSPECT_IDS]);
   const circleRooms = new Map<number, string>();
   const circleActivities = new Map<number, string>();
+  let groupActivityCycle: string[] = [];
+  const nextGroupActivity = (): string => {
+    // Preserve the one structural-stream draw that the former rng.pick used
+    // at each assignment. Actual wording comes from an isolated stream, so
+    // adding or reordering activity labels cannot reshuffle movements.
+    rng.next();
+    if (groupActivityCycle.length === 0) {
+      groupActivityCycle = activityRng.shuffle([...new Set(occasionSpine.groupActivities)]);
+    }
+    return groupActivityCycle.shift() ?? occasionSpine.groupActivities[0] ?? "talking quietly together";
+  };
   let plannedStepAwaysRemaining = rng.nextInt(1, 3);
 
   /** Groups from the previous non-gathering slot, for sticky carry-over. */
@@ -783,9 +813,9 @@ function buildMovementGrid(
 
     // Routine episode departures are generated before sticky carry-over, so
     // the people left behind truly continue their shared activity. This is
-    // answer-blind social machinery: an innocent usually runs the errand; if
-    // the thief happens to peel away into the theft placement, the identical
-    // transition becomes a genuine glimpse of opportunity.
+    // answer-blind social machinery: any suspect may run an ordinary errand
+    // at an innocent hour. The forced theft cell is private truth and is never
+    // promoted into one of these public departure scenes.
     if (plannedStepAwaysRemaining > 0 && previousGroups.length > 0) {
       const peelable = previousGroups.filter((group) =>
         group.members.filter((member) => unplaced.includes(member)).length >= 3
@@ -896,10 +926,10 @@ function buildMovementGrid(
         const pool = fresh.length > 0 ? fresh : legalRooms;
         roomId = rng.pick(pool).id;
         circleRooms.set(circleIndex, roomId);
-        circleActivities.set(circleIndex, pickActivity(rng, occasionSpine));
+        circleActivities.set(circleIndex, nextGroupActivity());
       }
       occupiedRooms.add(roomId);
-      const activity = circleActivities.get(circleIndex) ?? pickGroupActivity(rng, occasionSpine);
+      const activity = circleActivities.get(circleIndex) ?? nextGroupActivity();
       for (const member of members) {
         placements[member] = {
           locationId: roomId,
@@ -935,7 +965,8 @@ function buildTransitionRemarks(
   rng: SeededRandom,
   slots: TimePeriod[],
   movement: Record<string, Record<string, Placement>>,
-  occasionSpine: OccasionSpine
+  occasionSpine: OccasionSpine,
+  answer: Answer
 ): TransitionRemark[] {
   const remarks: TransitionRemark[] = [];
   for (let index = 0; index < slots.length - 1; index += 1) {
@@ -945,6 +976,18 @@ function buildTransitionRemarks(
       const before = movement[from.id]?.[suspect.id];
       const after = movement[to.id]?.[suspect.id];
       if (!before || !after || before.social !== "group") continue;
+      // The culprit's exact theft placement is private engine truth, not a
+      // harvestable social departure. Without this boundary guard, the
+      // forced solo cell made the culprit uniquely likely to receive a rich
+      // "stepped away" scene even though ordinary episode departures are
+      // generated answer-blind. That narrative gravity leaked the answer
+      // without ever printing the answer card itself.
+      const entersForcedTheftCell =
+        suspect.id === answer.suspectId &&
+        to.id === answer.timeId &&
+        after.locationId === answer.locationId &&
+        after.social === "solo";
+      if (entersForcedTheftCell) continue;
       const sameCompany =
         after.social === "group" &&
         before.companions.slice().sort().join("+") === after.companions.slice().sort().join("+");
@@ -1067,24 +1110,35 @@ function deriveSceneEpisodes(
       for (let index = 0; index < states.length - 1 && !stepAway; index += 1) {
         const before = states[index];
         const after = states[index + 1];
-        const leaver = before.memberIds.find((suspectId) => !after.memberIds.includes(suspectId));
-        if (!leaver) continue;
-        const remark = transitionRemarks.find(
-          (candidate) =>
-            candidate.suspectId === leaver &&
-            candidate.fromTimeId === before.timeId &&
-            candidate.toTimeId === after.timeId
-        );
-        if (!remark) continue;
-        const destination = movement[after.timeId]?.[leaver];
+        // More than one person may leave at the boundary (for example, one
+        // runs the planned errand while another is pulled into a side
+        // thread). Find the leaver who actually supplied the recorded excuse
+        // instead of inspecting only the first array member and accidentally
+        // discarding a valid episode departure.
+        const departure = before.memberIds
+          .filter((suspectId) => !after.memberIds.includes(suspectId))
+          .map((suspectId) => ({
+            suspectId,
+            remark: transitionRemarks.find(
+              (candidate) =>
+                candidate.suspectId === suspectId &&
+                candidate.fromTimeId === before.timeId &&
+                candidate.toTimeId === after.timeId
+            ),
+          }))
+          .find((candidate) => Boolean(candidate.remark));
+        if (!departure?.remark) continue;
+        const destination = movement[after.timeId]?.[departure.suspectId];
         stepAway = {
-          suspectId: leaver,
+          suspectId: departure.suspectId,
           fromTimeId: before.timeId,
           absentFromTimeId: after.timeId,
-          excuse: remark.line,
+          excuse: departure.remark.line,
           destinationLocationId: destination?.locationId ?? null,
           destinationActivity: destination?.activity ?? "away from the scene",
-          returnedDuringEpisode: states.slice(index + 2).some((state) => state.memberIds.includes(leaver)),
+          returnedDuringEpisode: states.slice(index + 2).some((state) =>
+            state.memberIds.includes(departure.suspectId)
+          ),
         };
       }
 
@@ -1441,23 +1495,36 @@ function normalizeOccasionTexture(proposed: OccasionTexture, occasionSpine: Occa
     if (forbidden.some((name) => cleaned.toLowerCase().includes(name))) return null;
     return cleaned;
   };
+  const props = occasionSpine.setDressing.length > 0
+    ? occasionSpine.setDressing
+    : ["the occasion materials"];
   const clean = (values: string[] | undefined, fallback: string[]): string[] => {
-    const accepted = (values ?? [])
+    const accepted = [...new Set((values ?? [])
       .map(cleanOne)
-      .filter((value): value is string => Boolean(value))
-      .slice(0, 8);
-    return accepted.length > 0 ? accepted : [...fallback];
+      .filter((value): value is string => Boolean(value)))];
+    const representedProps = new Set(
+      props.filter((prop) => accepted.some((entry) => entry.toLowerCase().includes(prop.toLowerCase())))
+    );
+    const orderedFallback = fallback
+      .map((entry, index) => ({ entry, prop: props[index] }))
+      .sort((left, right) =>
+        Number(representedProps.has(left.prop)) - Number(representedProps.has(right.prop))
+      )
+      .map(({ entry }) => entry);
+    const combined = [...accepted];
+    for (const entry of orderedFallback) {
+      if (combined.length >= 6) break;
+      if (!combined.some((existing) => existing.toLowerCase() === entry.toLowerCase())) combined.push(entry);
+    }
+    return combined.slice(0, 8);
   };
   // The model occasionally chooses empty arrays rather than risk inventing
   // world truth. Falling back to generic "programmes" would sever the clues
   // from the opening, so derive every fallback from the already-authored,
   // answer-blind spine instead. These remain cosmetic and cannot alter facts.
-  const props = occasionSpine.setDressing.length > 0
-    ? occasionSpine.setDressing
-    : ["the occasion materials"];
   const spineFallback = {
-    inspectionContexts: props.slice(0, 4).map((prop) => `putting ${prop} back in order`),
-    observationContexts: props.slice(-4).map((prop) => `checking the arrangement of ${prop}`),
+    inspectionContexts: props.map((prop) => `putting ${prop} back in order`),
+    observationContexts: props.map((prop) => `checking the arrangement of ${prop}`),
   };
   const timeAnchors: Array<{ pattern: RegExp; timeIds: string[] }> = [
     { pattern: /\bdawn\b/i, timeIds: ["T01"] },
@@ -1497,18 +1564,6 @@ function normalizeOccasionTexture(proposed: OccasionTexture, occasionSpine: Occa
     inspectionContexts: clean(proposed?.inspectionContexts, spineFallback.inspectionContexts),
     observationContexts: clean(stageNeutralObservationContexts, spineFallback.observationContexts),
   };
-}
-
-function pickActivity(rng: SeededRandom, occasionSpine: OccasionSpine): string {
-  return rng.pick(occasionSpine.groupActivities);
-}
-
-/**
- * Group activities blend room flavor with size-appropriate social reasons —
- * a pair reads as a tête-à-tête, four reads as a card table, six as a party.
- */
-function pickGroupActivity(rng: SeededRandom, occasionSpine: OccasionSpine): string {
-  return rng.pick(occasionSpine.groupActivities);
 }
 
 export function presentSuspects(

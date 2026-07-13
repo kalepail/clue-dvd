@@ -1,3 +1,16 @@
+07/13/26 (7)
+- Scene & Occasion V3.1 culprit-spotlight removal and final lived-scene polish
+        - Replaced broad text inference with exact questioned-suspect, movement-boundary, and continuing-witness metadata across harvested and composite facts
+        - Found and removed the root structural tell: the culprit's mandatory answer-cell placement can no longer generate a named departure/re-entry scene; ordinary answer-blind step-aways remain intact
+        - Rebalanced guest social circles and fixed multi-leaver episode discovery so genuine continuing scenes survive side-thread occupancy without borrowing the theft event
+        - Isolated occasion-activity wording on its own seeded stream and cycled activities without replacement, improving variety without changing movement or schedule RNG
+        - Removed repeated props from recurring character texture and supplemented dossier contexts from six distinct occasion-spine observations/checks
+        - Added render/repair locks for the exact questioned actor and witnesses who remain after a departure; the verifier rejects prose that drops the continuation half of a fused fact
+        - Enforced ten distinct Butler opening words, a 54-word complex-scene ceiling, and bounded four-step surgical repair chains; added deterministic checks for ambiguous departures and recurring grammar failures
+        - Expanded release diagnostics for person coverage, questioned-attention symmetry, culprit incidence, and set-dressing use
+        - Final release sweep: 120/120 schedules, 5.2 person-centered clues and 8.6 distinct suspects per game, 16 culprit appearances in questioned fields versus 18.7 expected, and zero story, fairness, leakage, inventory, or deterministic-language failures
+        - Live Opus acceptance passed across costume, scholarly, and engagement occasions with no unresolved prose defects, preserved multi-person continuation evidence, varied openers, and a strong anonymous-witness scene
+
 07/13/26 (6)
 - Reconciled the stacked gameplay work with the Scene & Occasion V3.1 engine
         - Preserved V3.1's scene-first scheduler, truth model, causal episodes, renderer, repair locks, and evaluator instead of replacing them with the older V3.0 branch
@@ -6,7 +19,6 @@
         - Added opt-in evaluation support for Opus 4.8, Sonnet 5, GPT-5.6 Luna/Terra/Sol, GPT-5.4, Grok 4.3, and selected Workers AI models without changing the Opus production default or silently substituting models
         - Adversarial Fable and GPT-5.6 Sol review closed actor, replay, result-delivery, stale-event, hydration, and ambiguous-transport failure modes before integration
         - Final gates passed: 120/120 deterministic schedules, 184 unit tests, typecheck, production build, artifact and secret checks, plus browser verification of Pantry, suggestion, passage, and wrong-accusation workflows
-
 07/13/26 (5)
 - Scene & Occasion V3.1 live Opus acceptance and temporal-source hardening
         - Ran and manually audited repeated live `claude-opus-4-8` generations against their private movement grids, including targeted charity, reunion, tournament, and masquerade regressions

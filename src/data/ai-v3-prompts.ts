@@ -39,6 +39,10 @@ export type StorySeed = {
   mustRemainPresent?: boolean;
   /** Spatial noun guard for a clue whose licensed settings are all outdoors. */
   locationSetting?: "indoor" | "outdoor" | "mixed";
+  /** Named people whose movement is the point of this event. */
+  questionedNames?: string[];
+  /** Witnesses who remain together after the questioned person departs. */
+  continuationNames?: string[];
 };
 
 export type DossierInput = {
@@ -117,8 +121,8 @@ Produce:
 - mysterySignature: a compact fingerprint of this case, pipe-separated (occasion | social tension | texture), used to avoid repeats in future games.
 - occasionTexture: a small cosmetic vocabulary derived from the fixed spine:
   - gatheringDetails: exactly one lowercase gerund phrase for EACH day beat listed above, in that exact order. Each phrase describes only what the company is doing inside its own beat; it must not look backward to a completed later event or forward to another beat. Keep the phrase local (for example, "comparing the newly drawn pairings"), with no day-part words.
-  - inspectionContexts: 3-4 lowercase gerund phrases Ashe might be doing while checking rooms afterward.
-  - observationContexts: 3-4 lowercase gerund phrases Ashe or Mrs. White might be doing when noticing valuables still in place. These must work at ANY point in the day: do not use "after," "back," "returned," "last," "final," "finished," or anything implying the occasion or a beat has ended.
+  - inspectionContexts: 5-6 distinct lowercase gerund phrases Ashe might be doing while checking rooms afterward. Spread them across different props and activities.
+  - observationContexts: 5-6 distinct lowercase gerund phrases Ashe or Mrs. White might be doing when noticing valuables still in place. Spread them across different props. These must work at ANY point in the day: do not use "after," "back," "returned," "last," "final," "finished," or anything implying the occasion or a beat has ended.
 
 The texture entries are reusable prose ingredients, NOT new world facts and NOT finished clues. Derive them from the fixed activities, props, and beats above rather than inventing a second theme. Include no suspect names, card valuables, room names, or printed time names. Every occasionTexture array must contain the requested material; never return an empty array.`,
   };
@@ -158,7 +162,7 @@ ${params.fewshots.notes.map((note) => `"${note}"`).join("\n")}
 
 Write the opening: 2-3 sentences devoted ONLY to why everyone has gathered and the social mood of the occasion. Do not mention a theft, anything missing, a discovery, an investigation, or any other mystery detail. Do not name any suspect, valuable, room, or time-of-day card in the opening.
 
-Then write exactly ${butlerSeeds.length} butler testimonies, one per event below, in this order. Each is 1-2 sentences of concrete, first-hand household recollection. Aim for 22-38 words; a genuinely complex changing or scene-plus-evidence testimony may reach 60. Treat each event as evidence to dramatize, not a sentence template to paraphrase: rebuild its syntax around the lived action. Begin every testimony inside the remembered action, object, person, place, or time. Do not use the canned greetings "Coming --", "Hello --", or "Good day --" in this case, and do not begin more than two testimonies with the same first word. Each testimony must faithfully convey its event, including exactly which people it covers; do not drop, soften, or extend the stated scope (if everyone was present, say so plainly).
+Then write exactly ${butlerSeeds.length} butler testimonies, one per event below, in this order. Each is 1-2 sentences of concrete, first-hand household recollection. Aim for 22-38 words; a genuinely complex changing or scene-plus-evidence testimony may reach 54. Treat each event as evidence to dramatize, not a sentence template to paraphrase: rebuild its syntax around the lived action. Begin every testimony inside the remembered action, object, person, place, or time. Do not use the canned greetings "Coming --", "Hello --", or "Good day --" in this case, and give every testimony a different substantive first word. Each testimony must faithfully convey its event, including exactly which people it covers; do not drop, soften, or extend the stated scope (if everyone was present, say so plainly).
 
 ${butlerSeeds.map((seed) => `Testimony ${seed.clueNumber}: ${seed.brief}\n  Card names you may use in this testimony: ${seed.allowedNames.length > 0 ? seed.allowedNames.join(", ") : "none — keep it generic"}.${seed.scopeMode === "whole_household"
     ? `\n  Scope lock: this observation covers every suspect—the guests, Mrs. White, and Rusty. Preserve that whole-household scope explicitly.`
@@ -166,7 +170,11 @@ ${butlerSeeds.map((seed) => `Testimony ${seed.clueNumber}: ${seed.brief}\n  Card
       ? `\n  Scope lock: this observation covers only the people named in the event. Do not broaden them into "everyone," "the whole company," or any unnamed guests.`
       : ""}${seed.mustRemainPresent ? `\n  Movement lock: the covered people stayed in the stated scene. Do not say or imply that any of them slipped off, stepped out, broke away, or left.` : ""}${seed.locationSetting === "outdoor" ? `\n  Setting lock: every named location here is outdoors. Call it the garden, grounds, place, fountain, or scene—never a room or indoors.` : ""}${seed.continuesClueNumber ? seed.episodeRole === "claim"
     ? `\n  This attributed statement refers back to the lived scene in Testimony ${seed.continuesClueNumber}. Let the speaker's answer or the later questioning make that relationship clear. Do not force a "that same..." bridge, turn an activity into the sentence's subject, recap the earlier clue, or imply the statement is verified.`
-    : `\n  This continues the lived scene in Testimony ${seed.continuesClueNumber}. Use one natural callback to its shared activity, prop, or interruption; do not force a "that same..." bridge, recap, or restart the scene.` : ""}`).join("\n\n")}
+    : `\n  This continues the lived scene in Testimony ${seed.continuesClueNumber}. Use one natural callback to its shared activity, prop, or interruption; do not force a "that same..." bridge, recap, or restart the scene.` : ""}${seed.questionedNames?.length
+      ? `\n  Identity lock: ${seed.questionedNames.join(" and ")} ${seed.questionedNames.length === 1 ? "is" : "are"} the named ${seed.questionedNames.length === 1 ? "person" : "people"} whose conduct draws attention. Keep the identity explicit wherever that departure, errand, exchange, or other conduct is described; do not replace it there with an ambiguous pronoun.`
+      : ""}${seed.continuationNames?.length
+      ? `\n  Continuation lock: after the departure, explicitly preserve that ${seed.continuationNames.join(" and ")} remained together in the stated scene and continued its activity. The departure alone is not the full fact.`
+      : ""}`).join("\n\n")}
 
 Then the two Inspector notes — one concise case-file sentence each, no greetings, no first person. Use "Ashe" if the source needs attribution; never write "the Butler," "Butler reports," or "per the butler." A note may record a guest's statement or uncertain recollection; in that case preserve the attribution and uncertainty exactly. The fact that a claim was made is factual, but its contents must never be promoted into verified truth:
 
@@ -182,7 +190,7 @@ ${ORIGINAL_MYSTERY_STYLE_GUIDE.map((rule) => `- ${rule}`).join("\n")}
 Card-name discipline is absolute: each testimony may name ONLY the card names listed for it (other proper names allowed: Mr. Boddy, Ashe, Inspector Brown, Dr. Black).
 
 Rules of craft, strictly:
-- Across the ten Butler testimonies, use no opening first word more than twice and no greeting-style openers.
+- Across the ten Butler testimonies, never repeat an opening first word and use no greeting-style openers.
 - No two testimonies in this case may share a sentence skeleton. If one opens "During X, so-and-so were together in the Y…", no other may. Recast lists, vary openings, move the time to the middle or end of the sentence.
 - When the same character concern or occasion motif recurs in multiple events, use it as connective tissue but describe it from a new observational angle each time. Never copy five consecutive words merely because the underlying thread is the same.
 - Do not manufacture variety with empty interjections such as "Indeed --", "Quiet --", or "Well --". Begin with substance from the event.
@@ -209,6 +217,9 @@ export function buildClueRepairPrompt(params: {
   comparisonText?: string;
 }): { system: string; prompt: string } {
   const isNote = params.seed.deliverAs !== "butler";
+  const forbiddenOpeners = params.problems
+    .map((problem) => problem.match(/Opens with "([^"]+)"/i)?.[1]?.toLowerCase())
+    .filter((word): word is string => Boolean(word));
   return {
     system: `You are rewriting one ${isNote ? "Inspector's note" : "butler testimony"} for the 2006 Clue DVD Game. You do NOT know the case's answer. Return structured data only.`,
     prompt: `The event to convey:
@@ -223,6 +234,9 @@ ${params.seed.scopeMode === "whole_household"
     : ""}
 ${params.seed.mustRemainPresent ? "Movement lock: the covered people remained in this scene. Do not say or imply that any of them slipped off, stepped out, broke away, or left." : ""}
 ${params.seed.locationSetting === "outdoor" ? "Setting lock: every named location here is outdoors. Call it the garden, grounds, place, fountain, or scene—never a room or indoors." : ""}
+${params.seed.questionedNames?.length ? `Identity lock: ${params.seed.questionedNames.join(" and ")} ${params.seed.questionedNames.length === 1 ? "is" : "are"} the named actor in the questioned conduct. State the identity explicitly at that action rather than using an ambiguous pronoun.` : ""}
+${params.seed.continuationNames?.length ? `Continuation lock: after the departure, explicitly state that ${params.seed.continuationNames.join(" and ")} remained together and continued the scene's activity. Do not drop this second half of the fact.` : ""}
+${forbiddenOpeners.length > 0 ? `Opening lock: the corrected first word MUST NOT be ${forbiddenOpeners.map((word) => `"${word}"`).join(" or ")}. Begin from a different person, object, place, time, or action; repeating that word fails validation.` : ""}
 
 The previous version:
 "${params.previousText}"
@@ -235,7 +249,7 @@ ${params.problems.map((problem) => `- ${problem}`).join("\n")}
 Register examples from the original game:
 ${params.fewshotClues.map((clue) => `"${clue}"`).join("\n")}
 
-Rewrite it: ${isNote ? "one concise case-file sentence in third person; preserve any attribution or uncertainty in the seed" : "1-2 sentences and preferably 22-38 words (60 maximum for a changing or scene-plus-evidence testimony) of first-hand butler recollection"}, faithfully conveying the event and its exact scope, using only the allowed names. The event is evidence, not a prose template; reconstruct the sentence rather than tracing its wording. Never begin with Hello, Coming, Good day, or an empty interjection—even when the reported problem concerns something else. If the problems mention its opener, begin with a genuinely different substantive first word. If a repeated phrase is a vague occasion-time expression from the event brief, paraphrase it with equally broad timing rather than copying it or sharpening it into a printed time card.`,
+Rewrite it: ${isNote ? "one concise case-file sentence in third person; preserve any attribution or uncertainty in the seed" : "1-2 sentences and preferably 22-38 words (54 maximum for a changing or scene-plus-evidence testimony) of first-hand butler recollection"}, faithfully conveying the event and its exact scope, using only the allowed names. The event is evidence, not a prose template; reconstruct the sentence rather than tracing its wording. Never begin with Hello, Coming, Good day, or an empty interjection—even when the reported problem concerns something else. If the problems mention its opener, begin with a genuinely different substantive first word. If a repeated phrase is a vague occasion-time expression from the event brief, paraphrase it with equally broad timing rather than copying it or sharpening it into a printed time card.`,
   };
 }
 

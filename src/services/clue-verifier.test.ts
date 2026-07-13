@@ -62,13 +62,13 @@ describe("clue verification", () => {
     expect(result.problems).toEqual([]);
   });
 
-  it("repairs a linked scene only after it exceeds the 60-word story allowance", () => {
+  it("repairs a linked scene only after it exceeds the 54-word story allowance", () => {
     const linkedSeed = { ...seed([]), episodeId: "episode-1" };
     const result = verifyClueText(
-      Array.from({ length: 61 }, (_, index) => `word${index}`).join(" "),
+      Array.from({ length: 55 }, (_, index) => `word${index}`).join(" "),
       linkedSeed
     );
-    expect(result.problems.some((problem) => problem.includes("61 words"))).toBe(true);
+    expect(result.problems.some((problem) => problem.includes("55 words"))).toBe(true);
   });
 
   it("keeps the opening free of every card name", () => {
@@ -117,7 +117,7 @@ describe("clue verification", () => {
     expect(reversed.problems).toContain("The closing describes an answer card as cleared, ruled out, or impossible.");
   });
 
-  it("flags every canned greeting and a first word used for the third time", () => {
+  it("flags every canned greeting and every repeated first word", () => {
     const problems = verifyClueOpeningVariety([
       "Hello -- Mrs. White remembered the flowers.",
       "Coming -- Rusty crossed the lawn.",
@@ -127,7 +127,8 @@ describe("clue verification", () => {
       "During the final preparations the room filled again.",
     ]);
     expect(problems.filter((problem) => problem.problem.includes("canned greeting"))).toHaveLength(3);
-    expect(problems.some((problem) => problem.clueNumber === 6 && problem.problem.includes("already used twice"))).toBe(true);
+    expect(problems.some((problem) => problem.clueNumber === 5 && problem.problem.includes("already used in clue 4"))).toBe(true);
+    expect(problems.some((problem) => problem.clueNumber === 6 && problem.problem.includes("already used in clue 4"))).toBe(true);
   });
 
   it("rejects filler openers and apologetic padding", () => {
@@ -171,6 +172,69 @@ describe("clue verification", () => {
     expect(bareParticiple.problems.some((problem) => problem.includes("bare pronoun-plus-participle"))).toBe(true);
   });
 
+  it("rejects dangling recollection grammar and ambiguous named departures", () => {
+    const dangling = verifyClueText(
+      "Straightening the dance cards, it was during Night that something first seemed amiss.",
+      seed(["Night"])
+    );
+    expect(dangling.problems.some((problem) => problem.includes("dangling action"))).toBe(true);
+
+    const impersonal = verifyClueText(
+      "Passing the Dining Room, one found Mr. Green comparing scorecards.",
+      seed(["Mr. Green", "Dining Room"])
+    );
+    expect(impersonal.problems.some((problem) => problem.includes("first-person voice"))).toBe(true);
+
+    const badTimeArticle = verifyClueText(
+      "Colonel Mustard crossed the Rose Garden near the Early Afternoon.",
+      seed(["Colonel Mustard", "Rose Garden", "Early Afternoon"])
+    );
+    expect(badTimeArticle.problems.some((problem) => problem.includes("article before a printed time"))).toBe(true);
+
+    const missingThat = verifyClueText(
+      "Checking the protective cloths lay straight during Night, my rounds found every display in order.",
+      seed(["Night"])
+    );
+    expect(missingThat.problems.some((problem) => problem.includes("without 'that'"))).toBe(true);
+
+    const ambiguous = verifyClueText(
+      "Miss Scarlet, Mrs. Peacock, and Lady Lavender compared masks until she stepped away.",
+      {
+        ...seed(["Miss Scarlet", "Mrs. Peacock", "Lady Lavender"]),
+        questionedNames: ["Lady Lavender"],
+      }
+    );
+    expect(ambiguous.problems.some((problem) => problem.includes("departure actor ambiguous"))).toBe(true);
+
+    const explicit = verifyClueText(
+      "Miss Scarlet, Mrs. Peacock, and Lady Lavender compared masks until Lady Lavender stepped away.",
+      {
+        ...seed(["Miss Scarlet", "Mrs. Peacock", "Lady Lavender"]),
+        questionedNames: ["Lady Lavender"],
+      }
+    );
+    expect(explicit.problems).toEqual([]);
+  });
+
+  it("requires a fused departure clue to preserve the continuing witnesses", () => {
+    const transitionSeed: StorySeed = {
+      ...seed(["Miss Scarlet", "Professor Plum", "Lady Lavender", "Library"]),
+      questionedNames: ["Miss Scarlet"],
+      continuationNames: ["Professor Plum", "Lady Lavender"],
+    };
+    const dropped = verifyClueText(
+      "Miss Scarlet, Professor Plum, and Lady Lavender addressed cards in the Library until Miss Scarlet excused herself; Inspector Brown later found the room untouched.",
+      transitionSeed
+    );
+    expect(dropped.problems.some((problem) => problem.includes("Drops the continuation"))).toBe(true);
+
+    const preserved = verifyClueText(
+      "Miss Scarlet, Professor Plum, and Lady Lavender addressed cards in the Library until Miss Scarlet excused herself, leaving Professor Plum and Lady Lavender at the cards.",
+      transitionSeed
+    );
+    expect(preserved.problems).toEqual([]);
+  });
+
   it("locks rendered presence to the deterministic people scope", () => {
     const named = verifyClueText(
       "The entire company worked in the Library, Colonel Mustard and Professor Plum among them.",
@@ -203,6 +267,12 @@ describe("clue verification", () => {
       seed(["Mrs. White"])
     );
     expect(genuineDeparture.problems).toEqual([]);
+
+    const explicitlyContinuous = verifyClueText(
+      "Every guest, Mrs. White, and Rusty stayed together, and not one person broke away.",
+      { ...seed(["Mrs. White", "Rusty"]), scopeMode: "whole_household", mustRemainPresent: true }
+    );
+    expect(explicitlyContinuous.problems).toEqual([]);
   });
 
   it("keeps outdoor locations out of room language", () => {

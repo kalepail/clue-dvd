@@ -24,7 +24,7 @@ import { OCCASION_FAMILIES } from "../src/data/occasion-catalog";
 import { SeededRandom } from "../src/services/seeded-random";
 import { requireItem, requireLocation, requireSuspect, requireTime, simulateWorld, type WorldState } from "../src/services/world-sim";
 import { harvestFacts, type Fact } from "../src/services/fact-harvest";
-import { isNarrativeFact, locationsMaxFor, scheduleMystery, timesMaxFor, type Schedule } from "../src/services/clue-scheduler";
+import { isNarrativeFact, locationsMaxFor, questionedAttentionSuspectIds, scheduleMystery, timesMaxFor, type Schedule } from "../src/services/clue-scheduler";
 import { generateMysteryV2, getLastMysteryEngineDebug } from "../src/services/ai-mystery-engine";
 import { parseEvalProviderVars, resolveEvalProviderConfig } from "../src/services/ai-mystery-eval-config";
 import { ORIGINAL_MYSTERIES } from "../src/data/original-mysteries";
@@ -128,6 +128,19 @@ function containsCardName(text: string, cardName: string): boolean {
   return new RegExp(`\\b${escaped}\\b`, "i").test(text);
 }
 
+function phraseOccurrences(text: string, phrase: string): number {
+  if (!phrase.trim()) return 0;
+  const haystack = text.toLowerCase();
+  const needle = phrase.toLowerCase();
+  let count = 0;
+  let from = 0;
+  while ((from = haystack.indexOf(needle, from)) >= 0) {
+    count += 1;
+    from += Math.max(1, needle.length);
+  }
+  return count;
+}
+
 /** Catch broken deterministic input at its source instead of hoping the prose
  * model silently repairs it. These checks are grammatical/world-language
  * invariants, not restrictions on clue style or ordering. */
@@ -184,9 +197,18 @@ if (worldOnly) {
     if (!world.episodes.some((episode) => episode.stepAway)) {
       zeroStepAways += 1;
       zeroStepAwaySeeds.push(seed);
+      const groupTrace = world.slots.map((slot) => {
+        const groups = new Set(
+          Object.values(world.movement[slot.id] ?? {})
+            .filter((placement) => placement.social === "group")
+            .map((placement) => placement.companions.slice().sort().join("+"))
+        );
+        return `${slot.id}:${[...groups].join("/") || "-"}`;
+      }).join(",");
       zeroStepAwayDetails.push(
         `${seed}: gatherings=${world.gatherings.map((entry) => entry.timeId).join("+")}; ` +
-        `remarks=${world.transitionRemarks.length}; episodes=${world.episodes.map((entry) => entry.timeIds.join("-")).join(",")}`
+        `remarks=${world.transitionRemarks.length}; episodes=${world.episodes.map((entry) => entry.timeIds.join("-")).join(",")}; ` +
+        `groups=${groupTrace}`
       );
     }
     for (const account of world.witnessAccounts) {
@@ -254,6 +276,23 @@ let thiefWitnessSpeakers = 0;
 let briefLanguageFailures = 0;
 const briefLanguageExamples: string[] = [];
 const missingStatementExamples: string[] = [];
+let questionedAttentionGames = 0;
+let multiSuspectQuestionedGames = 0;
+let loneQuestionedAttentionGames = 0;
+let answerInQuestionedField = 0;
+let expectedAnswerInQuestionedField = 0;
+let personCenteredButlerTotal = 0;
+let distinctButlerSuspectTotal = 0;
+const personCenteredButlerHist = new Map<number, number>();
+const distinctButlerSuspectHist = new Map<number, number>();
+const loneQuestionedExamples: string[] = [];
+const answerQuestionedExamples: string[] = [];
+const questionedKindCounts = new Map<string, number>();
+const answerQuestionedKindCounts = new Map<string, number>();
+let propDominanceGames = 0;
+let selectedPropVarietyTotal = 0;
+const maxSelectedPropUseHist = new Map<number, number>();
+const propDominanceExamples: string[] = [];
 
 for (let offset = 0; offset < (aiOnly ? 0 : seedCount); offset += 1) {
   const seed = deterministicSeedStart + offset;
@@ -371,6 +410,68 @@ for (let offset = 0; offset < (aiOnly ? 0 : seedCount); offset += 1) {
     .filter((reveal) => reveal.slot === "clue")
     .map((reveal) => factById.get(reveal.factId)!)
     .filter(isNarrativeFact).length;
+  const butlerFacts = schedule.reveals
+    .filter((reveal) => reveal.slot === "clue")
+    .map((reveal) => factById.get(reveal.factId)!);
+  const personCentered = butlerFacts.filter((fact) => fact.suspectIds.length > 0 && fact.suspectIds.length <= 5);
+  const coveredSuspects = new Set(personCentered.flatMap((fact) => fact.suspectIds));
+  personCenteredButlerTotal += personCentered.length;
+  distinctButlerSuspectTotal += coveredSuspects.size;
+  bump(personCenteredButlerHist, personCentered.length);
+  bump(distinctButlerSuspectHist, coveredSuspects.size);
+
+  const questionedFacts = butlerFacts.filter((fact) => questionedAttentionSuspectIds(fact).length > 0);
+  const questionedPeople = new Set(questionedFacts.flatMap(questionedAttentionSuspectIds));
+  for (const fact of questionedFacts) {
+    bump(questionedKindCounts, fact.kind);
+    if (questionedAttentionSuspectIds(fact).includes(answer.suspectId)) bump(answerQuestionedKindCounts, fact.kind);
+  }
+  if (questionedPeople.size > 0) {
+    questionedAttentionGames += 1;
+    expectedAnswerInQuestionedField += questionedPeople.size / SUSPECTS.length;
+    if (questionedPeople.has(answer.suspectId)) {
+      answerInQuestionedField += 1;
+      if (answerQuestionedExamples.length < 8) {
+        const matchingFacts = questionedFacts.filter((fact) =>
+          questionedAttentionSuspectIds(fact).includes(answer.suspectId)
+        );
+        answerQuestionedExamples.push(
+          `${seed}:${requireSuspect(answer.suspectId).displayName} ` +
+          `[${matchingFacts.map((fact) => `${fact.kind}/${fact.id}`).join(", ")}]`
+        );
+      }
+    }
+    if (questionedPeople.size >= 2) multiSuspectQuestionedGames += 1;
+    else {
+      loneQuestionedAttentionGames += 1;
+      if (loneQuestionedExamples.length < 8) {
+        loneQuestionedExamples.push(`${seed}:${[...questionedPeople].map((id) => requireSuspect(id).displayName).join("+")} [${questionedFacts.map((fact) => `${fact.kind}/${fact.id}`).join(", ")}]`);
+      }
+    }
+  }
+
+  const seenEpisodeTexture = new Set<string>();
+  const selectedButlerText = schedule.reveals
+    .filter((reveal) => reveal.slot === "clue")
+    .map((reveal) => {
+      const fact = factById.get(reveal.factId)!;
+      const firstEpisodeUse = fact.episodeId && !seenEpisodeTexture.has(fact.episodeId);
+      if (fact.episodeId) seenEpisodeTexture.add(fact.episodeId);
+      return `${fact.writerBrief}${firstEpisodeUse && fact.sceneTexture ? ` ${fact.sceneTexture}` : ""}`;
+    })
+    .join("\n");
+  const selectedPropCounts = world.occasionSpine.setDressing
+    .map((prop) => ({ prop, count: phraseOccurrences(selectedButlerText, prop) }))
+    .filter((entry) => entry.count > 0);
+  const maxSelectedPropUse = Math.max(0, ...selectedPropCounts.map((entry) => entry.count));
+  selectedPropVarietyTotal += selectedPropCounts.length;
+  bump(maxSelectedPropUseHist, maxSelectedPropUse);
+  if (maxSelectedPropUse > 2) {
+    propDominanceGames += 1;
+    if (propDominanceExamples.length < 8) {
+      propDominanceExamples.push(`${seed}:${selectedPropCounts.map(({ prop, count }) => `${prop}=${count}`).join(",")}`);
+    }
+  }
   if (schedule.skeletonFactIds.length < 3 || narrativeButlerCount < 5) storyFloorFailures += 1;
   if (schedule.reveals
     .filter((reveal) => reveal.slot === "clue")
@@ -435,6 +536,15 @@ console.log(`statement games by recipe: ${[...statementByRecipe.entries()].map((
 if (missingStatementExamples.length > 0) console.log(`missing-statement examples: ${missingStatementExamples.join(" | ")}`);
 console.log(`statement-shaped games: ${statementGames}/${ok} (${((statementGames / Math.max(1, ok)) * 100).toFixed(1)}%)`);
 console.log(`multi-fragment episode games: ${linkedEpisodeGames}/${ok} (${((linkedEpisodeGames / Math.max(1, ok)) * 100).toFixed(1)}%)`);
+console.log(`person-centered Butler clues: mean ${(personCenteredButlerTotal / Math.max(1, ok)).toFixed(1)}/10; histogram ${show(personCenteredButlerHist)}`);
+console.log(`distinct named suspects in Butler clues: mean ${(distinctButlerSuspectTotal / Math.max(1, ok)).toFixed(1)}/10; histogram ${show(distinctButlerSuspectHist)}`);
+console.log(`questioned-attention games: ${questionedAttentionGames}/${ok}; 2+ different suspects: ${multiSuspectQuestionedGames}/${questionedAttentionGames}; lone suspect: ${loneQuestionedAttentionGames}`);
+console.log(`answer in questioned-attention field: ${answerInQuestionedField}; answer-blind expectation: ${expectedAnswerInQuestionedField.toFixed(1)}`);
+console.log(`questioned fact kinds: ${[...questionedKindCounts.entries()].map(([kind, count]) => `${kind}:${count}`).join(" ") || "none"}; answer matches: ${[...answerQuestionedKindCounts.entries()].map(([kind, count]) => `${kind}:${count}`).join(" ") || "none"}`);
+if (answerQuestionedExamples.length > 0) console.log(`answer-questioned examples: ${answerQuestionedExamples.join(" | ")}`);
+if (loneQuestionedExamples.length > 0) console.log(`lone-questioned examples: ${loneQuestionedExamples.join(" | ")}`);
+console.log(`selected set-dressing variety: mean ${(selectedPropVarietyTotal / Math.max(1, ok)).toFixed(1)} props; max-use histogram ${show(maxSelectedPropUseHist)}; >2-use games: ${propDominanceGames}`);
+if (propDominanceExamples.length > 0) console.log(`prop-dominance examples: ${propDominanceExamples.join(" | ")}`);
 console.log(`witness variants dealt: ${[...witnessVariants.entries()].map(([key, value]) => `${key}:${value}`).join(" ") || "none"}`);
 console.log(`thief as witness speaker: ${thiefWitnessSpeakers}/${[...witnessVariants.values()].reduce((sum, count) => sum + count, 0)}`);
 console.log(`featured thief: ${featuredThief}; answer-blind expectation: ${expectedFeaturedThief.toFixed(1)}`);
@@ -527,6 +637,20 @@ if (aiCount > 0) {
       const narrativeButler = butlerFacts.filter(isNarrativeFact).length;
       const kindCounts = new Map<string, number>();
       for (const fact of butlerFacts) bump(kindCounts, fact.kind);
+      const questionedPeople = [...new Set(butlerFacts.flatMap(questionedAttentionSuspectIds))];
+      const publicText = [
+        result.opening,
+        ...result.butlerClues,
+        ...result.inspectorNotes.map((note) => note.text),
+      ].join("\n");
+      const propCounts = (debug.world?.occasionSpine.setDressing ?? [])
+        .map((prop) => ({ prop, count: phraseOccurrences(publicText, prop) }))
+        .filter((entry) => entry.count > 0);
+      const contextCounts = debug.world?.occasionTexture
+        ? [...debug.world.occasionTexture.inspectionContexts, ...debug.world.occasionTexture.observationContexts]
+          .map((context) => ({ context, count: phraseOccurrences(publicText, context) }))
+          .filter((entry) => entry.count > 0)
+        : [];
       console.log(`\n--- seed ${seed} (${((Date.now() - aiStarted) / 1000).toFixed(1)}s) ---`);
       console.log(`answer: ${JSON.stringify(answer)} worldAttempts: ${debug.schedule?.worldAttempts}`);
       console.log(`provider stages: ${([
@@ -539,6 +663,9 @@ if (aiCount > 0) {
       console.log(`repairs: ${debug.repairs?.length ?? 0} unresolved: ${debug.unresolvedProblems?.length ?? 0}`);
       console.log(`clue length mean: ${mean(clueWords).toFixed(1)} words`);
       console.log(`narrative Butler clues: ${narrativeButler}/10; kinds: ${[...kindCounts.entries()].map(([kind, count]) => `${kind}:${count}`).join(" ")}`);
+      console.log(`questioned suspects: ${questionedPeople.length > 0 ? questionedPeople.map((id) => requireSuspect(id).displayName).join(", ") : "none"}`);
+      console.log(`occasion prop use: ${propCounts.map(({ prop, count }) => `${prop}:${count}`).join(" ") || "none"}`);
+      console.log(`exact dossier-context use: ${contextCounts.map(({ context, count }) => `\"${context}\":${count}`).join(" | ") || "none"}`);
       console.log(`mystery signature: ${result.mysterySignature}`);
       console.log(`clue pattern: ${result.cluePatternSignature}`);
       console.log(`opening: ${result.opening}`);

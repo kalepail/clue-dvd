@@ -86,9 +86,12 @@ function buildMockProvider(overrides?: {
             return `I distinctly remember the ${answerNames.item} beside the ${answerNames.location} at ${answerNames.time}.`;
           }
           const neutral = neutralClues[(seed.clueNumber ?? 1) - 1];
+          const continuation = seed.continuationNames?.length
+            ? ` ${seed.questionedNames?.[0] ?? "One person"} stepped away; ${seed.continuationNames.join(" and ")} remained together and continued the activity.`
+            : "";
           return seed.scopeMode === "whole_household"
-            ? `${neutral} ${wholeScopeClosures[(seed.clueNumber ?? 1) - 1]}`
-            : neutral;
+            ? `${neutral}${continuation} ${wholeScopeClosures[(seed.clueNumber ?? 1) - 1]}`
+            : `${neutral}${continuation}`;
         });
       const noteFor = (slot: "note1" | "note2"): string => {
         const seed = seeds.find((candidate) => candidate.deliverAs === slot);
