@@ -416,6 +416,19 @@ export function scheduleMystery(params: {
       skeleton = dropLeastConnected(skeleton);
     }
   }
+  // Recent pattern memory is cosmetic variety, never a feasibility rule. Its
+  // preferred-recipe attempts consume a different deterministic RNG path and
+  // can very rarely strand an otherwise schedulable world even though the
+  // final quarter visits every recipe. Before rejecting the world, retry with
+  // no history and a bounded half-budget. The answer, facts, fairness windows,
+  // and story floor are unchanged.
+  if (recentPatterns.length > 0) {
+    return scheduleMystery({
+      ...params,
+      maxAttempts: Math.max(1, Math.ceil(maxAttempts / 2)),
+      recentCluePatternSignatures: [],
+    });
+  }
   return null;
 }
 
@@ -895,23 +908,18 @@ function isPersonCentered(fact: Fact): boolean {
 
 /**
  * Moments that make a particular person's movements genuinely worth
- * discussing: a step-away, an unwitnessed errand, a foggy recollection, or an
- * attributed account of one. This is intentionally semantic rather than tied
- * to one FactKind because fused scenes can carry the same human beat as a
+ * discussing: a step-away, an unwitnessed errand, private exchange, or other
+ * named suspicious action. Anonymous-departure testimony does not count its
+ * witness as the person who moved. This is intentionally semantic rather than
+ * tied to one FactKind because fused scenes can carry the same human beat as a
  * standalone excuse. It never reads the answer.
  */
-function isQuestionedMovement(fact: Fact): boolean {
-  if (
-    fact.kind === "solo_presence" ||
-    fact.kind === "thread_color" ||
-    fact.kind === "witness_account" ||
-    fact.kind === "excuse_given" ||
-    fact.threadId === "FOG" ||
-    fact.episodeRole === "excuse" ||
-    fact.episodeRole === "witness"
-  ) return true;
-  return /\b(?:slipped|stepped|went|hurried|broke) away\b|\bleft (?:the|that|their)\b|\bunaccounted for\b|\bnobody (?:else )?can vouch\b|\bevasive\b|\bdisappearing\b/i
-    .test(fact.writerBrief);
+export function questionedAttentionSuspectIds(fact: Fact): string[] {
+  return fact.questionedSuspectIds ?? [];
+}
+
+function hasQuestionedAttention(fact: Fact): boolean {
+  return questionedAttentionSuspectIds(fact).length > 0;
 }
 
 /** A soft composition nudge, never a type cap. The first scene/evidence
@@ -959,10 +967,11 @@ function compositionVariety(fact: Fact, chosen: Fact[]): number {
   // person's equally plausible errand or uncertain movement. Both beats come
   // from the answer-blind world; nothing is reserved for the thief, and no
   // reveal position or clue kind is mandated.
-  if (isQuestionedMovement(fact)) {
-    const existing = chosen.filter(isQuestionedMovement);
-    const existingPeople = new Set(existing.flatMap((candidate) => candidate.suspectIds));
-    const bringsAnotherPerson = fact.suspectIds.some((suspectId) => !existingPeople.has(suspectId));
+  if (hasQuestionedAttention(fact)) {
+    const existing = chosen.filter(hasQuestionedAttention);
+    const existingPeople = new Set(existing.flatMap(questionedAttentionSuspectIds));
+    const bringsAnotherPerson = questionedAttentionSuspectIds(fact)
+      .some((suspectId) => !existingPeople.has(suspectId));
     if (existing.length === 0) score += 14;
     else if (existing.length === 1 && bringsAnotherPerson) score += 44;
     else if (!bringsAnotherPerson) score -= existing.length * 8;

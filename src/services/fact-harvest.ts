@@ -85,12 +85,26 @@ export type Fact = {
   threadId?: string;
   episodeId?: string;
   episodeRole?: "setup" | "continuation" | "excuse" | "witness" | "claim" | "fused";
-  /** Optional occasion-native texture for the first public fragment from an
-   * episode. The engine adds it once, never to every fragment, so a recurring
-   * prop/tension creates continuity without becoming a repeated preamble. */
+  /** Optional character undercurrent for the first public fragment from an
+   * episode. The engine adds it once, never to every fragment. Episode facts
+   * already carry their occasion prop, so this field deliberately contributes
+   * the human preoccupation without repeating the same set dressing. */
   sceneTexture?: string;
   /** Private composition hint used to diversify lived-scene/evidence fusions. */
   sceneEvidenceMode?: "same_hour_item" | "clearing_coda" | "inspection_coda" | "material_handover";
+  /** Exact people whose uncertain movement or suspicious action draws
+   * attention in this fact. This is intentionally narrower than suspectIds:
+   * in a three-person handoff, only the person who stepped away belongs here.
+   * Private composition/diagnostics only; it has no evidence semantics. */
+  questionedSuspectIds?: string[];
+  /** Exact suspect/hour boundary for questioned movement when one exists.
+   * This distinguishes a departure from the broader span described by a
+   * fused social scene. Private diagnostics only. */
+  questionedMovementPairs?: Array<{ suspectId: string; timeId: string }>;
+  /** People explicitly known to continue together after a fused departure.
+   * This is narrower than suspectIds and lets prose verification ensure the
+   * second half of the social fact is not dropped. */
+  continuousSuspectIds?: string[];
   /** Private diagnostics only; never sent to the renderer. */
   witnessVariant?: import("./world-sim").WitnessAccountVariant;
   /** A composite clue carries the union of two already-truthful facts. Base
@@ -400,8 +414,8 @@ export function harvestFacts(world: WorldState): Fact[] {
       ? episode.tensionOwnerId
       : null;
     return featuredId
-      ? `${names.suspect(featuredId)} repeatedly checked ${episode.prop} without leaving that scene, all the while ${episode.tension}.`
-      : `${episode.prop} remained in use while somebody in that company was ${episode.tension}.`;
+      ? `${names.suspect(featuredId)} was ${episode.tension}.`
+      : `Someone in that company was ${episode.tension}.`;
   };
 
   // Gatherings ---------------------------------------------------------------
@@ -510,15 +524,11 @@ export function harvestFacts(world: WorldState): Fact[] {
           });
         }
       } else if (placement.social === "solo" && placement.locationId) {
-        // The hidden theft placement belongs to the solution, not the public
-        // fact pool. Publishing culprit + room + hour as one "solo" clue is
-        // a confession disguised as an observation; surrounding movements
-        // and physical cards must make players infer this cell instead.
-        const isTheftPlacement =
-          suspectId === world.answer.suspectId &&
-          slot.id === world.answer.timeId &&
-          placement.locationId === world.answer.locationId;
-        if (isTheftPlacement) continue;
+        // The hidden answer hour is not a source of singled-out public
+        // movement for any suspect. The simulated solo still exists for world
+        // continuity and anonymous accounts; only answer-conditioned public
+        // provenance is withheld.
+        if (slot.id === world.answer.timeId) continue;
         const thread = world.threads.find(
           (candidate) => candidate.timeId === slot.id && candidate.suspectIds.includes(suspectId)
         );
@@ -540,6 +550,8 @@ export function harvestFacts(world: WorldState): Fact[] {
           writerBrief: `${capitalize(soloRef.clause)}, ${names.suspect(suspectId)} was off alone in the ${names.location(placement.locationId)}, ${placement.activity}. Nobody else can vouch for exactly what ${pronounsFor(suspectId).subject} was doing there.`,
           noteSuitable: false,
           threadId: thread?.id,
+          questionedSuspectIds: [suspectId],
+          questionedMovementPairs: [{ suspectId, timeId: slot.id }],
         });
       }
     }
@@ -557,6 +569,9 @@ export function harvestFacts(world: WorldState): Fact[] {
       if (!isConsecutive(firstEnd, second.timeIds[0])) continue;
       if (first.members.join("+") === second.members.join("+")) continue;
       const core = first.members.filter((member) => second.members.includes(member));
+      // Keep the world episode, but do not turn either boundary touching the
+      // hidden answer hour into singled-out public movement for anyone.
+      if (second.timeIds[0] === world.answer.timeId || firstEnd === world.answer.timeId) continue;
       if (core.length >= 2) transitionCandidates.push({ first, second, core });
     }
   }
@@ -611,14 +626,14 @@ export function harvestFacts(world: WorldState): Fact[] {
     const multiVariants = [
       `${capitalize(span)}, ${namesList} were together in the ${roomName}, ${group.activity}. ${stayedPut}`,
       `${capitalize(group.activity)} in the ${roomName} went on ${span} — ${namesList} present throughout, and nobody stirred.`,
-      `${namesList} claimed the ${roomName} for themselves ${span}; whoever looked in found them still at it, ${group.activity}.`,
+      `${namesList} claimed the ${roomName} for themselves ${span}; each time Ashe looked in, they were still at it, ${group.activity}.`,
       `${capitalize(span)}, the ${roomName} echoed with ${namesList} ${group.activity} — each of them can answer for the others through that whole stretch.`,
     ];
     const singleVariants = [
       `${capitalize(firstRef.clause)}, ${namesList} were together in the ${roomName}, ${group.activity}. They kept one another company the whole while.`,
       `The ${roomName} had its own little party ${firstRef.clause}: ${namesList}, ${group.activity}, none of them going anywhere.`,
       `${namesList} fell in together over ${group.activity} in the ${roomName} ${firstRef.clause}, and stayed with it to the end of the hour.`,
-      `Anyone passing the ${roomName} ${firstRef.clause} found ${namesList} ${group.activity} — all present, all occupied.`,
+      `On passing the ${roomName} ${firstRef.clause}, Ashe found ${namesList} ${group.activity} — all present, all occupied.`,
     ];
     const returnBrief = resumedTransition
       ? `${capitalize(firstRef.clause)}, ${listNames(resumedTransition.first.members.filter((member) => !resumedTransition.second.members.includes(member)).map(names.suspect))} had rejoined ${listNames(resumedTransition.core.map(names.suspect))} in the ${roomName}, and ${namesList} resumed ${group.activity}. ${multiSlot ? `They remained together ${span}.` : "They stayed together for the rest of that stretch."}`
@@ -728,6 +743,11 @@ export function harvestFacts(world: WorldState): Fact[] {
       // from the same episode, or the later clues merely repeat it.
       episodeRole: episodeId ? "fused" : undefined,
       sceneTexture: sceneTextureFor(episodeId, allSuspects),
+      questionedSuspectIds: firstOnly.length > 0 ? [...firstOnly] : undefined,
+      questionedMovementPairs: firstOnly.length > 0
+        ? firstOnly.map((suspectId) => ({ suspectId, timeId: boundaryTo }))
+        : undefined,
+      continuousSuspectIds: [...core],
     });
   }
 
@@ -1180,6 +1200,10 @@ export function harvestFacts(world: WorldState): Fact[] {
       writerBrief: brief,
       noteSuitable: false,
       threadId: thread.kind === "foggy_memory" ? "FOG" : thread.id,
+      questionedSuspectIds: thread.kind === "foggy_memory" ? undefined : [...thread.suspectIds],
+      questionedMovementPairs: thread.kind !== "foggy_memory" && thread.timeId
+        ? thread.suspectIds.map((suspectId) => ({ suspectId, timeId: thread.timeId! }))
+        : undefined,
     });
   }
 
@@ -1305,7 +1329,7 @@ export function harvestFacts(world: WorldState): Fact[] {
       sceneTexture: sceneTextureFor(episode.id, episode.continuousParticipantIds),
     });
 
-    if (episode.stepAway) {
+    if (episode.stepAway && episode.stepAway.absentFromTimeId !== world.answer.timeId) {
       const step = episode.stepAway;
       const stepRef = beatRef(step.absentFromTimeId);
       const who = names.suspect(step.suspectId);
@@ -1328,6 +1352,8 @@ export function harvestFacts(world: WorldState): Fact[] {
         episodeId: episode.id,
         episodeRole: "excuse",
         sceneTexture: sceneTextureFor(episode.id, [step.suspectId]),
+        questionedSuspectIds: [step.suspectId],
+        questionedMovementPairs: [{ suspectId: step.suspectId, timeId: step.absentFromTimeId }],
       });
     }
   }
@@ -1447,6 +1473,11 @@ export function harvestFacts(world: WorldState): Fact[] {
       // four facts wide and force bloated prose; simpler scenes receive it.
       sceneTexture: scene.episodeRole === "fused" ? undefined : scene.sceneTexture,
       sceneEvidenceMode: mode,
+      questionedSuspectIds: scene.questionedSuspectIds ? [...scene.questionedSuspectIds] : undefined,
+      questionedMovementPairs: scene.questionedMovementPairs
+        ? scene.questionedMovementPairs.map((pair) => ({ ...pair }))
+        : undefined,
+      continuousSuspectIds: scene.continuousSuspectIds ? [...scene.continuousSuspectIds] : undefined,
       witnessVariant: scene.witnessVariant,
       components: [scene, evidence],
       componentFactIds: [scene.id, evidence.id],

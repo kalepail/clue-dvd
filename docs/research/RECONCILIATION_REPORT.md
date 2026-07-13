@@ -194,3 +194,112 @@ model cannot silently fall through to another model.
 existing `clue-dvd` Worker. Nothing was deployed and no secret was created as
 part of reconciliation. Deployment therefore remains an explicit operator
 step after configuring the intended Worker and secrets.
+
+## Late Lawson branch reconciliation
+
+After PR #5 merged, a direct `git ls-remote --heads` audit found one additional
+uncached remote head: `codex/v3-1-live-polish` at `b311dac`. It had no pull
+request and was neither an ancestor nor a patch-equivalent of `main`, so branch
+cleanup paused and the commit received its own semantic reconciliation.
+
+The patch correctly identified a real structural tell: harvesting the
+culprit's forced answer-cell boundary as a named departure made that person
+unusually likely to receive a rich suspicious scene. We retained suppression
+of that private boundary, exact questioned/continuation metadata, multi-leaver
+episode discovery, isolated cosmetic RNG, non-repeating activity/context
+texture, character-only recurrence texture, and the bounded prose-quality
+checks.
+
+Independent high-effort Fable and GPT-5.6 Sol audits did not approve the patch
+unchanged. Sol's all-suspect counterfactual found that suppressing the forced
+boundary while also excluding the culprit from ordinary solo texture
+overcorrected into a reverse tell: the raw culprit-to-innocent questioned-
+attention ratio was 0.657. Restoring ordinary answer-blind culprit eligibility
+at innocent hours and varying guest-circle topology between 4/4 and 5/3 raised
+the ratio to 0.796, but Sol correctly rejected that residual 20% deficit. The
+final rule withholds singled-out solo and departure provenance touching the
+hidden answer hour for every suspect, not merely the culprit. Ordinary movement
+at every innocent hour remains eligible, and the ratio reaches 1.067. A
+permanent test now rebuilds 60 seeds for all ten possible culprits (600 worlds)
+and requires 0.90–1.10. The selected-package comparison against field size
+remains useful diagnostics, but is no longer described as proof of
+answer-blindness.
+
+The same review demonstrated four deterministic verifier bypasses: prose could
+assign a departure to the wrong licensed actor, replace exact continuing
+witnesses with “the others,” treat “without warning” as negating a departure,
+or hide a later real departure behind an earlier negated one. The verifier now
+checks every departure, recognizes only explicit actor-negation constructions,
+and requires the exact questioned actor and exact named continuation. Focused
+regressions cover every bypass.
+
+The corrected 120-game selected sweep exposed one obsolete release gate: it
+required all four private witness variants to appear in dealt clues. After the
+forced theft boundary was removed, truthful culprit departures correctly
+remain a small minority (17/298 raw accounts, or 5.7%); a much smaller dealt
+sample cannot reliably contain every private subtype. Forcing that cell would
+recreate the culprit spotlight. The raw world invariant still requires every variant
+and the selected sweep still gates sample size, aggregate truth/fabrication,
+culprit-speaker incidence, and duplicate speakers; its four-way histogram is
+diagnostic rather than a flaky presence gate.
+
+That sweep also exposed a deeper pre-existing bias: fabricated accounts chose
+the culprit as speaker 85% of the time to manufacture a recurring red herring.
+After movement attention was made symmetric, fresh-character selection
+amplified that hidden quota to 30/50 dealt witness speakers (60%). The rule was
+removed rather than retuned. Speaker choice now uses an isolated stream: 40%
+of draws are uniform across the full cast and the remainder favor someone
+physically capable of grounding an honest account. The voice is fixed before
+truth status; an invalid observation converts to a fabrication without changing
+the speaker. Variants are labeled only afterward, and the
+600-world counterfactual gates culprit/innocent speaker parity overall and for
+guest/staff strata. The ordinary 120-game sweep retains a gross 30% spotlight
+ceiling because its roughly 50 selected witnesses are too few for a narrow
+percentage band.
+
+Fable separately reproduced a composition calibration introduced by the late
+branch: with richer episodes and multi-leaver discovery, a 35% direct request
+overshoots the 30–42% actual band. Fable's first 27.5% recommendation predated
+the counterfactual speaker audit. Once answer-blind speaker exploration was
+added, some selected voices necessarily lacked a safe observed departure and
+became fabricated. The final direct request is therefore 5%; the 120-world
+attempt-one audit yields 115/298 fabricated accounts (38.6%), all four private
+variants, and no world without a retained step-away. Raw supply remains gated
+at 30–42%. The selected sweep reports its smaller dealt histogram
+but does not fail a release on a narrow percentage: the final 36-account sample
+landed at 10/36 (27.8%), ordinary binomial variation around the validated raw
+population. It still gates witness supply and gross culprit-speaker incidence.
+This calibration does not restore the removed culprit quota.
+
+The fixed matrix measures a 0.847 culprit/innocent witness-speaker ratio
+overall, 0.861 among guests, and 0.787 among staff. Those results pass the
+0.80–1.25 overall and 0.75–1.33 role-stratified gates without adding any
+identity-specific culprit preference.
+
+The first fully corrected 120-game sweep scheduled 119/120 worlds: seed 89
+exhausted the 240-world budget only when the previous five structural pattern
+signatures were present, while the identical world scheduled immediately with
+empty history. Recent-pattern memory is cosmetic variety, not a validity rule.
+After its normal attempts are exhausted, the scheduler now performs a bounded
+history-free half-budget against the same facts, answer, fairness windows, and
+story floor. The exact six-seed reproducer (84–89) returns 6/6, with seed 89
+scheduling at world 24 rather than failing after 240.
+
+The final scheduled acceptance run passes 120/120 mysteries. It produces
+107/120 statement-shaped games, 119/120 multi-fragment episode games, a 34.2%
+largest recipe share, 5.1 person-centered clues and 9.3 named suspects per
+Butler package. Questioned conduct appears in 90 games and names at least two
+suspects in 78; the culprit appears 20 times against a field-size baseline of
+20.6. The dealt witness diagnostic is 10/36 fabricated and 3/36 culprit
+speakers. Featured casting (49 vs 49.4 expected), suspicious threads (32 vs
+33.4), and fog-at-answer-hour incidence (3/55) remain natural. Every story,
+truth, answer-hour, overlap, inventory, and deterministic-language gate passes.
+
+This late branch is therefore integrated as a corrected follow-up rather than
+discarded or merged wholesale. Final owner-side validation passed: 17 files
+and 193 tests, typecheck, production worker/client build with artifact
+sanitization, the deterministic 120-game sweep, and a real
+`anthropic/claude-opus-4.8` tournament generation through the Cloudflare
+gateway (one world attempt, two bounded repairs, zero unresolved defects, ten
+distinct clue openers). The source and stacked branches may be deleted only
+after the follow-up PR merges to `main`.

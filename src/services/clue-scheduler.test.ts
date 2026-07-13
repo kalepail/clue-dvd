@@ -63,6 +63,30 @@ describe("clue scheduler fair-play guarantees (seed sweep)", () => {
     expect(results.every(({ world }) => world.attempt <= MAX_WORLD_ATTEMPTS)).toBe(true);
   });
 
+  it("keeps private witness variants invisible to scheduling", () => {
+    const candidate = results.find(({ factIds }) =>
+      [...factIds.values()].some((fact) => fact.kind === "witness_account")
+    );
+    expect(candidate).toBeDefined();
+    const facts = [...candidate!.factIds.values()];
+    const params = {
+      answer: candidate!.answer,
+      seed: candidate!.world.seed * 31 + candidate!.world.attempt,
+      featuredSuspectIds: candidate!.world.featuredCast.map((entry) => entry.suspectId),
+      recentCluePatternSignatures: [] as string[],
+    };
+    const original = scheduleMystery({ ...params, facts });
+    const scrubbed = scheduleMystery({
+      ...params,
+      facts: facts.map((fact) => ({ ...fact, witnessVariant: undefined })),
+    });
+    expect(original).not.toBeNull();
+    expect(scrubbed?.reveals.map((reveal) => reveal.factId)).toEqual(
+      original?.reveals.map((reveal) => reveal.factId)
+    );
+    expect(scrubbed?.structuralPatternSignature).toBe(original?.structuralPatternSignature);
+  });
+
   it("tracks deduction as diagnostics while preserving more than one joint solution", () => {
     for (const { schedule } of results) {
       let previousSolutions = 12_100;
@@ -379,7 +403,9 @@ describe("world simulation invariants (seed sweep)", () => {
       const witnessFacts = facts.filter((fact) => fact.kind === "witness_account");
 
       expect(continuationFacts).toHaveLength(world.episodes.length);
-      expect(excuseFacts).toHaveLength(world.episodes.filter((episode) => episode.stepAway).length);
+      expect(excuseFacts).toHaveLength(world.episodes.filter((episode) =>
+        episode.stepAway && episode.stepAway.absentFromTimeId !== answer.timeId
+      ).length);
       expect(witnessFacts).toHaveLength(world.witnessAccounts.length);
       for (const fact of [...excuseFacts, ...witnessFacts]) {
         expect(isMentionOnly(fact)).toBe(true);
@@ -409,7 +435,7 @@ describe("world simulation invariants (seed sweep)", () => {
         const episode = world.episodes.find((candidate) => candidate.id === account.episodeId)!;
         if (account.truthful) {
           expect(account.actualDeparterId).toBeTruthy();
-          expect(world.movement[account.timeId][account.witnessId].locationId).toBe(episode.locationId);
+          expect(world.movement[episode.stepAway!.fromTimeId][account.witnessId].locationId).toBe(episode.locationId);
           expect(world.movement[account.timeId][account.actualDeparterId!].locationId).not.toBe(episode.locationId);
           expect(account.fabricationReason).toBeNull();
         } else {
@@ -421,8 +447,9 @@ describe("world simulation invariants (seed sweep)", () => {
 
     expect(fabricated / witnessTotal).toBeGreaterThanOrEqual(0.3);
     expect(fabricated / witnessTotal).toBeLessThanOrEqual(0.42);
-    expect(thiefWitness / witnessTotal).toBeGreaterThanOrEqual(0.25);
-    expect(thiefWitness / witnessTotal).toBeLessThanOrEqual(0.38);
+    // The all-suspect counterfactual test is the two-sided parity proof. This
+    // ordinary sweep retains only an emergency positive-spotlight ceiling.
+    expect(thiefWitness / witnessTotal).toBeLessThanOrEqual(0.3);
     expect(variants.size).toBe(4);
   });
 

@@ -59,7 +59,7 @@ import { SUSPECTS } from "../data/game-elements";
 
 export const ENGINE_VERSION = "3.1-scene";
 const MAX_WORLD_ATTEMPTS = 240;
-const MAX_REPAIRS_PER_TEXT = 2;
+const MAX_REPAIRS_PER_TEXT = 4;
 
 export type MysteryProgressStage =
   | "occasion"
@@ -288,6 +288,10 @@ export async function generateMysteryV2(providerSource: string | MysteryProvider
           : undefined,
         mustRemainPresent: locksContinuousPresence(fact) || undefined,
         locationSetting: locationTypes.size === 1 ? [...locationTypes][0] : locationTypes.size > 1 ? "mixed" : undefined,
+        questionedNames: fact.questionedSuspectIds?.map((suspectId) => requireSuspect(suspectId).displayName),
+        continuationNames: fact.questionedSuspectIds?.length && fact.continuousSuspectIds?.length
+          ? fact.continuousSuspectIds.map((suspectId) => requireSuspect(suspectId).displayName)
+          : undefined,
       };
       if (reveal.slot === "clue" && fact.episodeId && reveal.clueNumber) {
         precedingClueByEpisode.set(fact.episodeId, { clueNumber: reveal.clueNumber, brief: fact.writerBrief });
@@ -450,7 +454,7 @@ export async function generateMysteryV2(providerSource: string | MysteryProvider
           ? texts.clues[seed.continuesClueNumber - 1]
           : undefined;
         const repeatedPhraseOwner = entry.problems
-          .map((problem) => problem.match(/from clue (\d+)/i)?.[1])
+          .map((problem) => problem.match(/(?:from|in) clue (\d+)/i)?.[1])
           .find(Boolean);
         const comparisonText = repeatedPhraseOwner
           ? texts.clues[Number.parseInt(repeatedPhraseOwner, 10) - 1]

@@ -145,8 +145,9 @@ Owner assessment:
 
 ### Changes made in response, immediately before this handoff
 
-These are implemented and targeted-tested, but the selection changes have not
-yet received the full 120-case release sweep or a new live prose sample:
+These were the first response edits; the resumed work then traced their
+population behavior through the deterministic world rather than stopping at
+the visible symptoms:
 
 1. `ai-mystery-provider.ts` now recursively converts literal typography escape
    strings (`\\u2014`, smart quotes, ellipsis, nonbreaking space, and related
@@ -164,6 +165,51 @@ yet received the full 120-case release sweep or a new live prose sample:
    and episode texture, then favors an equally truthful unused context. This
    attacks lantern/ribbon repetition at its source rather than adding another
    prose-only warning.
+
+### Root work completed after resumption
+
+1. Added exact private `questionedSuspectIds` and
+   `questionedMovementPairs` metadata. Selection and diagnostics now know who
+   actually stepped away or drew attention instead of guessing from every name
+   in a fused clue or scanning prose with regular expressions.
+2. The population audit exposed the real culprit spotlight: the simulator's
+   mandatory answer-cell placement was being harvested as a rich named
+   departure/re-entry scene. The world and harvester now suppress both
+   boundaries around that forced cell. Genuine, independently generated
+   departures remain available with identical rules for every suspect.
+3. Rebuilt ordinary social supply around two shuffled guest circles that vary
+   answer-blindly between 4/4 and 5/3 rather than fragile 3/3/2 groups, and
+   fixed episode derivation to inspect
+   every leaver at a boundary instead of only the first. Real step-aways now
+   exist without borrowing the theft placement.
+4. Occasion activities cycle without replacement on a dedicated cosmetic RNG.
+   The structural RNG consumes its historical draw, so richer wording and
+   catalog reordering cannot silently change movements or schedule feasibility.
+5. Removed repeated prop checks from `sceneTexture`; episode facts already
+   carry occasion material, so recurring texture now contributes only a human
+   tension or preoccupation. Dossier observation/inspection arrays are
+   supplemented to six distinct, prop-spread contexts from the authored spine.
+6. Added exact `continuousSuspectIds` to fused facts and composites. Renderer
+   and repair prompts identify both the named person who leaves and the people
+   who continue together. The verifier rejects a clue that dramatizes the
+   departure but drops the alibi-bearing continuation. Reconciliation
+   hardened that check to require the exact departure actor and exact named
+   continuing witnesses, and to inspect every departure in the rendered line.
+7. Hardened prose at deterministic boundaries: all ten Butler first words must
+   differ; complex clues top out at 54 words; up to four bounded line repairs
+   handle repair chains. New checks catch dangling actions, impersonal
+   recollections, malformed "Checking X lay..." syntax, articles before printed
+   multiword times, ambiguous departure pronouns, and false departure matches
+   inside explicit negatives.
+8. Expanded `eval-mysteries.ts` with exact suspect-attention incidence,
+   a selected-package field-size baseline, clue-level person coverage, questioned-fact kind
+   mix, set-dressing variety, and live context-use diagnostics. These metrics
+   remain measurements, not clue quotas or reveal-position rules.
+9. Completed live Opus acceptance across costume (`930000`), scholarly
+   (`931013`), and engagement (`932026`) occasions. Final packages had no
+   unresolved defects, did not question the answer disproportionately, used
+   ten distinct openers, and produced the desired continuing-scene and
+   anonymous-witness shapes. Saved diagnostics live in `tmp/ai-evals/`.
 
 ## Non-negotiable design decisions
 
@@ -189,60 +235,65 @@ Do not regress these while tuning prose:
 - Keep all ten suspects in the world. A clue may focus on a smaller group, but
   that group is never presented as the only people in play.
 
-## Exact pause point and validation status
+## Exact checkpoint and validation status
 
-Completed after the latest edits:
-
-```text
-npm run typecheck
-npx vitest run src/services/ai-mystery-provider.test.ts \
-  src/services/ai-mystery-engine.test.ts \
-  src/services/clue-verifier.test.ts \
-  src/routes/scenarios.test.ts
-```
-
-Result: typecheck clean; 35/35 targeted tests passed.
-
-Completed before the final `ai-last-10` tuning:
-
-- 120/120 deterministic release sweep passed.
-- Full scheduler-heavy tests passed.
-- Full project test suite and production build passed.
-- Earlier live generations completed successfully.
-
-Still required because the final suspect/context balancing edits came afterward:
+All release validation was rerun after the final source changes:
 
 ```text
 npm run eval:mysteries -- 120
-npm test
+npm test -- --run
+npm run typecheck
 npm run build
 ```
 
-Then run at least 3–5 live generations and inspect both the rendered clues and
-their debug JSONs. API usage is authorized; the owner refilled the account.
+Results:
 
-## Recommended continuation
+- Deterministic acceptance: 120/120 schedules; zero story-floor,
+  spine-overlap, answer-hour, wide-inventory, or deterministic-language
+  failures.
+- Attention symmetry: 20 culprit appearances in questioned fields against a
+  diagnostic field-size baseline of 20.6; featured culprit 49 vs 49.4 expected;
+  suspicious-side-thread culprit 32 vs 33.4 expected.
+- Raw counterfactual symmetry: 60 seeds rebuilt against all ten possible
+  culprits (600 worlds) produced a 1.067 culprit-to-innocent questioned-attention
+  ratio. The permanent gate accepts only 0.90–1.10; Lawson's unmodified patch
+  measured 0.657, while an intermediate culprit-only correction reached only
+  0.796. Both fail the final gate.
+- Witness-speaker symmetry on the same matrix is 0.847 overall, 0.861 for
+  guests, and 0.787 for staff. Those pass the reciprocal 0.80–1.25 overall and
+  0.75–1.33 role gates. The 120-world attempt-one audit produced 115/298
+  fabricated accounts (38.6%), all four variants, and no missing step-away
+  worlds.
+- Composition: 119/120 games with a multi-fragment episode, 107/120 with a
+  statement-shaped fact, mean 5.1 person-centered Butler clues, and mean 9.3
+  distinct suspects represented. The largest recipe share is 34.2%.
+- Full suite: 17 files and 193 tests passed, including the scheduler/world
+  sweep, exact continuation checks, private-label scheduling invisibility,
+  and the all-suspect counterfactual regression.
+- TypeScript typecheck and the production worker/client build passed.
+- Final live `anthropic/claude-opus-4.8` generation through the Cloudflare
+  gateway passed on tournament seed 940000 in one world attempt, with two
+  bounded repairs, zero unresolved defects, and ten distinct clue openers.
 
-1. Run the full deterministic sweep. Compare recipe rates, world attempts,
-   fairness counts, narrative-floor rate, and statement rate with the prior
-   passing baseline.
-2. Add a population metric for “questioned movement symmetry”: when a slate
-   contains a named departure/solo/fog/errand, measure how often a second
-   different suspect receives a comparable moment. Keep this diagnostic, not
-   a hard validity rule.
-3. Add a scene-setting repetition metric over selected story seeds: exact
-   context phrase count and set-dressing noun count. Verify the new balancer
-   spreads props without stripping occasion identity.
-4. Generate live cases across different occasion families. Do not judge only
-   costume fêtes; test a fundraiser, rehearsal/performance, memorial, garden
-   event, and one quieter social occasion.
-5. Read each case as a player before opening debug data. Check whether one
-   person's clue treatment is unique, whether the opening's occasion explains
-   the day's activity, and whether recurring characters form a story rather
-   than merely recurring nouns.
-6. If output remains structurally repetitive, first expand deterministic fact
-   and episode composition—not prompt length. The model should receive richer
-   material, not a larger rule stack.
+## Recommended next product iteration
+
+The engineering checkpoint described here is complete once the final project
+suite/build pass. Do not preemptively add another prompt layer. The next useful
+input is several owner playthroughs without opening diagnostics first:
+
+1. Play at least two of the new cases blind and record the clue number where a
+   suspect, time, place, or item first feels dominant.
+2. Generate another 3–5 occasions and compare the shape of their scenes, not
+   merely vocabulary. The evaluator now makes exact suspect attention and prop
+   use visible if a new pattern emerges.
+3. If a real repeated structure remains, expand deterministic episode/fact
+   composition or source catalogs first. Keep measurement answer-blind and
+   position-free; do not add clue-kind quotas or early/late gates.
+4. Revisit the pinned deception-system idea only as a separately measured
+   extension. Keep one indistinguishable wrapper for true and false accounts,
+   and never force a contradiction pair.
+5. Board/card digitization remains the intended later phase after blind
+   playthroughs accept story and deduction quality.
 
 ## Testing notes and useful commands
 
@@ -285,10 +336,10 @@ family and recent signatures.
 - `AI_ENGINE.md`: durable architecture/invariants.
 - `AI_ENGINE_SCENE_PLAN.md`: original phase requirements and rationale.
 
-## Definition of the next successful checkpoint
+## Accepted checkpoint definition
 
-The next checkpoint is not “all tests pass” alone. It is reached when a small
-live batch demonstrates all of the following:
+This checkpoint was judged on behavior as well as green tests. Its live batch
+demonstrated all of the following:
 
 - clues clearly belong to the occasion introduced in the opening;
 - several named suspects receive meaningful human moments without any one
@@ -297,5 +348,10 @@ live batch demonstrates all of the following:
 - props and set dressing recur enough to unify the case but not so often that
   one noun dominates it;
 - clue syntax and openings vary naturally across a game and across sessions;
-- the answer is not apparent by clue 5, yet the final evidence feels coherent
-  and earned when combined with the physical cards.
+- no deterministic clue treatment statistically points toward the answer, and
+  final evidence remains coherent and intentionally dependent on the physical
+  cards.
+
+The owner's blind playthrough remains the final subjective test of whether the
+new prose feels fun, but there is no known engineering blocker at this pause
+point.

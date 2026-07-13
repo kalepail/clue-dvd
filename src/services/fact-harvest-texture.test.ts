@@ -43,6 +43,10 @@ describe("occasion texture isolation", () => {
     expect(after.map(semantics)).toEqual(before.map(semantics));
     expect(world.movement).toEqual(movementBefore);
     expect(world.transitionRemarks).toEqual(remarksBefore);
+    expect(world.occasionTexture?.inspectionContexts).toHaveLength(6);
+    expect(new Set(world.occasionTexture?.inspectionContexts).size).toBe(6);
+    expect(world.occasionTexture?.observationContexts).toHaveLength(6);
+    expect(new Set(world.occasionTexture?.observationContexts).size).toBe(6);
     expect(after.some((fact, index) => fact.writerBrief !== before[index].writerBrief)).toBe(true);
     expect(before.some((fact) => /mask|costume|ribbon|disguise/i.test(fact.writerBrief))).toBe(true);
     expect(() => harvestFacts(world)).not.toThrow();
