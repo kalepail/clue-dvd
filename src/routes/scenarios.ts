@@ -15,6 +15,7 @@ import {
 import type { GenerateCampaignRequest } from "../types/campaign";
 import type { GeneratedScenario } from "../types/campaign";
 import { createMysteryScenarioShell, createMysterySetup } from "../services/ai-mystery-setup";
+import { mysteryProviderRuntimeFromEnv } from "../services/ai-mystery-provider";
 
 const scenarios = new Hono<{ Bindings: CloudflareBindings }>();
 const DEFAULT_THEME_ID = "AI01";
@@ -46,16 +47,17 @@ async function generateForRequest(
 
   let scenario: GeneratedScenario;
   if (themeId === AI_THEME_ID) {
-    const apiKey = c.env.ANTHROPIC_API_KEY;
-    if (!apiKey) throw new Error("ANTHROPIC_API_KEY is not configured.");
     const setup = createMysterySetup(request);
     const baseScenario = createMysteryScenarioShell(setup);
-    const mystery = await generateMysteryV2(apiKey, {
-      setup,
-      recentSignatures: request.recentMysterySignatures,
-      recentCluePatternSignatures: request.recentCluePatternSignatures,
-      onProgress,
-    });
+    const mystery = await generateMysteryV2(
+      mysteryProviderRuntimeFromEnv(c.env as unknown as Record<string, unknown>),
+      {
+        setup,
+        recentSignatures: request.recentMysterySignatures,
+        recentCluePatternSignatures: request.recentCluePatternSignatures,
+        onProgress,
+      }
+    );
     scenario = applyMysteryPackage(baseScenario, mystery);
   } else {
     scenario = generateScenarioWithPlan(request).scenario;

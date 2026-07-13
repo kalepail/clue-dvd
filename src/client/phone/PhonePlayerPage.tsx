@@ -2,7 +2,16 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { DIFFICULTIES, ITEMS, LOCATIONS, SUSPECTS, THEMES, TIMES } from "../../shared/game-elements";
 import type { EliminationState } from "../../shared/api-types";
 import type { PhonePlayer, PhoneSessionSummary } from "../../phone/types";
-import { getSession, reconnectSession, sendPlayerAction, updatePlayer } from "./api";
+import { getSession, PhoneActionRejectedError, reconnectSession, sendPlayerAction, updatePlayer } from "./api";
+import {
+  classifyActionResult,
+  loadActionEventIds,
+  persistActionEventIds,
+  restorePassageState,
+  shouldBlockPassageSubmit,
+  type TurnActionResult,
+} from "./action-results";
+import { generatePassageRequestId } from "../../phone/utils";
 import { clearStoredPlayer, loadStoredPlayer } from "./storage";
 import {
   itemImageById,
@@ -251,12 +260,27 @@ export default function PhonePlayerPage({ code, onNavigate }: Props) {
   const [actionContinueMessage, setActionContinueMessage] = useState<string | null>(null);
   const [pendingRevealConfirm, setPendingRevealConfirm] = useState(false);
   const [pendingSuggestionConfirm, setPendingSuggestionConfirm] = useState(false);
+  const [suggestionCategories, setSuggestionCategories] = useState<Array<"suspect" | "item" | "location" | "time">>(["suspect", "item", "location"]);
   const [interruptionConfirming, setInterruptionConfirming] = useState(false);
+  // Event ids of this player's own initiating actions, echoed back as
+  // forEventId so the host resolves exactly the pending action they created.
+  // Persisted per player so a phone refresh mid-ritual keeps the correlation.
+  const lastRevealEventIdRef = useRef<number | null>(null);
+  const lastAccusationEventIdRef = useRef<number | null>(null);
   const [accusationFeedback, setAccusationFeedback] = useState<{
     correct: boolean;
     correctCount: number;
   } | null>(null);
   const lastAccusationSeenRef = useRef<string | null>(null);
+  const lastActionResultSeenRef = useRef<string | null>(null);
+  const latestActionResultRef = useRef<TurnActionResult | null>(null);
+  const lastPassageEventIdRef = useRef<number | null>(null);
+  const passageRequestIdRef = useRef<string | null>(null);
+  const passageTurnNumberRef = useRef<number | null>(null);
+  const passageUsedTurnNumberRef = useRef<number | null>(null);
+  const lastTurnNumberRef = useRef<number | null>(null);
+  const [passagePending, setPassagePending] = useState(false);
+  const passagePendingRef = useRef(false);
   const [zeroAccusationMessage, setZeroAccusationMessage] = useState<string | null>(null);
   const [oneAccusationMessage, setOneAccusationMessage] = useState<string | null>(null);
   const [twoAccusationMessage, setTwoAccusationMessage] = useState<string | null>(null);
@@ -426,6 +450,10 @@ export default function PhonePlayerPage({ code, onNavigate }: Props) {
               : refreshedPlayer
           );
         }
+        if (refreshedPlayer && refreshedPlayer.lastActionResult !== undefined) {
+          latestActionResultRef.current = refreshedPlayer.lastActionResult ?? null;
+          evaluateActionResult();
+        }
         if (refreshedPlayer?.lastAccusationResult?.updatedAt) {
           const lastSeen = lastAccusationSeenRef.current;
           const nextSeen = refreshedPlayer.lastAccusationResult.updatedAt;
@@ -527,24 +555,133 @@ export default function PhonePlayerPage({ code, onNavigate }: Props) {
     });
   };
 
+  /**
+   * Idempotently applies the latest host-reported turn-action result. Safe to
+   * call from both the session snapshot handler and right after an action
+   * POST resolves: a result that arrives before the phone knows its own
+   * event id is deferred (not marked seen) and re-evaluated here once
+   * rememberActionEvent has stored the id.
+   */
+  const evaluateActionResult = () => {
+    const result = latestActionResultRef.current;
+    if (result?.action !== "use_secret_passage") return;
+    const verdict = classifyActionResult(
+      result,
+      { eventId: lastPassageEventIdRef.current, requestId: passageRequestIdRef.current },
+      lastActionResultSeenRef.current
+    );
+    if (!verdict || verdict.decision === "defer") return;
+    lastActionResultSeenRef.current = verdict.key;
+    if (verdict.decision !== "apply") return;
+    // The outstanding passage is settled either way; the settled turn is
+    // persisted so a same-turn refresh keeps blocking a resubmission.
+    passageUsedTurnNumberRef.current = passageTurnNumberRef.current;
+    passageRequestIdRef.current = null;
+    updatePassagePending(false);
+    setSecretPassageUsedThisTurn(true);
+    if (result.ok) {
+      setActionContinueMessage("Secret passage resolved on the host screen. Move through the passage, then choose one action.");
+      setShowActionContinue(true);
+    } else {
+      setShowActionContinue(false);
+      setActionContinueMessage(null);
+      setActionStatus(result.message || "The secret passage was rejected by the host.");
+    }
+  };
+
+  const persistActionState = () => {
+    if (!player) return;
+    persistActionEventIds(player.id, {
+      reveal: lastRevealEventIdRef.current,
+      accusation: lastAccusationEventIdRef.current,
+      passage: lastPassageEventIdRef.current,
+      passagePending: passagePendingRef.current,
+      passageRequestId: passageRequestIdRef.current,
+      passageTurnNumber: passageTurnNumberRef.current,
+      passageUsedTurnNumber: passageUsedTurnNumberRef.current,
+    });
+  };
+
+  const updatePassagePending = (pending: boolean) => {
+    passagePendingRef.current = pending;
+    setPassagePending(pending);
+    persistActionState();
+  };
+
+  const rememberActionEvent = (kind: "reveal" | "accusation" | "passage", eventId: number) => {
+    if (kind === "reveal") lastRevealEventIdRef.current = eventId;
+    else if (kind === "accusation") lastAccusationEventIdRef.current = eventId;
+    else lastPassageEventIdRef.current = eventId;
+    persistActionState();
+  };
+
   const sendAction = async (action: string) => {
     if (!player || !token) return;
+    if (action === "use_secret_passage" && shouldBlockPassageSubmit(secretPassageUsedThisTurn, passagePendingRef.current)) {
+      setActionStatus(
+        passagePendingRef.current
+          ? "Waiting for the host to resolve the secret passage..."
+          : "Secret passage already used this turn."
+      );
+      return;
+    }
+    let passageRequestId: string | null = null;
+    if (action === "use_secret_passage") {
+      // Generate and persist the robust request identity BEFORE the POST:
+      // a refresh racing the response still correlates the host's echoed
+      // result by request id, and the waiting guard survives immediately.
+      passageRequestId = generatePassageRequestId();
+      passageRequestIdRef.current = passageRequestId;
+      passageTurnNumberRef.current = currentTurnNumber;
+      updatePassagePending(true);
+      setSecretPassageUsedThisTurn(true);
+      setActionContinueMessage("Waiting for the host to resolve the secret passage...");
+      setShowActionContinue(true);
+    }
     setActionStatus("Sending to host...");
     try {
-      await sendPlayerAction(player.id, token, "turn_action", { action });
+      const event = await sendPlayerAction(
+        player.id,
+        token,
+        "turn_action",
+        action === "use_secret_passage" ? { action, requestId: passageRequestId } : { action }
+      );
+      if (action === "reveal_clue") rememberActionEvent("reveal", event.id);
+      if (action === "use_secret_passage") rememberActionEvent("passage", event.id);
       setActionStatus(null);
       if (action === "use_secret_passage") {
-        setSecretPassageUsedThisTurn(true);
-        setActionContinueMessage("Secret passage resolved on the host screen.");
-        setShowActionContinue(true);
+        // The host's result snapshot may have raced ahead of this response
+        // (it was deferred, never marked seen); re-evaluate now that both
+        // identities are known so it overwrites the pending state.
+        evaluateActionResult();
       } else if (action === "reveal_clue") {
-        setActionContinueMessage("Clue revealed on the host screen.");
+        setActionContinueMessage("Listen to Ashe, then privately take the top item card from the Butler's Pantry.");
         setShowActionContinue(true);
       } else if (action === "make_suggestion") {
         setActionContinueMessage("Make your suggestion. Continue when the table resolves it.");
         setShowActionContinue(true);
       }
     } catch (err) {
+      if (action === "use_secret_passage") {
+        if (err instanceof PhoneActionRejectedError) {
+          // Definitive server rejection: no event exists, so the optimistic
+          // pending state can be rolled back and the player may retry.
+          passageRequestIdRef.current = null;
+          passageTurnNumberRef.current = null;
+          updatePassagePending(false);
+          setSecretPassageUsedThisTurn(false);
+          setShowActionContinue(false);
+          setActionContinueMessage(null);
+          setActionStatus(err.message);
+        } else {
+          // Transport/unknown failure: the event may have been created and
+          // the host may still resolve it. Keep the persisted pending state,
+          // request id, and waiting guard so the eventual snapshot settles
+          // it, and be honest about the connection.
+          setActionStatus("Connection problem — the passage request may still reach the host. Waiting for the result...");
+        }
+        return;
+      }
       setActionStatus(err instanceof Error ? err.message : "Failed to send action.");
     }
   };
@@ -558,7 +695,8 @@ export default function PhonePlayerPage({ code, onNavigate }: Props) {
     }
     setActionStatus("Submitting accusation...");
     try {
-      await sendPlayerAction(player.id, token, "accusation", accusation);
+      const event = await sendPlayerAction(player.id, token, "accusation", accusation);
+      rememberActionEvent("accusation", event.id);
       setActionStatus(null);
       setAccusation({ suspectId: "", itemId: "", locationId: "", timeId: "" });
       setTab("turn");
@@ -567,10 +705,30 @@ export default function PhonePlayerPage({ code, onNavigate }: Props) {
     }
   };
 
+  const resolveAccusationPenalty = async (resolution: "paid" | "unable") => {
+    if (!player || !token || !accusationFeedback || accusationFeedback.correct) return;
+    setActionStatus("Recording item-card payment...");
+    try {
+      await sendPlayerAction(player.id, token, "turn_action", {
+        action: "resolve_accusation_penalty",
+        resolution,
+        forEventId: lastAccusationEventIdRef.current ?? undefined,
+      });
+      setShowAccusationNotice(false);
+      setAccusationFeedback(null);
+      setActionStatus(null);
+    } catch (err) {
+      setActionStatus(err instanceof Error ? err.message : "Failed to record the item-card payment.");
+    }
+  };
+
   const handleContinueInvestigation = async () => {
     if (!player || !token) return;
     try {
-      await sendPlayerAction(player.id, token, "turn_action", { action: "continue_investigation" });
+      await sendPlayerAction(player.id, token, "turn_action", {
+        action: "continue_investigation",
+        forEventId: lastRevealEventIdRef.current ?? undefined,
+      });
     } catch {
       // Ignore failures; host can still continue manually.
     } finally {
@@ -767,8 +925,21 @@ export default function PhonePlayerPage({ code, onNavigate }: Props) {
 
   const confirmSuggestion = async () => {
     if (!player || !token) return;
+    if (suggestionCategories.length !== 3) return;
     setPendingSuggestionConfirm(false);
-    await sendAction("make_suggestion");
+    setActionStatus("Sending to host...");
+    try {
+      await sendPlayerAction(player.id, token, "turn_action", {
+        action: "make_suggestion",
+        categories: suggestionCategories,
+      });
+      setActionStatus(null);
+      setSuggestionCategories(["suspect", "item", "location"]);
+      setActionContinueMessage("Announce one physical card from each selected category. Continue after the table resolves the suggestion.");
+      setShowActionContinue(true);
+    } catch (err) {
+      setActionStatus(err instanceof Error ? err.message : "Failed to send suggestion.");
+    }
   };
 
   const confirmInterruption = async () => {
@@ -1090,6 +1261,68 @@ export default function PhonePlayerPage({ code, onNavigate }: Props) {
   );
   const leadPlayerId = sortedRoster[0]?.id;
   const playerId = player?.id;
+  // The host's authoritative LocalGame.turnCount, mirrored through the
+  // session. Turn-scoped phone state is keyed to this durable number.
+  const currentTurnNumber = session?.session.currentTurnNumber ?? null;
+
+  useEffect(() => {
+    if (!playerId) return;
+    const stored = loadActionEventIds(playerId);
+    lastRevealEventIdRef.current = stored.reveal;
+    lastAccusationEventIdRef.current = stored.accusation;
+    lastPassageEventIdRef.current = stored.passage;
+    lastActionResultSeenRef.current = null;
+    // Turn-scoped restoration (pending/used) happens in the turn-number
+    // effect once the session's durable turn number is known.
+  }, [playerId]);
+
+  useEffect(() => {
+    if (!playerId || currentTurnNumber === null) return;
+    if (lastTurnNumberRef.current === currentTurnNumber) return;
+    const firstObservation = lastTurnNumberRef.current === null;
+    lastTurnNumberRef.current = currentTurnNumber;
+
+    if (firstObservation) {
+      // Hydrate turn-scoped persisted state against the authoritative turn
+      // number: pending/used survive only a same-turn refresh; anything from
+      // an earlier turn is stale — even if the same suspect is acting again
+      // in a later round — and is cleared from persistence.
+      const stored = loadActionEventIds(playerId);
+      const restored = restorePassageState(stored, currentTurnNumber);
+      if (restored.pending) {
+        passagePendingRef.current = true;
+        setPassagePending(true);
+        passageRequestIdRef.current = stored.passageRequestId;
+        passageTurnNumberRef.current = stored.passageTurnNumber;
+        setActionContinueMessage("Waiting for the host to resolve the secret passage...");
+        setShowActionContinue(true);
+      } else if (stored.passagePending) {
+        passageRequestIdRef.current = null;
+        passageTurnNumberRef.current = null;
+        updatePassagePending(false);
+      }
+      passageUsedTurnNumberRef.current = stored.passageUsedTurnNumber;
+      if (restored.usedThisTurn) setSecretPassageUsedThisTurn(true);
+      // A result snapshot may have arrived before this hydration and been
+      // deferred (never marked seen). No further snapshot is guaranteed, so
+      // re-evaluate the retained result now that the request identity is
+      // restored.
+      evaluateActionResult();
+      return;
+    }
+
+    // Genuine turn transition: clear turn-scoped state.
+    setSecretPassageUsedThisTurn(false);
+    setPendingInspectorNote(null);
+    if (passagePendingRef.current) {
+      passageRequestIdRef.current = null;
+      passageTurnNumberRef.current = null;
+      updatePassagePending(false);
+      setShowActionContinue(false);
+      setActionContinueMessage(null);
+    }
+  }, [playerId, currentTurnNumber]);
+
   const deductionPlayers = sortedRoster.filter((entry) => entry.id !== playerId);
   const isLead = playerId ? leadPlayerId === playerId : false;
   const isPlum = player?.suspectId === "S06";
@@ -1143,12 +1376,30 @@ export default function PhonePlayerPage({ code, onNavigate }: Props) {
   };
 
   useEffect(() => {
+    // Legacy fallback for sessions without a durable turn number: keyed to
+    // the suspect. Superseded by the turn-number effect whenever the host
+    // reports currentTurnNumber.
+    if (currentTurnNumber !== null) return;
     if (lastTurnRef.current !== currentTurnSuspectId) {
-      setSecretPassageUsedThisTurn(false);
-      setPendingInspectorNote(null);
+      // Only a genuine transition between observed turns clears turn-scoped
+      // state; the first observation after a refresh must not wipe the
+      // restored passage-pending guard (a redelivered result settles it).
+      if (lastTurnRef.current !== null) {
+        setSecretPassageUsedThisTurn(false);
+        setPendingInspectorNote(null);
+        if (passagePendingRef.current) {
+          // The turn moved on while a passage result was outstanding: the
+          // pending state is stale, so clear it and its waiting toast.
+          passageRequestIdRef.current = null;
+          passageTurnNumberRef.current = null;
+          updatePassagePending(false);
+          setShowActionContinue(false);
+          setActionContinueMessage(null);
+        }
+      }
       lastTurnRef.current = currentTurnSuspectId;
     }
-  }, [currentTurnSuspectId]);
+  }, [currentTurnSuspectId, currentTurnNumber]);
 
   useEffect(() => {
     if (tab === "accusation") {
@@ -1241,14 +1492,14 @@ export default function PhonePlayerPage({ code, onNavigate }: Props) {
                 {interruptionConfirming ? "Sending..." : "Inspector Interruption"}
               </button>
             )}
-            {(showAccusationNotice || showActionContinue) && (
+            {(showAccusationNotice || showActionContinue) && !(showAccusationNotice && accusationFeedback && !accusationFeedback.correct) && (
               <button
                 type="button"
                 className="phone-end-turn"
                 onClick={handleContinueInvestigation}
                 style={plumButtonStyle}
               >
-                End Turn
+                {actionContinueMessage?.includes("secret passage") ? "Continue" : "End Turn"}
               </button>
             )}
           </div>
@@ -2104,8 +2355,35 @@ export default function PhonePlayerPage({ code, onNavigate }: Props) {
                     <div className="phone-action-card-dim" aria-hidden="true" />
                     <div className="phone-action-toast phone-action-toast-card phone-action-confirm phone-action-toast-large">
                       <div>
-                        {pendingRevealConfirm ? "Reveal the next clue?" : "Make a suggestion?"}
+                        {pendingRevealConfirm
+                          ? "Summon Ashe? Your pawn must be outside the Evidence Room. After the public testimony, privately take the top Butler's Pantry item card."
+                          : "Make a suggestion?"}
                       </div>
+                      {pendingSuggestionConfirm && (
+                        <>
+                          <div className="phone-subtitle">Include exactly three categories, then speak one physical card from each.</div>
+                          <div className="phone-button-row">
+                            {(["suspect", "item", "location", "time"] as const).map((category) => {
+                              const selected = suggestionCategories.includes(category);
+                              return (
+                                <button
+                                  key={category}
+                                  type="button"
+                                  className={`phone-button secondary ${selected ? "active" : ""}`}
+                                  aria-pressed={selected}
+                                  onClick={() => setSuggestionCategories((current) =>
+                                    current.includes(category)
+                                      ? current.filter((entry) => entry !== category)
+                                      : [...current, category]
+                                  )}
+                                >
+                                  {category === "suspect" ? "WHO" : category === "item" ? "WHAT" : category === "location" ? "WHERE" : "WHEN"}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </>
+                      )}
                       <div className="phone-button-row">
                         <button
                           type="button"
@@ -2123,6 +2401,7 @@ export default function PhonePlayerPage({ code, onNavigate }: Props) {
                           type="button"
                           className="phone-button"
                           onClick={pendingRevealConfirm ? confirmRevealClue : confirmSuggestion}
+                          disabled={pendingSuggestionConfirm && suggestionCategories.length !== 3}
                           style={plumButtonStyle}
                         >
                           Confirm
@@ -2138,6 +2417,21 @@ export default function PhonePlayerPage({ code, onNavigate }: Props) {
                     <div className="phone-action-toast phone-action-toast-card">
                       <div>{actionNoticeText}</div>
                       {actionNoticeSub && <div className="phone-subtitle">{actionNoticeSub}</div>}
+                      {showAccusationNotice && accusationFeedback && !accusationFeedback.correct && (
+                        <div className="phone-stack">
+                          <div className="phone-subtitle">
+                            Turn {4 - accusationFeedback.correctCount} item card{4 - accusationFeedback.correctCount === 1 ? "" : "s"} face up into the Evidence Room.
+                          </div>
+                          <div className="phone-button-row">
+                            <button type="button" className="phone-button" onClick={() => resolveAccusationPenalty("paid")}>
+                              Payment complete
+                            </button>
+                            <button type="button" className="phone-button ghost" onClick={() => resolveAccusationPenalty("unable")}>
+                              Cannot pay — eliminate me
+                            </button>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   </>
                 )}
@@ -2150,8 +2444,8 @@ export default function PhonePlayerPage({ code, onNavigate }: Props) {
                     disabled={!isPlayersTurn}
                     style={accentTileStyle}
                   >
-                    <div className="phone-action-title">Reveal Next Clue</div>
-                    <div className="phone-action-subtitle">Advance the investigation.</div>
+                    <div className="phone-action-title">Summon the Butler</div>
+                    <div className="phone-action-subtitle">Public testimony + private top Pantry item card. Not from the Evidence Room.</div>
                   </button>
                   <button
                     type="button"
@@ -2181,7 +2475,7 @@ export default function PhonePlayerPage({ code, onNavigate }: Props) {
                   >
                     <div className="phone-action-title">Use Secret Passage</div>
                     <div className="phone-action-subtitle">
-                      {secretPassageUsedThisTurn ? "Already used this turn." : "Risk it for a shortcut."}
+                      {secretPassageUsedThisTurn ? "Already used this turn." : "Move to the paired room, then choose one action."}
                     </div>
                   </button>
                   <button

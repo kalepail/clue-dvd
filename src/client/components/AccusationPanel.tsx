@@ -20,7 +20,7 @@ interface Props {
     itemId: string;
     locationId: string;
     timeId: string;
-  }) => Promise<{ correct: boolean; message: string; aiResponse?: string; correctCount: number; wrongCount: number }>;
+  }) => Promise<{ correct: boolean; message: string; aiResponse?: string; correctCount: number; wrongCount: number; rejected?: boolean }>;
   presetAccusation?: {
     suspectId: string;
     itemId: string;
@@ -28,6 +28,7 @@ interface Props {
     timeId: string;
   } | null;
   autoSubmit?: boolean;
+  onResolvePenalty: (resolution: "paid" | "unable") => void;
 }
 
 function AccusationCard({
@@ -76,6 +77,7 @@ export default function AccusationPanel({
   onAccuse,
   presetAccusation,
   autoSubmit = false,
+  onResolvePenalty,
 }: Props) {
   const [suspectId, setSuspectId] = useState("");
   const [itemId, setItemId] = useState("");
@@ -89,6 +91,7 @@ export default function AccusationPanel({
     aiResponse?: string;
     correctCount: number;
     wrongCount: number;
+    rejected?: boolean;
   } | null>(null);
 
   const canSubmit = suspectId && itemId && locationId && timeId && !submitting;
@@ -226,7 +229,9 @@ export default function AccusationPanel({
   const canContinue = Boolean(currentStep.value);
 
   return (
-    <Dialog open={true} onOpenChange={(open) => !open && onClose()}>
+    <Dialog open={true} onOpenChange={(open) => {
+      if (!open && (!result || result.correct || result.rejected)) onClose();
+    }}>
       <DialogContent className="sm:max-w-[900px]">
         <DialogHeader>
           <DialogTitle className="text-2xl flex items-center gap-2">
@@ -238,7 +243,16 @@ export default function AccusationPanel({
           </DialogDescription>
         </DialogHeader>
 
-        {result ? (
+        {result?.rejected ? (
+          <div className="text-center py-6 space-y-4">
+            <div className="flex items-center justify-center gap-2 text-2xl font-bold text-destructive">
+              <XCircle className="h-8 w-8" />
+              Accusation Not Allowed
+            </div>
+            <p className="text-muted-foreground">{result.message}</p>
+            <Button onClick={onClose} className="mt-4">Close</Button>
+          </div>
+        ) : result ? (
           <div className="text-center py-6 space-y-4">
             <div className={`flex items-center justify-center gap-2 text-2xl font-bold ${
               result.correct ? "text-success" : "text-destructive"
@@ -258,7 +272,7 @@ export default function AccusationPanel({
                   {result.correctCount}/4 correct
                 </p>
                 <p className="text-sm text-muted-foreground">
-                  Turn in {result.wrongCount} card{result.wrongCount === 1 ? "" : "s"} face up to the Evidence Room.
+                  Turn in {result.wrongCount} item card{result.wrongCount === 1 ? "" : "s"} face up to the Evidence Room.
                 </p>
                 <p className="text-xs text-muted-foreground">
                   Your turn is over.
@@ -270,9 +284,18 @@ export default function AccusationPanel({
                 "{result.aiResponse}"
               </div>
             )}
-            <Button onClick={onClose} className="mt-4">
-              {result.correct ? "View Solution" : "Continue Investigation"}
-            </Button>
+            {result.correct ? (
+              <Button onClick={onClose} className="mt-4">View Solution</Button>
+            ) : (
+              <div className="flex flex-col justify-center gap-2 sm:flex-row">
+                <Button onClick={() => onResolvePenalty("paid")}>
+                  I turned in {result.wrongCount} item card{result.wrongCount === 1 ? "" : "s"}
+                </Button>
+                <Button variant="outline" onClick={() => onResolvePenalty("unable")}>
+                  I cannot pay — eliminate me
+                </Button>
+              </div>
+            )}
           </div>
         ) : (
           <>

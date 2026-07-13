@@ -10,12 +10,14 @@ import {
   listPlayers,
   touchPlayer,
   updatePlayerAccusationResult,
+  updatePlayerActionResult,
   updatePlayer,
   updatePlayerInspectorNotes,
   updateSessionInspectorAvailability,
   updateSessionInterruptionStatus,
+  verifyHostToken,
 } from "./session-store";
-import { normalizeSessionCode } from "./utils";
+import { isTurnOwnedPhoneAction, normalizePassageRequestId, normalizeSessionCode } from "./utils";
 import type { PhoneEliminations, PhoneEvent, PhoneEventType, PhoneWsMessage } from "./types";
 
 const phone = new Hono<{ Bindings: CloudflareBindings }>();
@@ -53,8 +55,9 @@ const broadcastEvent = async (env: CloudflareBindings, code: string, event: Phon
 // Create a new phone session (host lobby)
 phone.post("/sessions", async (c) => {
   try {
-    const session = await createSession(c.env.DB);
-    return c.json({ session, players: [] });
+    const { session, hostToken } = await createSession(c.env.DB);
+    // hostToken is returned only here, to the creating host.
+    return c.json({ session, players: [], hostToken });
   } catch (error) {
     return c.json(
       { error: error instanceof Error ? error.message : "Failed to create session" },
@@ -92,12 +95,25 @@ phone.get("/sessions/:code/ws", async (c) => {
   );
 });
 
+// Fail-closed guard for host-only mutations: the creating host proves
+// identity with the per-session token from the X-Host-Token header.
+const rejectNonHost = async (
+  c: { env: CloudflareBindings; req: { header: (name: string) => string | undefined } },
+  code: string
+): Promise<boolean> => {
+  const authorized = await verifyHostToken(c.env.DB, code, c.req.header("x-host-token"));
+  return !authorized;
+};
+
 // Close a session (host-only action)
 phone.post("/sessions/:code/close", async (c) => {
   const code = normalizeSessionCode(c.req.param("code"));
   const session = await getSessionByCode(c.env.DB, code);
   if (!session) {
     return c.json({ error: "Session not found" }, 404);
+  }
+  if (await rejectNonHost(c, code)) {
+    return c.json({ error: "Host authorization required" }, 403);
   }
   await c.env.DB
     .prepare("UPDATE phone_sessions SET status = 'closed', updated_at = datetime('now') WHERE id = ?")
@@ -114,13 +130,18 @@ phone.post("/sessions/:code/turn", async (c) => {
   if (!session) {
     return c.json({ error: "Session not found" }, 404);
   }
+  if (await rejectNonHost(c, code)) {
+    return c.json({ error: "Host authorization required" }, 403);
+  }
   const body = await c.req
-    .json<{ suspectId?: string | null }>()
-    .catch(() => ({} as { suspectId?: string | null }));
+    .json<{ suspectId?: string | null; turnNumber?: number | null }>()
+    .catch(() => ({} as { suspectId?: string | null; turnNumber?: number | null }));
   const suspectId = typeof body.suspectId === "string" ? body.suspectId : null;
+  const turnNumber =
+    typeof body.turnNumber === "number" && Number.isFinite(body.turnNumber) ? body.turnNumber : null;
   await c.env.DB
-    .prepare("UPDATE phone_sessions SET current_turn_suspect_id = ?, updated_at = datetime('now') WHERE id = ?")
-    .bind(suspectId, session.id)
+    .prepare("UPDATE phone_sessions SET current_turn_suspect_id = ?, current_turn_number = ?, updated_at = datetime('now') WHERE id = ?")
+    .bind(suspectId, turnNumber, session.id)
     .run();
   await broadcastSessionSnapshot(c.env, code);
   return c.json({ success: true });
@@ -132,6 +153,9 @@ phone.post("/sessions/:code/accusation-result", async (c) => {
   const session = await getSessionByCode(c.env.DB, code);
   if (!session) {
     return c.json({ error: "Session not found" }, 404);
+  }
+  if (await rejectNonHost(c, code)) {
+    return c.json({ error: "Host authorization required" }, 403);
   }
   const body = await c.req
     .json<{
@@ -159,6 +183,9 @@ phone.post("/sessions/:code/notes-availability", async (c) => {
   if (!session) {
     return c.json({ error: "Session not found" }, 404);
   }
+  if (await rejectNonHost(c, code)) {
+    return c.json({ error: "Host authorization required" }, 403);
+  }
   const body = await c.req
     .json<{ note1Available?: boolean; note2Available?: boolean }>()
     .catch(() => ({} as { note1Available?: boolean; note2Available?: boolean }));
@@ -179,6 +206,9 @@ phone.post("/sessions/:code/interruption", async (c) => {
   const session = await getSessionByCode(c.env.DB, code);
   if (!session) {
     return c.json({ error: "Session not found" }, 404);
+  }
+  if (await rejectNonHost(c, code)) {
+    return c.json({ error: "Host authorization required" }, 403);
   }
   const body = await c.req
     .json<{ active?: boolean; message?: string }>()
@@ -201,6 +231,9 @@ phone.post("/sessions/:code/inspector-note", async (c) => {
   if (!session) {
     return c.json({ error: "Session not found" }, 404);
   }
+  if (await rejectNonHost(c, code)) {
+    return c.json({ error: "Host authorization required" }, 403);
+  }
   const body = await c.req
     .json<{
       suspectId?: string;
@@ -214,6 +247,35 @@ phone.post("/sessions/:code/inspector-note", async (c) => {
   }
 
   await updatePlayerInspectorNotes(c.env.DB, session.id, body.suspectId, body.noteId, body.noteText);
+  await broadcastSessionSnapshot(c.env, code);
+  return c.json({ success: true });
+});
+
+// Report a turn-action outcome to a player (host action). Mirrors the
+// accusation-result pattern: the result lands on the player row and the
+// snapshot broadcast carries it, so reconnects stay truthful.
+phone.post("/sessions/:code/action-result", async (c) => {
+  const code = normalizeSessionCode(c.req.param("code"));
+  const session = await getSessionByCode(c.env.DB, code);
+  if (!session) {
+    return c.json({ error: "Session not found" }, 404);
+  }
+  if (await rejectNonHost(c, code)) {
+    return c.json({ error: "Host authorization required" }, 403);
+  }
+  const body = await c.req
+    .json<{ suspectId?: string; action?: string; ok?: boolean; message?: string; forEventId?: number | null; requestId?: string | null }>()
+    .catch(() => ({} as { suspectId?: string; action?: string; ok?: boolean; message?: string; forEventId?: number | null; requestId?: string | null }));
+  if (!body.suspectId || typeof body.action !== "string" || typeof body.ok !== "boolean") {
+    return c.json({ error: "Invalid action result payload" }, 400);
+  }
+  await updatePlayerActionResult(c.env.DB, session.id, body.suspectId, {
+    action: body.action,
+    ok: body.ok,
+    message: typeof body.message === "string" ? body.message : "",
+    forEventId: typeof body.forEventId === "number" ? body.forEventId : null,
+    requestId: normalizePassageRequestId(body.requestId),
+  });
   await broadcastSessionSnapshot(c.env, code);
   return c.json({ success: true });
 });
@@ -339,7 +401,7 @@ phone.post("/players/:playerId/actions", async (c) => {
   }
 
   const row = await c.env.DB
-    .prepare("SELECT session_id, reconnect_token FROM phone_players WHERE id = ?")
+    .prepare("SELECT session_id, reconnect_token, suspect_id FROM phone_players WHERE id = ?")
     .bind(playerId)
     .first();
   if (!row) {
@@ -347,6 +409,16 @@ phone.post("/players/:playerId/actions", async (c) => {
   }
   if (row.reconnect_token !== body.reconnectToken) {
     return c.json({ error: "Unauthorized" }, 403);
+  }
+
+  // Turn-owned actions are rejected server-side unless the authenticated
+  // player's pawn holds the session's current turn. The host applies the
+  // same check against its local authoritative state as defense in depth.
+  if (isTurnOwnedPhoneAction(body.type, body.payload?.action)) {
+    const session = await getSessionById(c.env.DB, row.session_id as string);
+    if (!session || !session.currentTurnSuspectId || session.currentTurnSuspectId !== row.suspect_id) {
+      return c.json({ error: "It is not your detective's turn" }, 403);
+    }
   }
 
   if (
@@ -363,6 +435,12 @@ phone.post("/players/:playerId/actions", async (c) => {
     }
   }
 
+  // INVARIANT: all explicit 4xx rejections in this route (player lookup,
+  // token auth, turn ownership, lead check) occur BEFORE createEvent, so a
+  // 4xx response guarantees no event was created. A 5xx remains ambiguous —
+  // the post-create D1 work below (touchPlayer/getSession/broadcast) can
+  // throw after the event exists. The phone's PhoneActionRejectedError
+  // rollback semantics depend on this boundary.
   const event = await createEvent(
     c.env.DB,
     row.session_id as string,

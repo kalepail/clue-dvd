@@ -47,7 +47,12 @@ import {
   type RenderedMystery,
 } from "./ai-mystery-schemas";
 import { verifyClosing, verifyClueOpeningVariety, verifyClueText, verifyOpening, type TextVerification } from "./clue-verifier";
-import { callStructured, MysteryStageError, type StructuredCallResult } from "./ai-mystery-provider";
+import {
+  callStructured,
+  MysteryStageError,
+  type MysteryProviderRuntime,
+  type StructuredCallResult,
+} from "./ai-mystery-provider";
 import type { MysterySetup } from "./ai-mystery-setup";
 import { SeededRandom } from "./seeded-random";
 import { SUSPECTS } from "../data/game-elements";
@@ -91,6 +96,8 @@ type StageDebug<T> = {
   usage?: { inputTokens?: number; outputTokens?: number };
   stopReason?: string;
   strictSchema?: boolean;
+  model?: string;
+  transport?: StructuredCallResult<T>["transport"];
 };
 
 export type MysteryEngineDebug = {
@@ -126,7 +133,7 @@ export function getLastMysteryEngineDebug(): MysteryEngineDebug | null {
   return lastMysteryEngineDebug;
 }
 
-export async function generateMysteryV2(apiKey: string, params: {
+export async function generateMysteryV2(providerSource: string | MysteryProviderRuntime, params: {
   setup: MysterySetup;
   recentSignatures?: string[];
   recentCluePatternSignatures?: string[];
@@ -135,6 +142,9 @@ export async function generateMysteryV2(apiKey: string, params: {
 }): Promise<MysteryEngineResult> {
   const startedAt = Date.now();
   const provider = params.provider ?? callStructured;
+  const providerCredentials = typeof providerSource === "string"
+    ? { apiKey: providerSource }
+    : { runtime: providerSource };
   const answer: Answer = { ...params.setup.solution };
   const recentSignatures = (params.recentSignatures ?? []).filter(Boolean).slice(0, 5);
   const recentCluePatternSignatures = (params.recentCluePatternSignatures ?? []).filter(Boolean).slice(0, 5);
@@ -200,7 +210,7 @@ export async function generateMysteryV2(apiKey: string, params: {
       colorNotes: worldColorNotes(world),
     });
     const dossier = await provider({
-      apiKey,
+      ...providerCredentials,
       stage: "architect",
       ...dossierPrompt,
       toolName: "submit_case_dossier",
@@ -291,7 +301,7 @@ export async function generateMysteryV2(apiKey: string, params: {
     await emit("rendering", "Ashe is recalling the day, one testimony at a time.", 48);
     const renderPrompt = buildRenderPrompt({ dossier: dossier.value, seeds: storySeeds, fewshots });
     const render = await provider({
-      apiKey,
+      ...providerCredentials,
       stage: "renderer",
       ...renderPrompt,
       toolName: "submit_rendered_mystery",
@@ -332,7 +342,7 @@ export async function generateMysteryV2(apiKey: string, params: {
       fewshotClosings: fewshots.closings,
     });
     let closing = await provider({
-      apiKey,
+      ...providerCredentials,
       stage: "inspector",
       ...closingPrompt,
       toolName: "submit_case_closing",
@@ -396,7 +406,7 @@ export async function generateMysteryV2(apiKey: string, params: {
           });
           retryPrompt.prompt += `\n\nThe previous attempt had problems: ${entry.problems.join(" ")} Fix them.`;
           closing = await provider({
-            apiKey,
+            ...providerCredentials,
             stage: "inspector",
             ...retryPrompt,
             toolName: "submit_case_closing",
@@ -419,7 +429,14 @@ export async function generateMysteryV2(apiKey: string, params: {
             brief: `${dossier.value.occasionSummary} Describe only why everyone gathered and the social mood. Do not mention a theft, anything missing, a discovery, or an investigation, and do not name any card.`,
             allowedNames: [],
           };
-          const repaired = await repairText(provider, apiKey, openingSeed, texts.opening, entry.problems, fewshots.clues);
+          const repaired = await repairText(
+            provider,
+            providerSource,
+            openingSeed,
+            texts.opening,
+            entry.problems,
+            fewshots.clues
+          );
           repairs.push({ target: "opening", attempt: round, problems: entry.problems, before: texts.opening, after: repaired });
           texts.opening = repaired;
           continue;
@@ -440,7 +457,7 @@ export async function generateMysteryV2(apiKey: string, params: {
           : undefined;
         const repaired = await repairText(
           provider,
-          apiKey,
+          providerSource,
           seed,
           current,
           entry.problems,
@@ -580,7 +597,7 @@ function createOccasionContextBalancer(world: WorldState, openingSummary: string
 
 async function repairText(
   provider: StructuredCaller,
-  apiKey: string,
+  providerSource: string | MysteryProviderRuntime,
   seed: StorySeed,
   previousText: string,
   problems: string[],
@@ -590,7 +607,9 @@ async function repairText(
 ): Promise<string> {
   const prompt = buildClueRepairPrompt({ seed, previousText, problems, fewshotClues, earlierSceneText, comparisonText });
   const repaired = await provider({
-    apiKey,
+    ...(typeof providerSource === "string"
+      ? { apiKey: providerSource }
+      : { runtime: providerSource }),
     stage: "revision",
     ...prompt,
     toolName: "submit_repaired_text",
@@ -674,5 +693,7 @@ function toStageDebug<T>(
     usage: result.usage,
     stopReason: result.stopReason,
     strictSchema: result.strictSchema,
+    model: result.model,
+    transport: result.transport,
   };
 }

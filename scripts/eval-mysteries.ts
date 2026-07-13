@@ -5,8 +5,13 @@
  *   npm run eval:mysteries -- 120
  * Inspect one deterministic slate and save its JSON:
  *   npm run eval:mysteries -- --inspect-seed 942027
- * Full prose sampling (real Anthropic usage):
+ * Full prose sampling (Unified Billing gateway-first, direct Opus compatible):
  *   npm run eval:mysteries -- 120 --ai 3
+ * Select a configured catalog model for an A/B run:
+ *   npm run eval:mysteries -- --ai-only --ai 3 --ai-model openai/gpt-5.4
+ *
+ * Full-game provider settings are read from .dev.vars without printing
+ * credentials. Non-default models require Cloudflare REST credentials.
  *
  * The deterministic sweep is the release gate. It exercises real occasion
  * families, world retries, story recipes, the 12,100-cell solver, episode
@@ -21,11 +26,13 @@ import { requireItem, requireLocation, requireSuspect, requireTime, simulateWorl
 import { harvestFacts, type Fact } from "../src/services/fact-harvest";
 import { isNarrativeFact, locationsMaxFor, scheduleMystery, timesMaxFor, type Schedule } from "../src/services/clue-scheduler";
 import { generateMysteryV2, getLastMysteryEngineDebug } from "../src/services/ai-mystery-engine";
+import { parseEvalProviderVars, resolveEvalProviderConfig } from "../src/services/ai-mystery-eval-config";
 import { ORIGINAL_MYSTERIES } from "../src/data/original-mysteries";
 import type { Answer } from "../src/services/ai-mystery-schemas";
 
 const cliArgs = process.argv.slice(2);
 const numericFlags = new Set(["--ai", "--seed-start", "--seed-base", "--inspect-seed", "--world-attempts"]);
+const stringFlags = new Set(["--ai-model"]);
 const booleanFlags = new Set(["--ai-only", "--world-only"]);
 const positionalArgs: string[] = [];
 
@@ -36,9 +43,13 @@ for (let index = 0; index < cliArgs.length; index += 1) {
     continue;
   }
   if (booleanFlags.has(argument)) continue;
-  if (!numericFlags.has(argument)) throw new Error(`Unknown evaluation option: ${argument}`);
+  if (!numericFlags.has(argument) && !stringFlags.has(argument)) {
+    throw new Error(`Unknown evaluation option: ${argument}`);
+  }
   const value = cliArgs[index + 1];
-  if (!value || value.startsWith("--")) throw new Error(`${argument} requires a numeric value.`);
+  if (!value || value.startsWith("--")) {
+    throw new Error(`${argument} requires ${numericFlags.has(argument) ? "a numeric" : "a string"} value.`);
+  }
   index += 1;
 }
 
@@ -56,6 +67,14 @@ function numericOption(flag: string, fallback: number, minimum: number): number 
   return value;
 }
 
+function stringOption(flag: string): string | undefined {
+  const index = cliArgs.indexOf(flag);
+  if (index < 0) return undefined;
+  const value = cliArgs[index + 1]?.trim();
+  if (!value) throw new Error(`${flag} requires a non-empty string value.`);
+  return value;
+}
+
 const inspectSeedFlagIndex = cliArgs.indexOf("--inspect-seed");
 const inspectSeed = inspectSeedFlagIndex >= 0 ? numericOption("--inspect-seed", 1, 1) : null;
 const explicitSeedCount = positionalArgs[0] === undefined ? null : Number(positionalArgs[0]);
@@ -64,6 +83,7 @@ if (explicitSeedCount !== null && (!Number.isSafeInteger(explicitSeedCount) || e
 }
 const seedCount = explicitSeedCount ?? (inspectSeed === null ? 120 : 1);
 const aiCount = cliArgs.includes("--ai") ? numericOption("--ai", 2, 0) : 0;
+const aiModelOverride = stringOption("--ai-model");
 const aiOnly = cliArgs.includes("--ai-only");
 const worldOnly = cliArgs.includes("--world-only");
 const deterministicSeedStart = cliArgs.includes("--seed-start")
@@ -230,6 +250,7 @@ let answerThreadAppearances = 0;
 let expectedAnswerThreadAppearances = 0;
 let fogThreads = 0;
 let fogAtAnswerHour = 0;
+let thiefWitnessSpeakers = 0;
 let briefLanguageFailures = 0;
 const briefLanguageExamples: string[] = [];
 const missingStatementExamples: string[] = [];
@@ -367,6 +388,7 @@ for (let offset = 0; offset < (aiOnly ? 0 : seedCount); offset += 1) {
   for (const fact of selected) {
     if (fact.episodeId) bump(episodeCounts, fact.episodeId);
     if (fact.witnessVariant) bump(witnessVariants, fact.witnessVariant);
+    if (fact.kind === "witness_account" && fact.suspectIds.includes(answer.suspectId)) thiefWitnessSpeakers += 1;
     if (["claim", "witness_account", "excuse_given"].includes(fact.kind)) textureKinds.add(fact.kind);
     if (fact.threadId === "FOG" || fact.threadId === "MOTIVE") textureKinds.add(fact.threadId);
   }
@@ -414,6 +436,7 @@ if (missingStatementExamples.length > 0) console.log(`missing-statement examples
 console.log(`statement-shaped games: ${statementGames}/${ok} (${((statementGames / Math.max(1, ok)) * 100).toFixed(1)}%)`);
 console.log(`multi-fragment episode games: ${linkedEpisodeGames}/${ok} (${((linkedEpisodeGames / Math.max(1, ok)) * 100).toFixed(1)}%)`);
 console.log(`witness variants dealt: ${[...witnessVariants.entries()].map(([key, value]) => `${key}:${value}`).join(" ") || "none"}`);
+console.log(`thief as witness speaker: ${thiefWitnessSpeakers}/${[...witnessVariants.values()].reduce((sum, count) => sum + count, 0)}`);
 console.log(`featured thief: ${featuredThief}; answer-blind expectation: ${expectedFeaturedThief.toFixed(1)}`);
 console.log(`answer in suspicious side threads: ${answerThreadAppearances}; answer-blind expectation: ${expectedAnswerThreadAppearances.toFixed(1)}`);
 console.log(`fog at answer hour: ${fogAtAnswerHour}/${fogThreads} (${((fogAtAnswerHour / Math.max(1, fogThreads)) * 100).toFixed(1)}%)`);
@@ -433,11 +456,6 @@ const expectedTextures = ["claim", "witness_account", "excuse_given", "FOG", "MO
 const witnessTotal = [...witnessVariants.values()].reduce((sum, count) => sum + count, 0);
 const fabricatedWitnesses = (witnessVariants.get("fabricated_innocent_witness") ?? 0) +
   (witnessVariants.get("fabricated_thief_witness") ?? 0);
-// "Thief as witness" means the culprit is the speaker. A
-// true_thief_departure account instead has an innocent speaker who happened
-// to glimpse the culprit leave, so counting it here would measure two
-// different roles and falsely fail an otherwise healthy distribution.
-const thiefAsWitness = witnessVariants.get("fabricated_thief_witness") ?? 0;
 const perSeedGateFailed = failures.length > 0 || storyFloorFailures > 0 || spineOverlapFailures > 0 ||
   hourAuditFailures > 0 || wideButlerListFailures > 0 || briefLanguageFailures > 0;
 // Recipe balance, anti-meta symmetry, and texture/variant coverage are
@@ -450,8 +468,8 @@ const populationGateFailed = maxRecipeShare > 0.4 || statementGames / Math.max(1
   Math.abs(answerThreadAppearances - expectedAnswerThreadAppearances) > seedCount * 0.12 ||
   fogAtAnswerHour / Math.max(1, fogThreads) > 0.22 ||
   witnessVariants.size < 4 || fabricatedWitnesses / Math.max(1, witnessTotal) < 0.3 ||
-  fabricatedWitnesses / Math.max(1, witnessTotal) > 0.42 || thiefAsWitness / Math.max(1, witnessTotal) < 0.25 ||
-  thiefAsWitness / Math.max(1, witnessTotal) > 0.38;
+  fabricatedWitnesses / Math.max(1, witnessTotal) > 0.42 || thiefWitnessSpeakers / Math.max(1, witnessTotal) < 0.25 ||
+  thiefWitnessSpeakers / Math.max(1, witnessTotal) > 0.38;
 const deterministicGateFailed = perSeedGateFailed || (populationGateEnabled && populationGateFailed);
 if (deterministicGateFailed) {
   console.error(`DETERMINISTIC ACCEPTANCE FAILED${failures.length > 0 ? ` (seeds: ${[...new Set(failures)].join(", ")})` : ""}`);
@@ -467,10 +485,17 @@ console.log(`\ncorpus clue length: mean ${mean(corpusClueWords).toFixed(1)} word
 }
 
 if (aiCount > 0) {
-  const vars = readFileSync(process.env.CLUE_DVD_VARS_PATH ?? new URL("../.dev.vars", import.meta.url), "utf8");
-  const apiKey = vars.match(/ANTHROPIC_API_KEY=(.+)/)?.[1]?.trim();
-  if (!apiKey) throw new Error("No ANTHROPIC_API_KEY in .dev.vars.");
+  const varsSource = readFileSync(
+    process.env.CLUE_DVD_VARS_PATH ?? new URL("../.dev.vars", import.meta.url),
+    "utf8"
+  );
+  const providerConfig = resolveEvalProviderConfig(
+    parseEvalProviderVars(varsSource),
+    aiModelOverride
+  );
   console.log(`\n=== Full AI generations: ${aiCount} seeds ===`);
+  console.log(`configured model: ${providerConfig.configuredModel}`);
+  console.log(`initial transport: ${providerConfig.initialTransport}`);
   if (evalOutputDir) mkdirSync(evalOutputDir, { recursive: true });
   const mysterySignatures: string[] = [];
   const cluePatterns: string[] = [];
@@ -480,7 +505,7 @@ if (aiCount > 0) {
     const setup = { seed, themeId: "AI01" as const, difficulty: "expert" as const, solution: answer };
     const aiStarted = Date.now();
     try {
-      const result = await generateMysteryV2(apiKey, {
+      const result = await generateMysteryV2(providerConfig.runtime, {
         setup,
         recentSignatures: mysterySignatures,
         recentCluePatternSignatures: cluePatterns,
@@ -504,6 +529,13 @@ if (aiCount > 0) {
       for (const fact of butlerFacts) bump(kindCounts, fact.kind);
       console.log(`\n--- seed ${seed} (${((Date.now() - aiStarted) / 1000).toFixed(1)}s) ---`);
       console.log(`answer: ${JSON.stringify(answer)} worldAttempts: ${debug.schedule?.worldAttempts}`);
+      console.log(`provider stages: ${([
+        ["dossier", debug.dossier],
+        ["render", debug.render],
+        ["closing", debug.closing],
+      ] as const).map(([stage, provider]) => {
+        return `${stage}=${provider?.model ?? "unknown"}/${provider?.transport ?? "unknown"}`;
+      }).join(" ")}`);
       console.log(`repairs: ${debug.repairs?.length ?? 0} unresolved: ${debug.unresolvedProblems?.length ?? 0}`);
       console.log(`clue length mean: ${mean(clueWords).toFixed(1)} words`);
       console.log(`narrative Butler clues: ${narrativeButler}/10; kinds: ${[...kindCounts.entries()].map(([kind, count]) => `${kind}:${count}`).join(" ")}`);

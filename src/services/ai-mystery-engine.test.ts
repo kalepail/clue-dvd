@@ -127,6 +127,8 @@ function buildMockProvider(overrides?: {
       usage: { inputTokens: 10, outputTokens: 10 },
       stopReason: "tool_use",
       strictSchema: true,
+      model: params.runtime?.model ?? "claude-opus-4-8",
+      transport: params.runtime ? "cloudflare-binding" : "anthropic-direct",
     };
   });
   return { provider: provider as unknown as typeof callStructured, calls };
@@ -154,6 +156,31 @@ describe("world-first AI mystery engine V3", () => {
     expect(result.cluePatternSignature).toContain("openers:");
     expect(result.closing).toContain(answerNames.suspect);
     expect(progress.at(-1)).toBe("complete");
+  });
+
+  it("passes a Cloudflare runtime through every V3.1 model call", async () => {
+    const { provider, calls } = buildMockProvider();
+    const runtime = {
+      model: "anthropic/claude-opus-4.8",
+      gatewayId: "default",
+      ai: { run: vi.fn(async () => ({})) },
+      anthropicApiKey: "fallback-key",
+    };
+    await generateMysteryV2(runtime, {
+      setup,
+      provider,
+      recentCluePatternSignatures: ["pattern-one", "pattern-two"],
+    });
+
+    expect(calls).toHaveLength(3);
+    expect(calls.every((call) => call.runtime === runtime)).toBe(true);
+    expect(calls.every((call) => call.apiKey === undefined)).toBe(true);
+    expect(getLastMysteryEngineDebug()?.setup.recentCluePatternSignatures)
+      .toEqual(["pattern-one", "pattern-two"]);
+    expect(getLastMysteryEngineDebug()?.dossier).toMatchObject({
+      model: "anthropic/claude-opus-4.8",
+      transport: "cloudflare-binding",
+    });
   });
 
   it("keeps the dossier and render prompts answer-blind", async () => {

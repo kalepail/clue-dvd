@@ -5,6 +5,8 @@ export interface PhoneSession {
   code: string;
   status: PhoneSessionStatus;
   currentTurnSuspectId?: string | null;
+  /** Host's authoritative LocalGame.turnCount; durable across rounds. */
+  currentTurnNumber?: number | null;
   note1Available?: boolean;
   note2Available?: boolean;
   interruptionActive?: boolean;
@@ -33,6 +35,16 @@ export interface PhonePlayer {
   lastAccusationResult?: {
     correct: boolean;
     correctCount: number;
+    updatedAt: string;
+  } | null;
+  /** Host-reported outcome of this player's last physical turn action. */
+  lastActionResult?: {
+    action: string;
+    ok: boolean;
+    message: string;
+    forEventId: number | null;
+    /** Echo of the phone's client-generated request id, when provided. */
+    requestId: string | null;
     updatedAt: string;
   } | null;
   createdAt: string;

@@ -8,8 +8,10 @@ import type {
 } from "./types";
 import {
   emptyEliminations,
+  generateHostToken,
   generateReconnectToken,
   generateSessionCode,
+  hostTokenMatches,
   normalizeSessionCode,
 } from "./utils";
 
@@ -21,6 +23,10 @@ function rowToSession(row: Record<string, string>): PhoneSession {
     code: row.code,
     status: row.status as PhoneSessionStatus,
     currentTurnSuspectId: row.current_turn_suspect_id ?? null,
+    currentTurnNumber:
+      row.current_turn_number === null || row.current_turn_number === undefined
+        ? null
+        : Number(row.current_turn_number),
     note1Available: row.note1_available ? Number(row.note1_available) === 1 : false,
     note2Available: row.note2_available ? Number(row.note2_available) === 1 : false,
     interruptionActive: row.interruption_active ? Number(row.interruption_active) === 1 : false,
@@ -47,6 +53,7 @@ function rowToPlayer(row: Record<string, string>): PhonePlayer {
           updatedAt: lastAccusationUpdated,
         }
       : null;
+  const lastActionResult = parseActionResult(row.last_action_result);
   return {
     id: row.id,
     sessionId: row.session_id,
@@ -58,9 +65,28 @@ function rowToPlayer(row: Record<string, string>): PhonePlayer {
     inspectorNotes,
     inspectorNoteTexts,
     lastAccusationResult: lastAccusation,
+    lastActionResult,
     createdAt: row.created_at,
     lastSeenAt: row.last_seen_at,
   };
+}
+
+function parseActionResult(value: string | null | undefined): PhonePlayer["lastActionResult"] {
+  if (!value) return null;
+  try {
+    const parsed = JSON.parse(value) as NonNullable<PhonePlayer["lastActionResult"]>;
+    if (!parsed || typeof parsed !== "object" || typeof parsed.action !== "string") return null;
+    return {
+      action: parsed.action,
+      ok: Boolean(parsed.ok),
+      message: typeof parsed.message === "string" ? parsed.message : "",
+      forEventId: typeof parsed.forEventId === "number" ? parsed.forEventId : null,
+      requestId: typeof parsed.requestId === "string" ? parsed.requestId : null,
+      updatedAt: typeof parsed.updatedAt === "string" ? parsed.updatedAt : "",
+    };
+  } catch {
+    return null;
+  }
 }
 
 function parseEliminations(value: string | null): PhoneEliminations {
@@ -115,7 +141,9 @@ function serializeInspectorNoteTexts(value: Record<string, string>): string {
   return JSON.stringify(value ?? {});
 }
 
-export async function createSession(db: D1Database): Promise<PhoneSession> {
+export async function createSession(
+  db: D1Database
+): Promise<{ session: PhoneSession; hostToken: string }> {
   let attempts = 0;
   while (attempts < 20) {
     const code = generateSessionCode(4);
@@ -125,17 +153,39 @@ export async function createSession(db: D1Database): Promise<PhoneSession> {
       continue;
     }
     const id = crypto.randomUUID();
+    const hostToken = generateHostToken();
     await db
       .prepare(
-        "INSERT INTO phone_sessions (id, code, status) VALUES (?, ?, ?)"
+        "INSERT INTO phone_sessions (id, code, status, host_token) VALUES (?, ?, ?, ?)"
       )
-      .bind(id, code, DEFAULT_STATUS)
+      .bind(id, code, DEFAULT_STATUS, hostToken)
       .run();
     const row = await db.prepare("SELECT * FROM phone_sessions WHERE id = ?").bind(id).first();
-    if (row) return rowToSession(row as Record<string, string>);
+    // The host token is returned once to the creating host and is never part
+    // of PhoneSession, so snapshots and logs cannot leak it.
+    if (row) return { session: rowToSession(row as Record<string, string>), hostToken };
     attempts += 1;
   }
   throw new Error("Failed to create a new session code");
+}
+
+/**
+ * Verifies a host-only mutation. Fail-closed: a missing session, a session
+ * without an issued token (pre-migration), a missing token, and a wrong
+ * token all reject.
+ */
+export async function verifyHostToken(
+  db: D1Database,
+  code: string,
+  hostToken: unknown
+): Promise<boolean> {
+  const normalized = normalizeSessionCode(code);
+  const row = await db
+    .prepare("SELECT host_token FROM phone_sessions WHERE code = ?")
+    .bind(normalized)
+    .first();
+  if (!row) return false;
+  return hostTokenMatches((row as { host_token: string | null }).host_token, hostToken);
 }
 
 export async function getSessionByCode(
@@ -299,6 +349,21 @@ export async function updatePlayerAccusationResult(
       "UPDATE phone_players SET last_accusation_correct = ?, last_accusation_correct_count = ?, last_accusation_at = datetime('now') WHERE session_id = ? AND suspect_id = ?"
     )
     .bind(result.correct ? 1 : 0, result.correctCount, sessionId, suspectId)
+    .run();
+}
+
+export async function updatePlayerActionResult(
+  db: D1Database,
+  sessionId: string,
+  suspectId: string,
+  result: { action: string; ok: boolean; message: string; forEventId: number | null; requestId: string | null }
+): Promise<void> {
+  const record = JSON.stringify({ ...result, updatedAt: new Date().toISOString() });
+  await db
+    .prepare(
+      "UPDATE phone_players SET last_action_result = ? WHERE session_id = ? AND suspect_id = ?"
+    )
+    .bind(record, sessionId, suspectId)
     .run();
 }
 

@@ -91,6 +91,22 @@ export default function GameHistory({ gameId, maxItems, compact = false }: Props
           borderColor: "border-blue-500/40",
           label: "Clue Revealed",
         };
+      case "pantry_draw_acknowledged":
+        return {
+          icon: <CheckCircle className="h-4 w-4" />,
+          color: "text-amber-300",
+          bgColor: "bg-amber-500/10",
+          borderColor: "border-amber-500/40",
+          label: "Pantry Draw Confirmed",
+        };
+      case "suggestion_made":
+        return {
+          icon: <MessageCircle className="h-4 w-4" />,
+          color: "text-cyan-300",
+          bgColor: "bg-cyan-500/10",
+          borderColor: "border-cyan-500/40",
+          label: "Suggestion Resolved",
+        };
       case "accusation_made":
         return {
           icon: <AlertTriangle className="h-4 w-4" />,
@@ -226,6 +242,15 @@ export default function GameHistory({ gameId, maxItems, compact = false }: Props
     // Speaker is already shown in the header via action.actor, so no need to duplicate
     if (action.actionType === "clue_revealed" && details.clueText) {
       return { text: String(details.clueText), meta: undefined };
+    }
+
+    if (action.actionType === "pantry_draw_acknowledged") {
+      return { text: "The summoner privately took the top Butler's Pantry item card.", meta: undefined };
+    }
+
+    if (action.actionType === "suggestion_made") {
+      const categories = Array.isArray(details.categories) ? details.categories.join(", ") : "three categories";
+      return { text: `The table resolved a suggestion using ${categories}. Card identities stayed at the table.`, meta: undefined };
     }
 
     // For accusations, format nicely

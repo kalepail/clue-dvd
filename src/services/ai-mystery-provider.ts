@@ -1,6 +1,26 @@
 import type { z } from "zod/v4";
 
 export const AI_MYSTERY_MODEL = "claude-opus-4-8";
+export const DEFAULT_AI_MYSTERY_MODEL = "anthropic/claude-opus-4.8";
+
+/**
+ * Models available for runtime configuration and comparison. Presence in this
+ * catalog does not guarantee that a model is enabled for a given account.
+ */
+export const AI_MYSTERY_MODEL_CATALOG = [
+  "anthropic/claude-opus-4.8",
+  "anthropic/claude-sonnet-5",
+  "openai/gpt-5.6-luna",
+  "openai/gpt-5.6-terra",
+  "openai/gpt-5.6-sol",
+  "openai/gpt-5.4",
+  "xai/grok-4.3",
+  "@cf/openai/gpt-oss-120b",
+  "@cf/moonshotai/kimi-k2.6",
+  "@cf/meta/llama-3.3-70b-instruct-fp8-fast",
+  "@cf/qwen/qwen3-30b-a3b-fp8",
+] as const;
+
 const ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages";
 const RETRYABLE_STATUSES = new Set([429, 500, 502, 503, 529]);
 
@@ -10,6 +30,38 @@ export type MysteryStage =
   | "inspector"
   | "audit"
   | "revision";
+
+export type MysteryReasoningEffort = "none" | "low" | "medium" | "high";
+
+type CloudflareAiBinding = {
+  run: (
+    model: string,
+    input: Record<string, unknown>,
+    options?: Record<string, unknown>
+  ) => Promise<unknown>;
+};
+
+export type MysteryProviderRuntime = {
+  model: string;
+  gatewayId: string;
+  reasoningEffort?: MysteryReasoningEffort;
+  ai?: CloudflareAiBinding;
+  accountId?: string;
+  gatewayToken?: string;
+  anthropicApiKey?: string;
+};
+
+export function mysteryProviderRuntimeFromEnv(env: Record<string, unknown>): MysteryProviderRuntime {
+  return {
+    model: nonEmptyString(env.AI_MYSTERY_MODEL) ?? DEFAULT_AI_MYSTERY_MODEL,
+    gatewayId: nonEmptyString(env.AI_GATEWAY_ID) ?? "default",
+    reasoningEffort: configuredReasoningEffort(env.AI_MYSTERY_REASONING_EFFORT),
+    ai: isAiBinding(env.AI) ? env.AI : undefined,
+    accountId: nonEmptyString(env.CLOUDFLARE_ACCOUNT_ID),
+    gatewayToken: nonEmptyString(env.AI_GATEWAY_TOKEN),
+    anthropicApiKey: nonEmptyString(env.ANTHROPIC_API_KEY),
+  };
+}
 
 export class MysteryStageError extends Error {
   constructor(
@@ -30,44 +82,13 @@ export type StructuredCallResult<T> = {
   usage?: { inputTokens?: number; outputTokens?: number };
   stopReason?: string;
   strictSchema?: boolean;
+  model?: string;
+  transport?: "anthropic-direct" | "cloudflare-binding" | "cloudflare-rest";
 };
 
-/**
- * Anthropic occasionally returns typography escapes as literal text inside a
- * tool string (for example the six characters `\\u2014`) instead of decoding
- * them to punctuation.  Because this happens below the prompt layer, clean it
- * once at the provider boundary before any schema, verifier, or renderer sees
- * the value.
- */
-const TYPOGRAPHY_ESCAPES: Record<string, string> = {
-  "2013": "–",
-  "2014": "—",
-  "2018": "‘",
-  "2019": "’",
-  "201c": "“",
-  "201d": "”",
-  "2026": "…",
-  "00a0": " ",
-};
-
-function normalizeStructuredTypography(value: unknown): unknown {
-  if (typeof value === "string") {
-    return value.replace(/\\u(2013|2014|2018|2019|201c|201d|2026|00a0)/gi, (_match, code: string) =>
-      TYPOGRAPHY_ESCAPES[code.toLowerCase()] ?? _match
-    );
-  }
-  if (Array.isArray(value)) return value.map(normalizeStructuredTypography);
-  if (value && typeof value === "object") {
-    return Object.fromEntries(
-      Object.entries(value as Record<string, unknown>)
-        .map(([key, entry]) => [key, normalizeStructuredTypography(entry)])
-    );
-  }
-  return value;
-}
-
-export async function callStructured<T>(params: {
-  apiKey: string;
+type StructuredCallParams<T> = {
+  apiKey?: string;
+  runtime?: MysteryProviderRuntime;
   stage: MysteryStage;
   system: string;
   prompt: string;
@@ -78,7 +99,34 @@ export async function callStructured<T>(params: {
   maxTokens: number;
   allowNonStrictFallback?: boolean;
   fetchImpl?: typeof fetch;
-}): Promise<StructuredCallResult<T>> {
+};
+
+export async function callStructured<T>(params: StructuredCallParams<T>): Promise<StructuredCallResult<T>> {
+  if (params.runtime && hasCloudflareTransport(params.runtime)) {
+    try {
+      return await callCloudflareStructured(
+        params as StructuredCallParams<T> & { runtime: MysteryProviderRuntime }
+      );
+    } catch (error) {
+      if (!canUseDirectAnthropicFallback(params.runtime)) throw error;
+      return callAnthropicStructured({ ...params, apiKey: params.runtime.anthropicApiKey });
+    }
+  }
+  const apiKey = params.runtime
+    ? canUseDirectAnthropicFallback(params.runtime)
+      ? params.runtime.anthropicApiKey
+      : undefined
+    : params.apiKey;
+  if (apiKey) return callAnthropicStructured({ ...params, apiKey });
+  throw new MysteryStageError(
+    params.stage,
+    "No Cloudflare AI transport or direct Anthropic credentials were configured."
+  );
+}
+
+async function callAnthropicStructured<T>(
+  params: StructuredCallParams<T> & { apiKey: string }
+): Promise<StructuredCallResult<T>> {
   const fetchImpl = params.fetchImpl ?? fetch;
   const startedAt = Date.now();
   let lastError = "Unknown provider failure";
@@ -110,7 +158,7 @@ export async function callStructured<T>(params: {
         }),
       });
     } catch (error) {
-      lastError = error instanceof Error ? error.message : "Network request failed";
+      lastError = errorText(error);
       if (attempt < 2) {
         await waitForRetry(attempt);
         continue;
@@ -148,14 +196,7 @@ export async function callStructured<T>(params: {
       stop_reason?: string;
       usage?: { input_tokens?: number; output_tokens?: number };
     };
-    if (data.stop_reason === "max_tokens") {
-      throw new MysteryStageError(
-        params.stage,
-        `Model reached the ${params.maxTokens}-token output limit before completing ${params.toolName}.`,
-        undefined,
-        JSON.stringify(data, null, 2)
-      );
-    }
+    if (data.stop_reason === "max_tokens") throw tokenLimitError(params, data);
     if (data.stop_reason === "refusal") {
       throw new MysteryStageError(
         params.stage,
@@ -169,44 +210,441 @@ export async function callStructured<T>(params: {
       (content) => content.type === "tool_use" && content.name === params.toolName
     )?.input;
 
-    if (toolInput === undefined) {
-      throw new MysteryStageError(
-        params.stage,
-        `Model did not call ${params.toolName}.`,
-        undefined,
-        JSON.stringify(data, null, 2)
-      );
-    }
-
-    const normalizedToolInput = normalizeStructuredTypography(toolInput);
-    const parsed = params.outputSchema.safeParse(normalizedToolInput);
-    if (!parsed.success) {
-      const issueText = parsed.error.issues
-        .slice(0, 8)
-        .map((issue) => `${issue.path.join(".") || "output"}: ${issue.message}`)
-        .join("; ");
-      throw new MysteryStageError(
-        params.stage,
-        `Structured output failed validation: ${issueText}`,
-        undefined,
-        JSON.stringify(normalizedToolInput, null, 2)
-      );
-    }
-
-    return {
-      value: parsed.data,
-      raw: JSON.stringify(normalizedToolInput, null, 2),
-      durationMs: Date.now() - startedAt,
+    return validateStructuredResult(params, {
+      toolInput,
+      rawEnvelope: data,
+      startedAt,
       usage: {
         inputTokens: data.usage?.input_tokens,
         outputTokens: data.usage?.output_tokens,
       },
       stopReason: data.stop_reason,
       strictSchema,
-    };
+      model: AI_MYSTERY_MODEL,
+      transport: "anthropic-direct",
+    });
   }
 
   throw new MysteryStageError(params.stage, lastError, lastStatus);
+}
+
+async function callCloudflareStructured<T>(
+  params: StructuredCallParams<T> & { runtime: MysteryProviderRuntime }
+): Promise<StructuredCallResult<T>> {
+  const startedAt = Date.now();
+  let lastError = "Unknown Cloudflare AI failure";
+  let lastStatus: number | undefined;
+  const input = cloudflareInput(params);
+
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    let envelope: unknown;
+    let transport: StructuredCallResult<T>["transport"];
+    try {
+      if (params.runtime.ai) {
+        try {
+          envelope = await params.runtime.ai.run(params.runtime.model, input, {
+            gateway: {
+              id: params.runtime.gatewayId,
+              metadata: { stage: params.stage, tool: params.toolName, suite: "clue-dvd" },
+              collectLog: true,
+            },
+          });
+          transport = "cloudflare-binding";
+        } catch (bindingError) {
+          if (isPermanentCloudflareError(bindingError)) throw bindingError;
+          if (!hasCloudflareRestCredentials(params.runtime)) throw bindingError;
+          const rest = await callCloudflareRest(params, input);
+          envelope = rest.envelope;
+          lastStatus = rest.status;
+          transport = "cloudflare-rest";
+        }
+      } else {
+        const rest = await callCloudflareRest(params, input);
+        envelope = rest.envelope;
+        lastStatus = rest.status;
+        transport = "cloudflare-rest";
+      }
+    } catch (error) {
+      const status = cloudflareErrorStatus(error);
+      lastStatus = status;
+      lastError = errorText(error);
+      if (!isPermanentCloudflareError(error) && isRetryableCloudflareError(status) && attempt < 2) {
+        await waitForRetry(attempt);
+        continue;
+      }
+      throw new MysteryStageError(params.stage, lastError, status, rawError(error));
+    }
+
+    const normalized = unwrapCloudflareEnvelope(envelope);
+    const stopReason = cloudflareStopReason(normalized);
+    if (stopReason === "length" || stopReason === "max_tokens" || stopReason === "max_output_tokens") {
+      throw tokenLimitError(params, normalized);
+    }
+    if (stopReason === "refusal") {
+      throw new MysteryStageError(
+        params.stage,
+        `Model refused while producing ${params.toolName}.`,
+        undefined,
+        JSON.stringify(normalized, null, 2)
+      );
+    }
+    const toolInput = cloudflareToolInput(normalized, params.toolName);
+    return validateStructuredResult(params, {
+      toolInput,
+      rawEnvelope: normalized,
+      startedAt,
+      usage: cloudflareUsage(normalized),
+      stopReason,
+      strictSchema: cloudflareUsesStrictSchema(params.runtime.model),
+      model: params.runtime.model,
+      transport,
+    });
+  }
+
+  throw new MysteryStageError(params.stage, lastError, lastStatus);
+}
+
+function cloudflareInput<T>(
+  params: StructuredCallParams<T> & { runtime: MysteryProviderRuntime }
+): Record<string, unknown> {
+  if (params.runtime.model.startsWith("anthropic/")) {
+    return {
+      max_tokens: params.maxTokens,
+      system: params.system,
+      messages: [{ role: "user", content: params.prompt }],
+      tools: [{
+        name: params.toolName,
+        description: params.toolDescription,
+        strict: true,
+        input_schema: params.inputSchema,
+      }],
+      tool_choice: { type: "tool", name: params.toolName },
+    };
+  }
+
+  if (params.runtime.model.startsWith("openai/")) {
+    const reasoning = params.runtime.reasoningEffort && params.runtime.reasoningEffort !== "none"
+      ? { effort: params.runtime.reasoningEffort }
+      : undefined;
+    return {
+      instructions: params.system,
+      input: params.prompt,
+      max_output_tokens: params.maxTokens,
+      tools: [{
+        type: "function",
+        name: params.toolName,
+        description: params.toolDescription,
+        parameters: params.inputSchema,
+        strict: true,
+      }],
+      tool_choice: { type: "function", name: params.toolName },
+      ...(reasoning ? { reasoning } : {}),
+    };
+  }
+
+  const reasoningEffort = !params.runtime.model.startsWith("@cf/") &&
+    params.runtime.reasoningEffort &&
+    params.runtime.reasoningEffort !== "none"
+    ? params.runtime.reasoningEffort
+    : undefined;
+  return {
+    messages: [
+      { role: "system", content: params.system },
+      { role: "user", content: params.prompt },
+    ],
+    tools: [{
+      type: "function",
+      function: {
+        name: params.toolName,
+        description: params.toolDescription,
+        parameters: params.inputSchema,
+      },
+    }],
+    tool_choice: { type: "function", function: { name: params.toolName } },
+    max_tokens: params.maxTokens,
+    ...(reasoningEffort ? { reasoning_effort: reasoningEffort } : {}),
+  };
+}
+
+class CloudflareHttpError extends Error {
+  constructor(public readonly status: number, public readonly body: string) {
+    super(`Cloudflare AI request failed (${status}): ${body}`);
+  }
+}
+
+async function callCloudflareRest<T>(
+  params: StructuredCallParams<T> & { runtime: MysteryProviderRuntime },
+  input: Record<string, unknown>
+): Promise<{ envelope: unknown; status: number }> {
+  if (!params.runtime.accountId || !params.runtime.gatewayToken) {
+    throw new Error("Cloudflare REST fallback requires an account ID and gateway token.");
+  }
+  const fetchImpl = params.fetchImpl ?? fetch;
+  const response = await fetchImpl(
+    `https://api.cloudflare.com/client/v4/accounts/${params.runtime.accountId}/ai/run`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${params.runtime.gatewayToken}`,
+        "Content-Type": "application/json",
+        "cf-aig-gateway-id": params.runtime.gatewayId,
+        "cf-aig-collect-log": "true",
+        "cf-aig-metadata": JSON.stringify({
+          stage: params.stage,
+          tool: params.toolName,
+          suite: "clue-dvd",
+        }),
+      },
+      body: JSON.stringify({
+        model: params.runtime.model,
+        input,
+      }),
+    }
+  );
+  const responseText = await response.text();
+  if (!response.ok) throw new CloudflareHttpError(response.status, responseText.slice(0, 2_000));
+  try {
+    return { envelope: JSON.parse(responseText), status: response.status };
+  } catch {
+    throw new CloudflareHttpError(response.status, `Non-JSON response: ${responseText.slice(0, 500)}`);
+  }
+}
+
+function validateStructuredResult<T>(
+  params: StructuredCallParams<T>,
+  result: {
+    toolInput: unknown;
+    rawEnvelope: unknown;
+    startedAt: number;
+    usage?: StructuredCallResult<T>["usage"];
+    stopReason?: string;
+    strictSchema: boolean;
+    model: string;
+    transport: StructuredCallResult<T>["transport"];
+  }
+): StructuredCallResult<T> {
+  if (result.toolInput === undefined) {
+    throw new MysteryStageError(
+      params.stage,
+      `Model did not call ${params.toolName}.`,
+      undefined,
+      JSON.stringify(result.rawEnvelope, null, 2)
+    );
+  }
+
+  const normalizedToolInput = normalizeStructuredTypography(result.toolInput);
+  const parsed = params.outputSchema.safeParse(normalizedToolInput);
+  if (!parsed.success) {
+    const issueText = parsed.error.issues
+      .slice(0, 8)
+      .map((issue) => `${issue.path.join(".") || "output"}: ${issue.message}`)
+      .join("; ");
+    throw new MysteryStageError(
+      params.stage,
+      `Structured output failed validation: ${issueText}`,
+      undefined,
+      JSON.stringify(normalizedToolInput, null, 2)
+    );
+  }
+  return {
+    value: parsed.data,
+    raw: JSON.stringify(normalizedToolInput, null, 2),
+    durationMs: Date.now() - result.startedAt,
+    usage: result.usage,
+    stopReason: result.stopReason,
+    strictSchema: result.strictSchema,
+    model: result.model,
+    transport: result.transport,
+  };
+}
+
+function unwrapCloudflareEnvelope(value: unknown): Record<string, unknown> {
+  if (!value || typeof value !== "object") throw new Error("Cloudflare AI returned a non-object response.");
+  const object = value as Record<string, unknown>;
+  if (object.success === false) {
+    throw new Error(`Cloudflare AI returned an error: ${JSON.stringify(object.errors ?? object)}`);
+  }
+  return object.result && typeof object.result === "object"
+    ? object.result as Record<string, unknown>
+    : object;
+}
+
+function cloudflareToolInput(value: Record<string, unknown>, toolName: string): unknown {
+  const anthropicContent = Array.isArray(value.content) ? value.content : [];
+  for (const candidate of anthropicContent) {
+    if (!candidate || typeof candidate !== "object") continue;
+    const block = candidate as Record<string, unknown>;
+    if (block.type === "tool_use" && block.name === toolName) return block.input;
+  }
+
+  const responsesOutput = Array.isArray(value.output) ? value.output : [];
+  for (const candidate of responsesOutput) {
+    if (!candidate || typeof candidate !== "object") continue;
+    const item = candidate as Record<string, unknown>;
+    if (item.type === "function_call" && item.name === toolName) return parseToolArguments(item.arguments);
+  }
+
+  const directCalls = Array.isArray(value.tool_calls) ? value.tool_calls : [];
+  const choices = Array.isArray(value.choices) ? value.choices : [];
+  const firstChoice = choices[0] && typeof choices[0] === "object"
+    ? choices[0] as Record<string, unknown>
+    : undefined;
+  const message = firstChoice?.message && typeof firstChoice.message === "object"
+    ? firstChoice.message as Record<string, unknown>
+    : undefined;
+  const choiceCalls = Array.isArray(message?.tool_calls) ? message.tool_calls : [];
+  for (const candidate of [...directCalls, ...choiceCalls]) {
+    if (!candidate || typeof candidate !== "object") continue;
+    const call = candidate as Record<string, unknown>;
+    const fn = call.function && typeof call.function === "object"
+      ? call.function as Record<string, unknown>
+      : call;
+    if (fn.name !== toolName) continue;
+    return parseToolArguments(fn.arguments);
+  }
+  return undefined;
+}
+
+function parseToolArguments(value: unknown): unknown {
+  if (typeof value !== "string") return value;
+  try {
+    return JSON.parse(value);
+  } catch {
+    return value;
+  }
+}
+
+function cloudflareStopReason(value: Record<string, unknown>): string | undefined {
+  const choices = Array.isArray(value.choices) ? value.choices : [];
+  const firstChoice = choices[0] && typeof choices[0] === "object"
+    ? choices[0] as Record<string, unknown>
+    : undefined;
+  const incomplete = value.incomplete_details && typeof value.incomplete_details === "object"
+    ? value.incomplete_details as Record<string, unknown>
+    : undefined;
+  return typeof firstChoice?.finish_reason === "string"
+    ? firstChoice.finish_reason
+    : typeof value.stop_reason === "string"
+      ? value.stop_reason
+      : value.status === "incomplete" && typeof incomplete?.reason === "string"
+        ? incomplete.reason
+        : typeof value.status === "string"
+          ? value.status
+          : undefined;
+}
+
+function cloudflareUsage(value: Record<string, unknown>): StructuredCallResult<unknown>["usage"] {
+  const usage = value.usage && typeof value.usage === "object"
+    ? value.usage as Record<string, unknown>
+    : undefined;
+  if (!usage) return undefined;
+  return {
+    inputTokens: numberValue(usage.prompt_tokens) ?? numberValue(usage.input_tokens),
+    outputTokens: numberValue(usage.completion_tokens) ?? numberValue(usage.output_tokens),
+  };
+}
+
+/** Normalize literal typography escapes recursively before any schema sees them. */
+function normalizeStructuredTypography(value: unknown): unknown {
+  if (typeof value === "string") {
+    return value.replace(
+      /\\u(2013|2014|2018|2019|201c|201d|2026|00a0)/gi,
+      (match, code: string) => TYPOGRAPHY_ESCAPES[code.toLowerCase()] ?? match
+    );
+  }
+  if (Array.isArray(value)) return value.map(normalizeStructuredTypography);
+  if (value && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>)
+        .map(([key, entry]) => [key, normalizeStructuredTypography(entry)])
+    );
+  }
+  return value;
+}
+
+const TYPOGRAPHY_ESCAPES: Record<string, string> = {
+  "2013": "–",
+  "2014": "—",
+  "2018": "‘",
+  "2019": "’",
+  "201c": "“",
+  "201d": "”",
+  "2026": "…",
+  "00a0": " ",
+};
+
+function tokenLimitError<T>(params: StructuredCallParams<T>, data: unknown): MysteryStageError {
+  return new MysteryStageError(
+    params.stage,
+    `Model reached the ${params.maxTokens}-token output limit before completing ${params.toolName}.`,
+    undefined,
+    JSON.stringify(data, null, 2)
+  );
+}
+
+function hasCloudflareRestCredentials(runtime: MysteryProviderRuntime): boolean {
+  return Boolean(runtime.accountId && runtime.gatewayToken);
+}
+
+function hasCloudflareTransport(runtime: MysteryProviderRuntime): boolean {
+  return Boolean(runtime.ai || hasCloudflareRestCredentials(runtime));
+}
+
+function canUseDirectAnthropicFallback(
+  runtime: MysteryProviderRuntime
+): runtime is MysteryProviderRuntime & { anthropicApiKey: string } {
+  return runtime.model === DEFAULT_AI_MYSTERY_MODEL && Boolean(runtime.anthropicApiKey);
+}
+
+function cloudflareUsesStrictSchema(model: string): boolean {
+  return model.startsWith("anthropic/") || model.startsWith("openai/");
+}
+
+function cloudflareErrorStatus(error: unknown): number | undefined {
+  if (error instanceof CloudflareHttpError) return error.status;
+  if (!error || typeof error !== "object") return undefined;
+  const status = (error as { status?: unknown }).status;
+  return typeof status === "number" && Number.isFinite(status) ? status : undefined;
+}
+
+function isRetryableCloudflareError(status: number | undefined): boolean {
+  return status === undefined || status === 408 || RETRYABLE_STATUSES.has(status);
+}
+
+function isPermanentCloudflareError(error: unknown): boolean {
+  const status = cloudflareErrorStatus(error);
+  if (status !== undefined && [400, 401, 402, 403, 404, 405, 422].includes(status)) return true;
+  return /\b(?:unauthorized|forbidden|authentication failed|invalid (?:api )?token|insufficient credits?|credit balance|billing|payment required|model (?:not found|does not exist)|unknown model|invalid[_ -]?request|bad request)\b/i
+    .test(errorText(error));
+}
+
+function isAiBinding(value: unknown): value is CloudflareAiBinding {
+  return Boolean(
+    value && typeof value === "object" && typeof (value as CloudflareAiBinding).run === "function"
+  );
+}
+
+function configuredReasoningEffort(value: unknown): MysteryReasoningEffort | undefined {
+  const effort = nonEmptyString(value);
+  return effort === "none" || effort === "low" || effort === "medium" || effort === "high"
+    ? effort
+    : undefined;
+}
+
+function nonEmptyString(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim().length > 0 ? value.trim() : undefined;
+}
+
+function numberValue(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+
+function rawError(error: unknown): string | undefined {
+  return error instanceof CloudflareHttpError ? error.body : undefined;
+}
+
+function errorText(error: unknown): string {
+  return error instanceof Error ? error.message : "Network request failed";
 }
 
 function waitForRetry(attempt: number): Promise<void> {
