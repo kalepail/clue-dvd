@@ -3,6 +3,7 @@ import { DIFFICULTIES, ITEMS, LOCATIONS, SUSPECTS, THEMES, TIMES } from "../../s
 import type { EliminationState } from "../../shared/api-types";
 import type { PhonePlayer, PhoneSessionSummary } from "../../phone/types";
 import { getSession, reconnectSession, sendPlayerAction, updatePlayer } from "./api";
+import { classifyActionResult, type TurnActionResult } from "./action-results";
 import { clearStoredPlayer, loadStoredPlayer } from "./storage";
 import {
   itemImageById,
@@ -297,6 +298,7 @@ export default function PhonePlayerPage({ code, onNavigate }: Props) {
   } | null>(null);
   const lastAccusationSeenRef = useRef<string | null>(null);
   const lastActionResultSeenRef = useRef<string | null>(null);
+  const latestActionResultRef = useRef<TurnActionResult | null>(null);
   const lastPassageEventIdRef = useRef<number | null>(null);
   const [zeroAccusationMessage, setZeroAccusationMessage] = useState<string | null>(null);
   const [oneAccusationMessage, setOneAccusationMessage] = useState<string | null>(null);
@@ -467,28 +469,9 @@ export default function PhonePlayerPage({ code, onNavigate }: Props) {
               : refreshedPlayer
           );
         }
-        if (refreshedPlayer?.lastActionResult?.updatedAt) {
-          const result = refreshedPlayer.lastActionResult;
-          const resultKey = `${result.updatedAt}:${result.forEventId ?? ""}`;
-          if (lastActionResultSeenRef.current !== resultKey) {
-            lastActionResultSeenRef.current = resultKey;
-            // Only apply results correlated to this phone's own initiating
-            // event; stale results from before a refresh are ignored.
-            if (
-              result.action === "use_secret_passage" &&
-              result.forEventId !== null &&
-              result.forEventId === lastPassageEventIdRef.current
-            ) {
-              if (result.ok) {
-                setActionContinueMessage("Secret passage resolved on the host screen. Move through the passage, then choose one action.");
-                setShowActionContinue(true);
-              } else {
-                setShowActionContinue(false);
-                setActionContinueMessage(null);
-                setActionStatus(result.message || "The secret passage was rejected by the host.");
-              }
-            }
-          }
+        if (refreshedPlayer && refreshedPlayer.lastActionResult !== undefined) {
+          latestActionResultRef.current = refreshedPlayer.lastActionResult ?? null;
+          evaluateActionResult();
         }
         if (refreshedPlayer?.lastAccusationResult?.updatedAt) {
           const lastSeen = lastAccusationSeenRef.current;
@@ -591,6 +574,30 @@ export default function PhonePlayerPage({ code, onNavigate }: Props) {
     });
   };
 
+  /**
+   * Idempotently applies the latest host-reported turn-action result. Safe to
+   * call from both the session snapshot handler and right after an action
+   * POST resolves: a result that arrives before the phone knows its own
+   * event id is deferred (not marked seen) and re-evaluated here once
+   * rememberActionEvent has stored the id.
+   */
+  const evaluateActionResult = () => {
+    const result = latestActionResultRef.current;
+    if (result?.action !== "use_secret_passage") return;
+    const verdict = classifyActionResult(result, lastPassageEventIdRef.current, lastActionResultSeenRef.current);
+    if (!verdict || verdict.decision === "defer") return;
+    lastActionResultSeenRef.current = verdict.key;
+    if (verdict.decision !== "apply") return;
+    if (result.ok) {
+      setActionContinueMessage("Secret passage resolved on the host screen. Move through the passage, then choose one action.");
+      setShowActionContinue(true);
+    } else {
+      setShowActionContinue(false);
+      setActionContinueMessage(null);
+      setActionStatus(result.message || "The secret passage was rejected by the host.");
+    }
+  };
+
   const rememberActionEvent = (kind: "reveal" | "accusation" | "passage", eventId: number) => {
     if (kind === "reveal") lastRevealEventIdRef.current = eventId;
     else if (kind === "accusation") lastAccusationEventIdRef.current = eventId;
@@ -622,6 +629,10 @@ export default function PhonePlayerPage({ code, onNavigate }: Props) {
         setSecretPassageUsedThisTurn(true);
         setActionContinueMessage("Waiting for the host to resolve the secret passage...");
         setShowActionContinue(true);
+        // The host's result snapshot may have raced ahead of this response
+        // (it was deferred, never marked seen); re-evaluate now that the
+        // initiating event id is known so it overwrites the pending state.
+        evaluateActionResult();
       } else if (action === "reveal_clue") {
         setActionContinueMessage("Listen to Ashe, then privately take the top item card from the Butler's Pantry.");
         setShowActionContinue(true);
