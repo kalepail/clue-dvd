@@ -57,6 +57,7 @@ function buildStoredGame(overrides: Record<string, unknown> = {}) {
       turnActionTakenAt: null,
       secretPassageUses: 0,
       secretPassageTurnUsedAt: null,
+      lastPhonePassageResult: null,
       interruptionCount: 0,
       nextInterruptionAtMinutes: null,
       roomsUnlocked: false,
@@ -165,6 +166,33 @@ describe("physical turn rituals", () => {
     // Movement does not consume the turn action: a suggestion still works
     store.recordSuggestion("ritual", ["suspect", "location", "time"]);
     expect(store.getGame("ritual")?.turnCount).toBe(1);
+  });
+
+  it("applies a phone-initiated passage once per source event, replaying the cached result", async () => {
+    const { game } = buildStoredGame();
+    storage.set("clue-dvd-games", JSON.stringify({ ritual: game }));
+    const store = await loadStore();
+
+    const first = store.useSecretPassageFromEvent("ritual", 77);
+    expect(first.ok).toBe(true);
+    expect(first.message).toContain("movement, not your turn action");
+    expect(store.getGame("ritual")?.secretPassageUses).toBe(1);
+
+    // Result delivery to the phone failed and the event replayed: the same
+    // cached result comes back and the movement is not applied twice.
+    const replay = store.useSecretPassageFromEvent("ritual", 77);
+    expect(replay).toEqual(first);
+    expect(store.getGame("ritual")?.secretPassageUses).toBe(1);
+    expect(
+      store.getGame("ritual")?.actions.filter((action) => action.actionType === "secret_passage")
+    ).toHaveLength(1);
+
+    // A rejection is cached and replayed the same way
+    const rejected = store.useSecretPassageFromEvent("ritual", 78);
+    expect(rejected.ok).toBe(false);
+    expect(rejected.message).toMatch(/already used/i);
+    expect(store.useSecretPassageFromEvent("ritual", 78)).toEqual(rejected);
+    expect(store.getGame("ritual")?.secretPassageUses).toBe(1);
   });
 
   it("records suggestions as three categories only, never card identities", async () => {
@@ -373,6 +401,7 @@ describe("physical turn rituals", () => {
     delete legacy.pendingPantryDrawClueNumber;
     delete legacy.pendingPantryDrawToken;
     delete legacy.pendingPantryDrawSourceEventId;
+    delete legacy.lastPhonePassageResult;
     delete legacy.eliminatedSuspectIds;
     delete legacy.pendingAccusationPenalty;
     delete legacy.turnActionTakenAt;
@@ -386,6 +415,7 @@ describe("physical turn rituals", () => {
     expect(migrated.eliminatedSuspectIds).toEqual([]);
     expect(migrated.pendingAccusationPenalty).toBeNull();
     expect(migrated.turnActionTakenAt).toBeNull();
+    expect(migrated.lastPhonePassageResult).toBeNull();
 
     // Acknowledging with nothing pending is a harmless no-op on legacy games
     store.acknowledgePantryDraw("ritual", "stale-token");

@@ -101,6 +101,14 @@ export interface LocalGame {
   // Secret passage tracking
   secretPassageUses: number;
   secretPassageTurnUsedAt: number | null;
+  // Cached outcome of the last phone-initiated passage, keyed by its source
+  // event id, so a replay after a failed result delivery re-sends the same
+  // result without applying the movement twice
+  lastPhonePassageResult: {
+    sourceEventId: number;
+    ok: boolean;
+    message: string;
+  } | null;
 
   // Inspector interruptions
   interruptionCount: number;
@@ -182,6 +190,7 @@ function loadGamesFromStorage(): Record<string, LocalGame> {
           game.pendingAccusationPenalty.sourceEventId ??= null;
         }
         game.turnActionTakenAt ??= null;
+        game.lastPhonePassageResult ??= null;
       }
       return games;
     }
@@ -387,6 +396,7 @@ export class GameStore {
       turnActionTakenAt: null,
       secretPassageUses: 0,
       secretPassageTurnUsedAt: null,
+      lastPhonePassageResult: null,
       interruptionCount: 0,
       nextInterruptionAtMinutes: null,
       roomsUnlocked: false,
@@ -427,6 +437,7 @@ export class GameStore {
     game.inspectorNoteAnnouncements = { note1: false, note2: false };
     game.solvedBy = null;
     game.secretPassageTurnUsedAt = null;
+    game.lastPhonePassageResult = null;
     game.inspectorNoteTurnUsedAt = {};
 
     const resolvedPlayers = game.players.length > 0
@@ -596,6 +607,34 @@ export class GameStore {
     saveGamesToStorage(this.games);
 
     return { outcome, description };
+  }
+
+  /**
+   * Applies a phone-initiated secret passage idempotently by its source
+   * event id. The outcome (success or rejection) is cached in the persisted
+   * game, so when result delivery to the phone fails and the event replays,
+   * the same result is returned without applying the movement twice.
+   */
+  useSecretPassageFromEvent(id: string, sourceEventId: number): { ok: boolean; message: string } {
+    const game = this.games[id];
+    if (!game) throw new Error("Game not found");
+    const cached = game.lastPhonePassageResult;
+    if (cached && cached.sourceEventId === sourceEventId) {
+      return { ok: cached.ok, message: cached.message };
+    }
+    let result: { ok: boolean; message: string };
+    try {
+      const passage = this.useSecretPassage(id);
+      result = { ok: true, message: passage.description };
+    } catch (err) {
+      result = {
+        ok: false,
+        message: err instanceof Error ? err.message : "Secret passage unavailable",
+      };
+    }
+    game.lastPhonePassageResult = { sourceEventId, ...result };
+    saveGamesToStorage(this.games);
+    return result;
   }
 
   triggerInspectorInterruption(id: string): {

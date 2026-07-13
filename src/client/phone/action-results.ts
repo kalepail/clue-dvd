@@ -44,3 +44,50 @@ export function classifyActionResult(
   if (result.forEventId === ownEventId) return { decision: "apply", key };
   return { decision: "ignore", key };
 }
+
+/**
+ * Per-player persisted record of this phone's own initiating action event
+ * ids, plus whether a passage result is still outstanding. Restoring
+ * passagePending after a refresh keeps the waiting UI up and blocks a second
+ * submission until the correlated result arrives.
+ */
+export interface StoredActionEventIds {
+  reveal: number | null;
+  accusation: number | null;
+  passage: number | null;
+  passagePending: boolean;
+}
+
+function actionEventStorageKey(playerId: string): string {
+  return `clue-dvd-phone-action-events:${playerId}`;
+}
+
+export function loadActionEventIds(playerId: string): StoredActionEventIds {
+  const empty: StoredActionEventIds = { reveal: null, accusation: null, passage: null, passagePending: false };
+  try {
+    const raw = localStorage.getItem(actionEventStorageKey(playerId));
+    if (!raw) return empty;
+    const parsed = JSON.parse(raw) as Partial<Record<keyof StoredActionEventIds, unknown>>;
+    return {
+      reveal: typeof parsed.reveal === "number" ? parsed.reveal : null,
+      accusation: typeof parsed.accusation === "number" ? parsed.accusation : null,
+      passage: typeof parsed.passage === "number" ? parsed.passage : null,
+      passagePending: parsed.passagePending === true,
+    };
+  } catch {
+    return empty;
+  }
+}
+
+export function persistActionEventIds(playerId: string, ids: StoredActionEventIds): void {
+  try {
+    localStorage.setItem(actionEventStorageKey(playerId), JSON.stringify(ids));
+  } catch {
+    // Best-effort; the host's recoverable modals remain the fallback.
+  }
+}
+
+/** A passage may not be re-submitted while used this turn or still pending. */
+export function shouldBlockPassageSubmit(usedThisTurn: boolean, passagePending: boolean): boolean {
+  return usedThisTurn || passagePending;
+}

@@ -3,7 +3,13 @@ import { DIFFICULTIES, ITEMS, LOCATIONS, SUSPECTS, THEMES, TIMES } from "../../s
 import type { EliminationState } from "../../shared/api-types";
 import type { PhonePlayer, PhoneSessionSummary } from "../../phone/types";
 import { getSession, reconnectSession, sendPlayerAction, updatePlayer } from "./api";
-import { classifyActionResult, type TurnActionResult } from "./action-results";
+import {
+  classifyActionResult,
+  loadActionEventIds,
+  persistActionEventIds,
+  shouldBlockPassageSubmit,
+  type TurnActionResult,
+} from "./action-results";
 import { clearStoredPlayer, loadStoredPlayer } from "./storage";
 import {
   itemImageById,
@@ -200,39 +206,6 @@ function storeAccusationMessageHistory(code: string, playerId: string, history: 
   }
 }
 
-function actionEventStorageKey(playerId: string): string {
-  return `clue-dvd-phone-action-events:${playerId}`;
-}
-
-interface StoredActionEventIds {
-  reveal: number | null;
-  accusation: number | null;
-  passage: number | null;
-}
-
-function loadActionEventIds(playerId: string): StoredActionEventIds {
-  try {
-    const raw = localStorage.getItem(actionEventStorageKey(playerId));
-    if (!raw) return { reveal: null, accusation: null, passage: null };
-    const parsed = JSON.parse(raw) as { reveal?: unknown; accusation?: unknown; passage?: unknown };
-    return {
-      reveal: typeof parsed.reveal === "number" ? parsed.reveal : null,
-      accusation: typeof parsed.accusation === "number" ? parsed.accusation : null,
-      passage: typeof parsed.passage === "number" ? parsed.passage : null,
-    };
-  } catch {
-    return { reveal: null, accusation: null, passage: null };
-  }
-}
-
-function persistActionEventIds(playerId: string, ids: StoredActionEventIds): void {
-  try {
-    localStorage.setItem(actionEventStorageKey(playerId), JSON.stringify(ids));
-  } catch {
-    // Best-effort; the host's recoverable modals remain the fallback.
-  }
-}
-
 function clearAccusationMessageHistory(code: string, playerId: string): void {
   localStorage.removeItem(buildAccusationMessageKey(code, playerId));
 }
@@ -300,6 +273,8 @@ export default function PhonePlayerPage({ code, onNavigate }: Props) {
   const lastActionResultSeenRef = useRef<string | null>(null);
   const latestActionResultRef = useRef<TurnActionResult | null>(null);
   const lastPassageEventIdRef = useRef<number | null>(null);
+  const [passagePending, setPassagePending] = useState(false);
+  const passagePendingRef = useRef(false);
   const [zeroAccusationMessage, setZeroAccusationMessage] = useState<string | null>(null);
   const [oneAccusationMessage, setOneAccusationMessage] = useState<string | null>(null);
   const [twoAccusationMessage, setTwoAccusationMessage] = useState<string | null>(null);
@@ -588,6 +563,8 @@ export default function PhonePlayerPage({ code, onNavigate }: Props) {
     if (!verdict || verdict.decision === "defer") return;
     lastActionResultSeenRef.current = verdict.key;
     if (verdict.decision !== "apply") return;
+    // The outstanding passage is settled either way.
+    updatePassagePending(false);
     if (result.ok) {
       setActionContinueMessage("Secret passage resolved on the host screen. Move through the passage, then choose one action.");
       setShowActionContinue(true);
@@ -598,23 +575,37 @@ export default function PhonePlayerPage({ code, onNavigate }: Props) {
     }
   };
 
+  const persistActionState = () => {
+    if (!player) return;
+    persistActionEventIds(player.id, {
+      reveal: lastRevealEventIdRef.current,
+      accusation: lastAccusationEventIdRef.current,
+      passage: lastPassageEventIdRef.current,
+      passagePending: passagePendingRef.current,
+    });
+  };
+
+  const updatePassagePending = (pending: boolean) => {
+    passagePendingRef.current = pending;
+    setPassagePending(pending);
+    persistActionState();
+  };
+
   const rememberActionEvent = (kind: "reveal" | "accusation" | "passage", eventId: number) => {
     if (kind === "reveal") lastRevealEventIdRef.current = eventId;
     else if (kind === "accusation") lastAccusationEventIdRef.current = eventId;
     else lastPassageEventIdRef.current = eventId;
-    if (player) {
-      persistActionEventIds(player.id, {
-        reveal: lastRevealEventIdRef.current,
-        accusation: lastAccusationEventIdRef.current,
-        passage: lastPassageEventIdRef.current,
-      });
-    }
+    persistActionState();
   };
 
   const sendAction = async (action: string) => {
     if (!player || !token) return;
-    if (action === "use_secret_passage" && secretPassageUsedThisTurn) {
-      setActionStatus("Secret passage already used this turn.");
+    if (action === "use_secret_passage" && shouldBlockPassageSubmit(secretPassageUsedThisTurn, passagePendingRef.current)) {
+      setActionStatus(
+        passagePendingRef.current
+          ? "Waiting for the host to resolve the secret passage..."
+          : "Secret passage already used this turn."
+      );
       return;
     }
     setActionStatus("Sending to host...");
@@ -625,8 +616,10 @@ export default function PhonePlayerPage({ code, onNavigate }: Props) {
       setActionStatus(null);
       if (action === "use_secret_passage") {
         // The HTTP event is only pending; the host reports the authoritative
-        // outcome via the action-result snapshot.
+        // outcome via the action-result snapshot. The persisted pending flag
+        // keeps the waiting UI and resubmit guard across a phone refresh.
         setSecretPassageUsedThisTurn(true);
+        updatePassagePending(true);
         setActionContinueMessage("Waiting for the host to resolve the secret passage...");
         setShowActionContinue(true);
         // The host's result snapshot may have raced ahead of this response
@@ -1227,6 +1220,16 @@ export default function PhonePlayerPage({ code, onNavigate }: Props) {
     lastRevealEventIdRef.current = stored.reveal;
     lastAccusationEventIdRef.current = stored.accusation;
     lastPassageEventIdRef.current = stored.passage;
+    if (stored.passagePending) {
+      // A refresh happened while the passage result was outstanding: restore
+      // the waiting UI and the resubmit guard until the correlated result
+      // arrives (the next snapshot re-delivers it).
+      passagePendingRef.current = true;
+      setPassagePending(true);
+      setSecretPassageUsedThisTurn(true);
+      setActionContinueMessage("Waiting for the host to resolve the secret passage...");
+      setShowActionContinue(true);
+    }
   }, [playerId]);
 
   const deductionPlayers = sortedRoster.filter((entry) => entry.id !== playerId);
@@ -1283,8 +1286,20 @@ export default function PhonePlayerPage({ code, onNavigate }: Props) {
 
   useEffect(() => {
     if (lastTurnRef.current !== currentTurnSuspectId) {
-      setSecretPassageUsedThisTurn(false);
-      setPendingInspectorNote(null);
+      // Only a genuine transition between observed turns clears turn-scoped
+      // state; the first observation after a refresh must not wipe the
+      // restored passage-pending guard (a redelivered result settles it).
+      if (lastTurnRef.current !== null) {
+        setSecretPassageUsedThisTurn(false);
+        setPendingInspectorNote(null);
+        if (passagePendingRef.current) {
+          // The turn moved on while a passage result was outstanding: the
+          // pending state is stale, so clear it and its waiting toast.
+          updatePassagePending(false);
+          setShowActionContinue(false);
+          setActionContinueMessage(null);
+        }
+      }
       lastTurnRef.current = currentTurnSuspectId;
     }
   }, [currentTurnSuspectId]);

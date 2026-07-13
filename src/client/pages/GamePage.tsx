@@ -431,16 +431,32 @@ export default function GamePage({ gameId, onNavigate, onMusicPauseChange }: Pro
           if (currentGame.status !== "in_progress") return "handled";
           const actor = authorizePhoneActor(event);
           if (!actor) return "handled";
-          const passage = handleSecretPassageRef.current();
-          if (passage.ok) setPendingPhoneContinue("use_secret_passage");
-          // Report the authoritative outcome back to the phone so a rejected
-          // duplicate shows as a failure there, never as a false success.
-          sendTurnActionResult(phoneSessionCode, actor.suspectId, {
-            action: "use_secret_passage",
-            ok: passage.ok,
-            message: passage.message,
-            forEventId: event.id,
-          }).catch(() => undefined);
+          // Idempotent by source event id: a replay after a failed result
+          // delivery re-reads the cached outcome without moving twice.
+          const isReplay = gameStore.getGame(gameId)?.lastPhonePassageResult?.sourceEventId === event.id;
+          const passage = gameStore.useSecretPassageFromEvent(gameId, event.id);
+          if (!isReplay) {
+            if (passage.ok) {
+              setSecretPassageResult({ outcome: "neutral", description: passage.message });
+              setPendingPhoneContinue("use_secret_passage");
+            } else {
+              setHostNotice(passage.message);
+            }
+            loadGameRef.current();
+          }
+          try {
+            // The result must reach the phone before this event is committed;
+            // on failure the pipeline blocks and the replay resends the
+            // cached result.
+            await sendTurnActionResult(phoneSessionCode, actor.suspectId, {
+              action: "use_secret_passage",
+              ok: passage.ok,
+              message: passage.message,
+              forEventId: event.id,
+            });
+          } catch {
+            return "retry";
+          }
           return "handled";
         }
 
