@@ -230,6 +230,7 @@ let answerThreadAppearances = 0;
 let expectedAnswerThreadAppearances = 0;
 let fogThreads = 0;
 let fogAtAnswerHour = 0;
+let thiefWitnessSpeakers = 0;
 let briefLanguageFailures = 0;
 const briefLanguageExamples: string[] = [];
 const missingStatementExamples: string[] = [];
@@ -367,6 +368,7 @@ for (let offset = 0; offset < (aiOnly ? 0 : seedCount); offset += 1) {
   for (const fact of selected) {
     if (fact.episodeId) bump(episodeCounts, fact.episodeId);
     if (fact.witnessVariant) bump(witnessVariants, fact.witnessVariant);
+    if (fact.kind === "witness_account" && fact.suspectIds.includes(answer.suspectId)) thiefWitnessSpeakers += 1;
     if (["claim", "witness_account", "excuse_given"].includes(fact.kind)) textureKinds.add(fact.kind);
     if (fact.threadId === "FOG" || fact.threadId === "MOTIVE") textureKinds.add(fact.threadId);
   }
@@ -414,6 +416,7 @@ if (missingStatementExamples.length > 0) console.log(`missing-statement examples
 console.log(`statement-shaped games: ${statementGames}/${ok} (${((statementGames / Math.max(1, ok)) * 100).toFixed(1)}%)`);
 console.log(`multi-fragment episode games: ${linkedEpisodeGames}/${ok} (${((linkedEpisodeGames / Math.max(1, ok)) * 100).toFixed(1)}%)`);
 console.log(`witness variants dealt: ${[...witnessVariants.entries()].map(([key, value]) => `${key}:${value}`).join(" ") || "none"}`);
+console.log(`thief as witness speaker: ${thiefWitnessSpeakers}/${[...witnessVariants.values()].reduce((sum, count) => sum + count, 0)}`);
 console.log(`featured thief: ${featuredThief}; answer-blind expectation: ${expectedFeaturedThief.toFixed(1)}`);
 console.log(`answer in suspicious side threads: ${answerThreadAppearances}; answer-blind expectation: ${expectedAnswerThreadAppearances.toFixed(1)}`);
 console.log(`fog at answer hour: ${fogAtAnswerHour}/${fogThreads} (${((fogAtAnswerHour / Math.max(1, fogThreads)) * 100).toFixed(1)}%)`);
@@ -433,11 +436,6 @@ const expectedTextures = ["claim", "witness_account", "excuse_given", "FOG", "MO
 const witnessTotal = [...witnessVariants.values()].reduce((sum, count) => sum + count, 0);
 const fabricatedWitnesses = (witnessVariants.get("fabricated_innocent_witness") ?? 0) +
   (witnessVariants.get("fabricated_thief_witness") ?? 0);
-// "Thief as witness" means the culprit is the speaker. A
-// true_thief_departure account instead has an innocent speaker who happened
-// to glimpse the culprit leave, so counting it here would measure two
-// different roles and falsely fail an otherwise healthy distribution.
-const thiefAsWitness = witnessVariants.get("fabricated_thief_witness") ?? 0;
 const perSeedGateFailed = failures.length > 0 || storyFloorFailures > 0 || spineOverlapFailures > 0 ||
   hourAuditFailures > 0 || wideButlerListFailures > 0 || briefLanguageFailures > 0;
 // Recipe balance, anti-meta symmetry, and texture/variant coverage are
@@ -450,8 +448,8 @@ const populationGateFailed = maxRecipeShare > 0.4 || statementGames / Math.max(1
   Math.abs(answerThreadAppearances - expectedAnswerThreadAppearances) > seedCount * 0.12 ||
   fogAtAnswerHour / Math.max(1, fogThreads) > 0.22 ||
   witnessVariants.size < 4 || fabricatedWitnesses / Math.max(1, witnessTotal) < 0.3 ||
-  fabricatedWitnesses / Math.max(1, witnessTotal) > 0.42 || thiefAsWitness / Math.max(1, witnessTotal) < 0.25 ||
-  thiefAsWitness / Math.max(1, witnessTotal) > 0.38;
+  fabricatedWitnesses / Math.max(1, witnessTotal) > 0.42 || thiefWitnessSpeakers / Math.max(1, witnessTotal) < 0.25 ||
+  thiefWitnessSpeakers / Math.max(1, witnessTotal) > 0.38;
 const deterministicGateFailed = perSeedGateFailed || (populationGateEnabled && populationGateFailed);
 if (deterministicGateFailed) {
   console.error(`DETERMINISTIC ACCEPTANCE FAILED${failures.length > 0 ? ` (seeds: ${[...new Set(failures)].join(", ")})` : ""}`);

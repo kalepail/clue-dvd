@@ -1218,7 +1218,10 @@ function buildWitnessAccounts(
     // A day with no real departure can still carry the exact same public
     // witness wrapper, but every such account is necessarily mistaken or
     // invented. Otherwise truth/fabrication is an independent texture draw.
-    const requestedFabrication = rng.nextBool(0.275);
+    // Keep the population centered inside the documented 30-42% fabricated
+    // witness band. Most fabricated accounts are spoken by the thief, so
+    // 35% also centers thief-as-witness inside its 25-38% release band.
+    const requestedFabrication = rng.nextBool(0.35);
     const truthful = !requestedFabrication && Boolean(episode.stepAway);
     const actualDeparterId = truthful ? episode.stepAway!.suspectId : null;
     const timeId = truthful ? episode.stepAway!.absentFromTimeId : rng.pick(episode.timeIds);
