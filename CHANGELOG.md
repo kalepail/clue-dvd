@@ -1,3 +1,69 @@
+07/13/26 (5)
+- Scene & Occasion V3.1 live Opus acceptance and temporal-source hardening
+        - Ran and manually audited repeated live `claude-opus-4-8` generations against their private movement grids, including targeted charity, reunion, tournament, and masquerade regressions
+        - Bound dossier gathering detail to its exact authored day beat and rejected cross-beat language, preventing Breakfast scenes from discussing completed afternoon events
+        - Made item-observation texture stage-neutral so an in-progress sighting cannot be rewritten as post-event cleanup; empty model texture now falls back to occasion-specific spine props rather than generic programmes
+        - Removed three unused dossier arrays (group activities, transition excuses, and uncertain sightings); those truths already come from deterministic occasion lore, reducing prompt/output load without reducing story supply
+        - Added exact person-scope, continuous-presence, and indoor/outdoor setting locks to story seeds and surgical repairs; the verifier now rejects invented departures, expanded companies, and calling the Fountain or Rose Garden a room
+        - Reworked recurring character motifs as explicit connective tissue and gave phrase repairs the exact comparison clue, preserving a subplot without repetitive five-word runs or repair oscillation
+        - Replaced dangling themed briefs and unsupported "several guests" item witnesses with agent-safe, movement-neutral observations; added established character pronouns and grammar checks for malformed participial fragments
+        - Hardened player-facing style: no canned Butler greetings, substantive opener reuse at most twice, no generic "the Butler" Inspector attribution, direct `took` language in closings, and no invented routes or access
+        - Final live regressions passed with no unresolved prose defects: charity seed 1000000 (5/10 narrative Butler clues), reunion seed 1001013 (7/10), and masquerade seed 1002026 (6/10); the masquerade naturally produced linked disguise, stained-cuff, witness, and alibi threads
+
+07/13/26 (4)
+- Scene & Occasion V3.1 root-level symmetry, prose, and release hardening
+        - Removed hidden answer-conditioned clue shapes: non-theft solo scenes always retain their occasion activity, fog chooses its speaker/hour answer-blind, and suspicious side threads may involve the culprit or an innocent at natural chance
+        - Replaced the forced quarrel subplot with varied occasion-native private exchanges, conflicting accounts, and prop uncertainty; no specific quarrelling mechanic is required
+        - Gave unrelated episodes distinct props and preoccupations while preserving intentional recurrence for the same episode or featured person
+        - Rebuilt witness generation so the public departure scene is selected before truth/fabrication status; kept one indistinguishable wrapper across all four variants and prevented duplicate dealt reports from one speaker
+        - Linked truthful whole-company claims to the gathering they describe, allowing testimony to continue an established scene without turning ordinary gatherings into artificial arcs
+        - Improved deterministic brief grammar for gatherings, singular item searches, continuing groups, returns, and beat phrases; added a zero-tolerance malformed-brief audit
+        - Added `--world-only` supply/symmetry auditing, robust `--inspect-seed` JSON inspection, validated CLI parsing, side-thread/fog symmetry checks, and detailed witness/step-away diagnostics
+        - Final 120-mystery release sweep: 120/120 schedules, 98.3% statement-shaped games, 100% multi-fragment episodes, largest recipe 31.7%, 34.6% fabricated dealt witnesses, 28.8% thief-as-witness, natural featured/side-thread/fog distributions, and zero fairness, leakage, overlap, or language-gate failures
+
+07/13/26 (3)
+- Scene & Occasion V3.1 real-generation hardening and connected-story pass
+        - Inspected twelve saved Opus generations plus failed drafts/repairs; added persistent deterministic and real-JSON evaluation diagnostics
+        - Added `scene_evidence` composites that fuse only causally compatible same-room/same-hour evidence into lived scenes, with source-level deduplication and exact union semantics
+        - Added rotating clearing, Inspector inspection, material-count, and same-hour-object codas so composites no longer share one bolted-on room-check structure
+        - Activated previously dormant featured-suspect props and private preoccupations in the first fragment of an episode; dense fused departure scenes intentionally omit the extra subplot
+        - Made later repetitions of a company/activity explicit return payoffs, and tied anonymous departures and attributed alibis to the occasion activity/episode they interrupt
+        - Decoupled featured casting from episode choice, motive supply, and scheduler scoring after an audit found rejection-sampling bias; motives now use a fixed thief-plus-four-innocents field
+        - Rebuilt time references into point/clause forms and authored same-beat span grammar; removed malformed combinations such as "from the preliminary trials to the height of the preliminary trials"
+        - Added semantic dedupe for component facts, presence coverage, repeated excuses, arrivals vs sleeping, and distributed item-anchor location claims
+        - Overhauled openings and closings: openings contain occasion/mood only; closings state card-vs-evidence provenance and may not invent routes, access, concealment, or anonymous-witness identities
+        - Hardened prose verification for card-name-safe repetition, filler/apology openings, "staff" wording, complex-scene length, and unsupported closing details; unresolved repairs now fail clearly
+        - Made recent structural memory a soft preference with systematic recipe fallback, and raised the shared simulated-day search budget to 240 without weakening any fair-play window
+        - Release sweep: 120/120 schedules; 98.3% statement-shaped; 95.8% multi-fragment episodes; fabricated witness 34.6%; thief-as-witness 27.2%; featured thief 55 vs 50.1 expected; zero logic/style gate failures
+
+07/13/26 (2)
+- Scene & Occasion Phases 3-4: story-first scheduling, structural memory, and release measurement
+        - Replaced elimination-first selection with a two-pass scheduler: an answer-blind 3-5 fragment story recipe is reserved first, then the 12,100-cell solver restores every hard checkpoint around it
+        - Added witness-centric, statement-driven, motive-and-fog, and continuing-scene recipes; no recipe owns a reveal position and no Inspector-only fact gate remains
+        - Added episode coherence, setup-before-continuation ordering, a three-fragment-per-episode ceiling, featured-cast texture preference, and least-essential skeleton repair before world retry
+        - Linked renderer and repair prompts to earlier testimony in the same episode so follow-up clues continue a lived scene instead of recapping it
+        - Added `cluePatternSignature` (recipe, kind mix, episode shapes, opening styles) to engine output, scenario metadata, recent-game requests, and diagnostics
+        - Raised the shared world-attempt budget to 120 and restored hard windows: >=4 candidates at reveal 6, >=3 at reveal 9, hybrid final ambiguity for all four categories
+        - Removed hidden answer-hour words from vague phrases globally, including cross-hour phrases such as "before dinner" and fixed retirement wording
+        - Added a throwaway-copy Node evaluation harness (`npm run eval:mysteries -- 120`) with story, recipe, witness, cast-symmetry, spine-overlap, hour-audit, and candidate-window gates
+        - Release sweep: 120/120 schedules; 97.5% statement-shaped; 90% multi-fragment episodes; largest recipe 34.2%; zero answer-hour or spine-overlap failures
+
+07/12/26 (7)
+- Scene & Occasion Phase 2: linked episode fact shapes
+        - Added exact `scene_continuation` semantics for suspects continuously witnessed together across a multi-hour scene
+        - Added mention-only `excuse_given` fragments tied to truthful step-aways; public text deliberately stops without resolving a return
+        - Added truth-ambiguous anonymous `witness_account` claims in one shared wrapper: true innocent departure, true thief departure, innocent fabrication, or thief fabrication
+        - Private witness variants and actual departer identities remain diagnostics only and never enter story seeds or render prompts
+        - 120-seed audit: 37.6% fabricated accounts, 32.9% thief-as-witness, all four variants present; exact cell, placement, anonymity, and answer-safety checks pass
+
+07/12/26 (6)
+- Scene & Occasion Phase 1: continuing scene episodes and featured cast
+        - Added a uniformly sampled 3-5 suspect featured cast on a dedicated answer-blind random stream, with recurring props, tensions, and motives
+        - Formalized maximal multi-hour episodes from actual movement: continuous witnesses stay linked even when another guest joins or steps away
+        - Added 1-3 routine occasion-native step-aways to world generation; innocent errands and a thief's coincidental slip-away use the same machinery
+        - Gathering selection now preserves an attended scene window instead of consuming every usable hour of a short day party
+        - Added sweep assertions for episode truth, continuous presence, excuse provenance, cast uniqueness, answer-blind thief frequency, and world invariants
+
 07/12/26 (5)
 - Scene & Occasion Phase 0: deterministic occasion spine
         - Added authored beats, activities, excuses, anonymity devices, props, and thread causes for all 14 occasion families

@@ -90,7 +90,7 @@ const DEFAULT_RANGES: string[][][] = [
 
 const DEFAULT_PHRASES = (names: [string, string, string, string, string]): [string[], string[], string[], string[], string[]] => [
   [`during ${names[0]}`, `as ${names[0]} got under way`],
-  [`amid ${names[1]}`, `while ${names[1]} were still under way`],
+  [`amid ${names[1]}`, `while ${names[1]} continued`],
   [`during ${names[2]}`, `in the thick of ${names[2]}`],
   [`over ${names[3]}`, `as ${names[3]} drew the company together`],
   [`just before ${names[4]}`, `during ${names[4]}`],
@@ -175,7 +175,7 @@ const ENTRIES: OccasionCatalogEntry[] = [
     groupActivities: ["comparing scorecards", "practising their opening moves", "arguing over tournament rules", "keeping a running tally", "replaying a disputed point", "polishing the prize cup", "studying the match board"],
     soloActivities: ["checking a private score", "practising a difficult shot", "rewriting the match board", "looking for a misplaced counter"],
     excuses: ["I left my scorecard behind", "I must fetch another counter", "I promised to check the match board", "I spilled lemonade on my blazer", "I ought to practise before the final"],
-    anonymityDevices: ["matching players' blazers", "the spectators crowding the score table", "the dusk beyond the garden boundary"],
+    anonymityDevices: ["matching players' blazers", "the spectators crowding the score table", "the failing light beyond the garden boundary"],
     setDressing: ["scorecards", "match counters", "players' ribbons", "the prize cup", "rule books", "the tournament board"],
     threadCauses: ["quietly checking a disputed score", "practising for a surprise rematch", "searching for a missing tournament counter"],
   }),
@@ -192,7 +192,7 @@ const ENTRIES: OccasionCatalogEntry[] = [
     threadCauses: ["privately correcting a breach of protocol", "preparing an unofficial welcome gift", "hiding an embarrassing error in the guest list"],
   }),
   defineOccasion("engagement celebration", {
-    mainEvent: "the couple's midnight toast",
+    mainEvent: "the couple's ceremonial toast",
     beatNames: ["the decorating of the house", "the arrival of well-wishers", "the garden celebration", "the engagement supper", "the couple's toast"],
     gatheringLabels: [["arranging the engagement flowers"], ["welcoming the well-wishers"], ["the garden celebration"], ["the engagement supper"], ["the couple's toast"]],
     preferredLocations: ["L01", "L02", "L03", "L05", "L10"],
@@ -229,7 +229,7 @@ const ENTRIES: OccasionCatalogEntry[] = [
     threadCauses: ["secretly repairing a damaged costume", "preparing an unannounced disguise", "settling a private dispute over the costume prize"],
   }),
   defineOccasion("reunion of old acquaintances", {
-    mainEvent: "the late-night reunion toast",
+    mainEvent: "the after-hours reunion toast",
     beatNames: ["the laying out of old keepsakes", "the returning guests", "the afternoon reminiscences", "the reunion supper", "the old friends' toast"],
     gatheringLabels: [["laying out old keepsakes"], ["welcoming the returning friends"], ["the afternoon reminiscences"], ["the reunion supper"], ["the old friends' toast"]],
     preferredLocations: ["L01", "L02", "L03", "L08", "L10"],
@@ -248,7 +248,7 @@ const ENTRIES: OccasionCatalogEntry[] = [
     groupActivities: ["labeling prize blooms", "comparing cultivation notes", "arranging flower stands", "debating the judges' marks", "tying award rosettes", "misting delicate specimens", "preparing the silver rose display"],
     soloActivities: ["trimming a damaged stem", "checking a specimen label", "mixing flower preservative", "searching for a missing rosette"],
     excuses: ["I must fetch the flower shears", "I promised to mist the orchids", "I ought to correct a specimen label", "I spilled water on my rosette", "I left the judging sheet elsewhere"],
-    anonymityDevices: ["the tall banks of exhibition flowers", "matching exhibitors' aprons", "the dusk among the garden marquees"],
+    anonymityDevices: ["the tall banks of exhibition flowers", "matching exhibitors' aprons", "the half-light among the garden marquees"],
     setDressing: ["specimen labels", "award rosettes", "flower stands", "watering cans", "judging sheets", "the silver rose dais"],
     threadCauses: ["quietly replacing a damaged bloom", "concealing an error on a specimen card", "preparing an unofficial consolation bouquet"],
   }),

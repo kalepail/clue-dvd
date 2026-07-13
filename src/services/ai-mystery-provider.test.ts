@@ -40,6 +40,27 @@ describe("structured Anthropic provider", () => {
     expect(requestBody.tools[0].strict).toBe(true);
   });
 
+  it("decodes literal Unicode typography escapes at the provider boundary", async () => {
+    const fetchImpl = vi.fn(async () => successResponse({
+      value: "One hears \\u2014 and then \\u201cthis\\u201d happened\\u2026",
+    }));
+    const result = await callStructured({
+      apiKey: "test",
+      stage: "renderer",
+      system: "system",
+      prompt: "prompt",
+      toolName: "submit_test",
+      toolDescription: "test",
+      inputSchema: { type: "object" },
+      outputSchema: OutputSchema,
+      maxTokens: 100,
+      fetchImpl,
+    });
+
+    expect(result.value.value).toBe("One hears — and then “this” happened…");
+    expect(result.raw).not.toContain("\\\\u2014");
+  });
+
   it("retries a transient provider failure and then succeeds", async () => {
     vi.useFakeTimers();
     const fetchImpl = vi.fn()

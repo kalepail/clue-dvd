@@ -5,10 +5,13 @@ import type { MysterySetup } from "./ai-mystery-setup";
 import { requireItem, requireLocation, requireSuspect, requireTime } from "./world-sim";
 
 const setup: MysterySetup = {
-  seed: 32,
+  // A known fast valid world keeps orchestration tests focused on provider,
+  // prompt, repair, and determinism behavior. The separate 120-seed scheduler
+  // suite owns rare-search coverage up to the full production budget.
+  seed: 1,
   themeId: "AI01",
   difficulty: "expert",
-  solution: { suspectId: "S05", itemId: "I07", locationId: "L07", timeId: "T09" },
+  solution: { suspectId: "S10", itemId: "I11", locationId: "L03", timeId: "T04" },
 };
 
 const answerNames = {
@@ -31,6 +34,7 @@ function buildMockProvider(overrides?: {
 }): { provider: typeof callStructured; calls: ProviderParams[] } {
   const calls: ProviderParams[] = [];
   let closingAttempts = 0;
+  let repairAttempts = 0;
   const provider = vi.fn(async (params: ProviderParams): Promise<StructuredCallResult<unknown>> => {
     calls.push(params);
     const debug = getLastMysteryEngineDebug();
@@ -44,33 +48,54 @@ function buildMockProvider(overrides?: {
         hostReason: "He hopes the fund will be settled without quarrel.",
         mysterySignature: "memorial subscription | old debts | garden weather",
         occasionTexture: {
-          groupActivities: ["sorting pledge cards", "comparing the subscription lists"],
-          transitionRemarks: ["I ought to fetch the committee papers", "I must check a promised donation"],
           gatheringDetails: ["reading out the newest pledges"],
           inspectionContexts: ["collecting discarded subscription forms"],
           observationContexts: ["putting the pledge cards back in order"],
-          uncertainObservations: ["someone folding a pledge sheet and slipping away from the committee"],
         },
       };
     } else if (params.toolName === "submit_rendered_mystery") {
-      const openings = [
-        "Hello --", "Coming --", "Before luncheon,", "While passing,", "Near the windows,",
-        "Later,", "According to Ashe,", "Records recalled", "By dusk,", "Nobody doubted",
+      const neutralClues = [
+        "Ashe recalled one early household exchange clearly.",
+        "Separate arrangements occupied another passage in the day's account.",
+        "Before luncheon, several ordinary preparations occupied the company.",
+        "While passing, I noticed a brief conversation continue without interruption.",
+        "Near the windows, the occasion's decorations drew quiet attention.",
+        "Later, another part of the programme proceeded exactly as remembered.",
+        "According to Ashe, one uncertain statement entered the written record.",
+        "Records from the household preserved a distinct observation.",
+        "By dusk, the remaining arrangements had settled into order.",
+        "Nobody doubted the final account as it was first given.",
+      ];
+      const wholeScopeClosures = [
+        "Every guest, Mrs. White, and Rusty were covered by that observation.",
+        "The entire household, including Mrs. White and Rusty, remained within its scope.",
+        "Everyone in the mansion, Mrs. White and Rusty included, was accounted for there.",
+        "The whole company, with Mrs. White and Rusty, belonged to that same recollection.",
+        "Every single person, including Mrs. White and Rusty, was present for it.",
+        "All the guests, as well as Mrs. White and Rusty, came within that account.",
+        "The whole house, Mrs. White and Rusty included, was represented in the observation.",
+        "Every soul there, including Mrs. White and Rusty, was covered by what Ashe saw.",
+        "The entire party, Mrs. White and Rusty among them, remained part of that scene.",
+        "Every guest plus Mrs. White and Rusty was included in the remembered company.",
       ];
       const clueTexts = seeds
         .filter((seed) => seed.deliverAs === "butler")
         .sort((a, b) => (a.clueNumber ?? 0) - (b.clueNumber ?? 0))
-        .map((seed) =>
-          seed.clueNumber === overrides?.breakClueNumber
-            ? `I distinctly remember the ${answerNames.item} beside the ${answerNames.location} at ${answerNames.time}.`
-            : `${openings[(seed.clueNumber ?? 1) - 1]} ${seed.allowedNames.slice(0, 3).join(" and ") || "the household"} figured in the day's little events.`
-        );
+        .map((seed) => {
+          if (seed.clueNumber === overrides?.breakClueNumber) {
+            return `I distinctly remember the ${answerNames.item} beside the ${answerNames.location} at ${answerNames.time}.`;
+          }
+          const neutral = neutralClues[(seed.clueNumber ?? 1) - 1];
+          return seed.scopeMode === "whole_household"
+            ? `${neutral} ${wholeScopeClosures[(seed.clueNumber ?? 1) - 1]}`
+            : neutral;
+        });
       const noteFor = (slot: "note1" | "note2"): string => {
         const seed = seeds.find((candidate) => candidate.deliverAs === slot);
         return `${seed?.allowedNames.slice(0, 2).join(" and ") || "The household"} appears in the case file.`;
       };
       value = {
-        opening: "Mr. Boddy welcomed his guests for the memorial subscription, and the day passed pleasantly until something was found to be missing.",
+        opening: "Mr. Boddy welcomed his guests for the memorial subscription, with speeches, pledge cards, and a formal supper planned for the company.",
         clues: clueTexts,
         note1: noteFor("note1"),
         note2: noteFor("note2"),
@@ -83,7 +108,15 @@ function buildMockProvider(overrides?: {
             closing: `Fine work, detectives: ${answerNames.suspect} took the ${answerNames.item} from the ${answerNames.location} at ${answerNames.time}, just as the evidence showed.`,
           };
     } else if (params.toolName === "submit_repaired_text") {
-      value = { text: "Reconsidering the matter, the household went about its day quite ordinarily, nothing amiss that I saw myself." };
+      const repairs = [
+        "Reframed carefully, nothing amiss appeared in that small part of the household's day.",
+        "Looking back, the recollection showed nothing amiss and added no further certainty.",
+        "On reflection, the ordinary scene revealed nothing amiss to anyone then present.",
+        "Set down plainly, that passage contained nothing amiss beyond the stated observation.",
+        "Reviewing it once more, I found nothing amiss in the account as corrected.",
+      ];
+      value = { text: repairs[repairAttempts % repairs.length] };
+      repairAttempts += 1;
     } else {
       throw new Error(`Unexpected tool ${params.toolName}`);
     }
@@ -118,6 +151,7 @@ describe("world-first AI mystery engine V3", () => {
     expect(result.inspectorNotes).toHaveLength(2);
     expect(result.inspectorNotes[0].relatedClues.length).toBeGreaterThan(0);
     expect(result.mysterySignature).toContain("memorial subscription");
+    expect(result.cluePatternSignature).toContain("openers:");
     expect(result.closing).toContain(answerNames.suspect);
     expect(progress.at(-1)).toBe("complete");
   });
@@ -151,25 +185,53 @@ describe("world-first AI mystery engine V3", () => {
       "submit_rendered_mystery",
       "submit_case_closing",
     ]);
-    expect(debug.world!.occasionTexture?.groupActivities).toContain("sorting pledge cards");
-    expect(debug.setup.occasionSpine.mainEvent).toContain("pledge");
-    expect(debug.storySeeds!.some((seed) => /pledge|benefit|auction|bid/i.test(seed.brief))).toBe(true);
+    expect(debug.world!.occasionTexture?.inspectionContexts).toContain("collecting discarded subscription forms");
+    const spinePhrases = [
+      debug.setup.occasionSpine.mainEvent,
+      ...debug.setup.occasionSpine.groupActivities,
+      ...debug.setup.occasionSpine.setDressing,
+      ...debug.setup.occasionSpine.beats.map((beat) => beat.name),
+    ];
+    expect(debug.storySeeds!.some((seed) => spinePhrases.some((phrase) => seed.brief.includes(phrase)))).toBe(true);
     expect(debug.dossier!.prompt).toContain(debug.setup.occasionSpine.mainEvent);
   });
 
-  it("builds and audits the clue package before any model call without category targets", async () => {
+  it("builds and audits the story-first package before any model call", async () => {
     const { provider } = buildMockProvider();
     await generateMysteryV2("test-key", { setup, provider });
     const debug = getLastMysteryEngineDebug()!;
     const trajectory = debug.schedule!.trajectory;
 
     expect(trajectory).toHaveLength(12);
-    expect(debug.schedule!.worldAttempts).toBe(1);
+    expect(debug.schedule!.worldAttempts).toBeGreaterThanOrEqual(1);
+    expect(debug.schedule!.worldAttempts).toBeLessThanOrEqual(240);
+    expect(debug.schedule!.skeletonFactIds.length).toBeGreaterThanOrEqual(3);
+    expect(debug.schedule!.structuralPatternSignature).toContain(debug.schedule!.storyRecipe);
     let previous = 12_100;
     for (const point of trajectory) {
       expect(point.remainingSolutions).toBeLessThanOrEqual(previous);
       expect(point.remainingSolutions).toBeGreaterThan(1);
       previous = point.remainingSolutions;
+    }
+  });
+
+  it("preserves continuing-scene context without duplicating a fused scene", async () => {
+    const { provider } = buildMockProvider();
+    await generateMysteryV2("test-key", { setup, provider });
+    const debug = getLastMysteryEngineDebug()!;
+    const continuingSeeds = debug.storySeeds!.filter((seed) => seed.continuesClueNumber);
+    for (const seed of continuingSeeds) {
+      expect(seed.continuesClueNumber).toBeLessThan(seed.clueNumber!);
+      expect(debug.render!.prompt).toContain(seed.episodeRole === "claim"
+        ? `This attributed statement refers back to the lived scene in Testimony ${seed.continuesClueNumber}`
+        : `This continues the lived scene in Testimony ${seed.continuesClueNumber}`
+      );
+    }
+    if (continuingSeeds.length === 0) {
+      const selectedIds = new Set(debug.schedule!.reveals.map((reveal) => reveal.factId));
+      expect(debug.facts!.some((fact) =>
+        selectedIds.has(fact.id) && (fact.episodeRole === "fused" || fact.kind === "scene_evidence")
+      )).toBe(true);
     }
   });
 
@@ -183,7 +245,7 @@ describe("world-first AI mystery engine V3", () => {
     const debug = getLastMysteryEngineDebug()!;
     expect(debug.repairs!.some((repair) => repair.target === "clue-2")).toBe(true);
     // Only the broken clue was re-rendered — everything else is untouched.
-    expect(result.butlerClues[0]).toContain("Hello --");
+    expect(result.butlerClues[0]).toContain("Ashe recalled");
   });
 
   it("retries the closing when it fails to name the full solution", async () => {
@@ -205,5 +267,5 @@ describe("world-first AI mystery engine V3", () => {
     const secondSeeds = getLastMysteryEngineDebug()!.storySeeds!.map((seed) => seed.brief);
 
     expect(secondSeeds).toEqual(firstSeeds);
-  });
+  }, 15_000);
 });

@@ -21,12 +21,9 @@ export const DossierSchema = z.object({
   hostReason: z.string().min(1),
   mysterySignature: z.string().min(1),
   occasionTexture: z.object({
-    groupActivities: z.array(z.string()),
-    transitionRemarks: z.array(z.string()),
     gatheringDetails: z.array(z.string()),
     inspectionContexts: z.array(z.string()),
     observationContexts: z.array(z.string()),
-    uncertainObservations: z.array(z.string()),
   }),
 });
 

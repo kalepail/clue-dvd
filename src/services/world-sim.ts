@@ -4,7 +4,7 @@
  * Builds a seeded, fully deterministic ground-truth day at Tudor Mansion.
  * The theft (the immutable answer) is embedded as ONE thread among many:
  * the world also contains gatherings, small social groups, item lifecycles,
- * household events, and innocent-but-suspicious threads (real red herrings).
+ * household events, and suspicious side threads that may involve anyone.
  *
  * No AI is involved here. Everything downstream (fact harvest, clue
  * scheduling, prose rendering) derives from this single WorldState, which is
@@ -68,14 +68,15 @@ export type RoomClosure = {
   cause: string;
 } | null;
 
-export type InnocentThread = {
+export type SuspiciousThread = {
   id: string;
-  kind: "private_errand" | "borrowed_item" | "quarrel" | "surprise_task" | "foggy_memory";
+  kind: "private_errand" | "borrowed_item" | "private_exchange" | "surprise_task" | "foggy_memory";
   suspectIds: string[];
   locationId?: string;
   timeId?: string;
   itemId?: string;
-  cause: string; // the innocent truth, e.g. "wrapping a gift for Mr. Boddy"
+  /** Occasion-native context; suspicious does not mean guilty. */
+  cause: string;
 };
 
 export type PartyMode = "house_party" | "day_party";
@@ -86,6 +87,62 @@ export type TransitionRemark = {
   toTimeId: string;
   /** What was actually said; whether the stated reason was sincere is unknown. */
   line: string;
+};
+
+export type FeaturedSuspect = {
+  suspectId: string;
+  recurringProp: string;
+  tension: string;
+};
+
+export type SceneStepAway = {
+  suspectId: string;
+  fromTimeId: string;
+  absentFromTimeId: string;
+  excuse: string;
+  /** Private world truth. Public fragments deliberately leave return unclear. */
+  destinationLocationId: string | null;
+  destinationActivity: string;
+  returnedDuringEpisode: boolean;
+};
+
+export type SceneEpisode = {
+  id: string;
+  locationId: string;
+  timeIds: string[];
+  /** Everyone who participates at any point in the scene. */
+  participantIds: string[];
+  /** People continuously witnessed in the room for the full span. */
+  continuousParticipantIds: string[];
+  activity: string;
+  continuationActivity: string;
+  prop: string;
+  tension: string;
+  /** Featured suspect whose answer-blind private preoccupation supplies the
+   * tension. Null means the episode uses anonymous background texture. */
+  tensionOwnerId: string | null;
+  featuredSuspectIds: string[];
+  stepAway: SceneStepAway | null;
+};
+
+export type WitnessAccountVariant =
+  | "true_innocent_departure"
+  | "true_thief_departure"
+  | "fabricated_innocent_witness"
+  | "fabricated_thief_witness";
+
+export type WitnessAccount = {
+  id: string;
+  episodeId: string;
+  witnessId: string;
+  timeId: string;
+  excuse: string;
+  anonymityDevice: string;
+  variant: WitnessAccountVariant;
+  truthful: boolean;
+  /** Private truth only; the public account always leaves identity unnamed. */
+  actualDeparterId: string | null;
+  fabricationReason: string | null;
 };
 
 export type WorldState = {
@@ -107,6 +164,12 @@ export type WorldState = {
   movement: Record<string, Record<string, Placement>>;
   /** Neutral social excuses spoken when somebody breaks away from a group. */
   transitionRemarks: TransitionRemark[];
+  /** Uniformly selected recurring cast; never conditioned on the answer. */
+  featuredCast: FeaturedSuspect[];
+  /** Truthful multi-hour social arcs derived from the movement grid. */
+  episodes: SceneEpisode[];
+  /** Truth-ambiguous claims about unnamed departures from those episodes. */
+  witnessAccounts: WitnessAccount[];
   items: Record<string, ItemState>;
   /**
    * Decoy items: nobody can quite account for these that day, so they remain
@@ -117,7 +180,7 @@ export type WorldState = {
   securedSet: SecuredSet;
   roomClosure: RoomClosure;
   discovery: { timeId: string; noticedBy: string } | null;
-  threads: InnocentThread[];
+  threads: SuspiciousThread[];
   /** 2-3 items with colorful provenance (may include the answer item). */
   objectHistories: Array<{ itemId: string; note: string }>;
   /**
@@ -148,12 +211,9 @@ export type WorldState = {
 // ---------------------------------------------------------------------------
 
 const DEFAULT_OCCASION_TEXTURE: OccasionTexture = {
-  groupActivities: ["comparing the day's programmes", "helping with the arrangements", "rehearsing a short presentation"],
-  transitionRemarks: ["I ought to fetch my notes", "I must make a telephone call", "I left my gloves in another room"],
   gatheringDetails: ["discussing the next part of the programme", "comparing impressions of the occasion"],
   inspectionContexts: ["collecting the abandoned programmes", "putting the occasion's materials in order"],
   observationContexts: ["clearing away the occasion's papers", "making the usual household rounds"],
-  uncertainObservations: ["someone hurrying away from the company", "a figure slipping through the edge of the gathering"],
 };
 
 /**
@@ -250,6 +310,33 @@ function gatheringOptionsForSpine(spine: OccasionSpine): GatheringOption[] {
   });
 }
 
+function chooseGatheringSlate(
+  rng: SeededRandom,
+  pool: GatheringOption[],
+  count: number,
+  arrival: WorldState["arrival"],
+  departures: WorldState["departures"]
+): GatheringOption[] {
+  if (count <= 0) return [];
+  let fallback = rng.pickMultiple(pool, count);
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    const candidate = attempt === 0 ? fallback : rng.pickMultiple(pool, count);
+    const occupied = new Set(candidate.map((option) => option.timeId));
+    const freeOrders = TIME_PERIODS
+      .filter((slot) =>
+        slot.order >= 2 &&
+        slot.order <= 9 &&
+        !occupied.has(slot.id) &&
+        isSlotAttended(slot.id, arrival, departures)
+      )
+      .map((slot) => slot.order);
+    const hasContinuingSceneWindow = freeOrders.some((order) => freeOrders.includes(order + 1));
+    if (hasContinuingSceneWindow) return candidate;
+    fallback = candidate;
+  }
+  return fallback;
+}
+
 export function simulateWorld(params: {
   seed: number;
   attempt: number;
@@ -260,6 +347,7 @@ export function simulateWorld(params: {
   const { answer, occasionFamily } = params;
   const occasionSpine = params.occasionSpine ?? instantiateOccasionSpine(occasionFamily, params.seed);
   const rng = new SeededRandom(hashSeed(params.seed, params.attempt));
+  const featuredCast = buildFeaturedCast(params.seed, params.attempt, occasionSpine);
   const slots = [...TIME_PERIODS].sort((a, b) => a.order - b.order);
   const answerTime = requireTime(answer.timeId);
   const thiefIsStaff = (STAFF_SUSPECT_IDS as readonly string[]).includes(answer.suspectId);
@@ -322,8 +410,15 @@ export function simulateWorld(params: {
   // --- Gatherings (never at the answer time) ------------------------------
   const gatheringPool = gatheringOptionsForSpine(occasionSpine).filter((option) => option.timeId !== answer.timeId)
     .filter((option) => isSlotAttended(option.timeId, arrival, departures));
-  const gatheringCount = Math.min(rng.nextInt(3, 5), gatheringPool.length);
-  const chosenGatherings = rng.pickMultiple(gatheringPool, gatheringCount)
+  // Leave at least two attended social slots for a lived scene to continue;
+  // gatherings still number 3-5, but they no longer consume every usable
+  // hour of a short day-party schedule.
+  const gatheringCount = Math.min(
+    rng.nextInt(3, 5),
+    gatheringPool.length,
+    Math.max(3, gatheringPool.length - 2)
+  );
+  const chosenGatherings = chooseGatheringSlate(rng, gatheringPool, gatheringCount, arrival, departures)
     .sort((a, b) => requireTime(a.timeId).order - requireTime(b.timeId).order);
   const gatherings: Gathering[] = chosenGatherings.map((option) => {
     // Preserve one texture draw per gathering. Keeping structural randomness
@@ -356,12 +451,12 @@ export function simulateWorld(params: {
       timeId: "T10",
       locationId: null,
       kind: "retired",
-      label: "the house locked up and everyone retired for the night",
+      label: "the house locked up and everyone retired",
       suspectIds: presentSuspects("T10", arrival, departures),
     });
   }
 
-  // --- Innocent threads ----------------------------------------------------
+  // --- Suspicious side threads --------------------------------------------
   const threads = buildThreads(rng, answer, arrival, departures, occasionSpine);
 
   // --- Movement grid -------------------------------------------------------
@@ -373,6 +468,21 @@ export function simulateWorld(params: {
     slots,
     movement,
     occasionSpine
+  );
+  const episodes = deriveSceneEpisodes(
+    new SeededRandom(hashSeed(params.seed ^ 0x718a6d35, params.attempt)),
+    slots,
+    movement,
+    gatherings,
+    transitionRemarks,
+    featuredCast,
+    occasionSpine
+  );
+  const witnessAccounts = buildWitnessAccounts(
+    new SeededRandom(hashSeed(params.seed ^ 0x2a6f9d83, params.attempt)),
+    episodes,
+    occasionSpine,
+    answer
   );
 
   // --- Item lifecycles ------------------------------------------------------
@@ -410,22 +520,49 @@ export function simulateWorld(params: {
     };
   }
 
-  // Room closure: a room that is not the answer location.
+  // Room closure: choose only a room that the simulated day actually leaves
+  // empty for the full closed interval. Selecting a closure from the card
+  // list alone once produced a Study that was supposedly sealed all day
+  // while two suspects were simultaneously witnessed inside it.
   let roomClosure: RoomClosure = null;
   if (rng.nextBool(0.65)) {
-    const candidates = LOCATIONS.filter((location) => location.id !== answer.locationId && location.type === "indoor");
-    const location = rng.pick(candidates);
-    roomClosure = rng.nextBool(0.6)
-      ? { locationId: location.id, timeIds: "all", cause: rng.pick(CLOSURE_CAUSES) }
-      : (() => {
-          let cap = rng.nextInt(4, 7);
-          if (cap === answerTime.order) cap = cap > 4 ? cap - 1 : cap + 1;
-          return {
-            locationId: location.id,
-            timeIds: slots.filter((slot) => slot.order <= cap).map((slot) => slot.id),
-            cause: rng.pick(CLOSURE_CAUSES),
-          };
-        })();
+    const indoorCandidates = LOCATIONS.filter(
+      (location) => location.id !== answer.locationId && location.type === "indoor"
+    );
+    const roomIsUnused = (locationId: string, timeIds: string[]): boolean =>
+      timeIds.every((timeId) =>
+        !gatherings.some((gathering) => gathering.timeId === timeId && gathering.locationId === locationId) &&
+        !Object.values(movement[timeId] ?? {}).some((placement) => placement.locationId === locationId)
+      );
+    const allTimeIds = slots.map((slot) => slot.id);
+    const allDayCandidates = indoorCandidates.filter((location) => roomIsUnused(location.id, allTimeIds));
+    const partialOptions = rng.shuffle([4, 5, 6, 7]).flatMap((cap) => {
+      const timeIds = slots.filter((slot) => slot.order <= cap).map((slot) => slot.id);
+      return indoorCandidates
+        .filter((location) => roomIsUnused(location.id, timeIds))
+        .map((location) => ({ location, timeIds }));
+    });
+    const preferAllDay = rng.nextBool(0.6);
+    if (preferAllDay && allDayCandidates.length > 0) {
+      roomClosure = {
+        locationId: rng.pick(allDayCandidates).id,
+        timeIds: "all",
+        cause: rng.pick(CLOSURE_CAUSES),
+      };
+    } else if (partialOptions.length > 0) {
+      const option = rng.pick(partialOptions);
+      roomClosure = {
+        locationId: option.location.id,
+        timeIds: option.timeIds,
+        cause: rng.pick(CLOSURE_CAUSES),
+      };
+    } else if (allDayCandidates.length > 0) {
+      roomClosure = {
+        locationId: rng.pick(allDayCandidates).id,
+        timeIds: "all",
+        cause: rng.pick(CLOSURE_CAUSES),
+      };
+    }
   }
 
   // --- Discovery ------------------------------------------------------------
@@ -444,12 +581,16 @@ export function simulateWorld(params: {
   // --- Motives ---------------------------------------------------------------
   // The thief always has one (the closing will cite it); several innocents
   // have one too — plenty of reasons in the room, only one acted upon.
-  const motiveCount = rng.nextInt(3, 5);
-  const motiveSuspects = [
-    answer.suspectId,
-    ...rng.pickMultiple(SUSPECTS.map((s) => s.id).filter((id) => id !== answer.suspectId), motiveCount - 1),
-  ];
-  const motivePool = rng.shuffle([...MOTIVE_CATALOG]);
+  // Motive supply must not depend on featured-cast membership: doing so made
+  // worlds where the thief was featured subtly easier to schedule. Use a
+  // separate stream and a fixed five-person field instead.
+  const motiveRng = new SeededRandom(hashSeed(params.seed ^ 0x64a01f2b, params.attempt));
+  const innocentMotiveIds = motiveRng.pickMultiple(
+    SUSPECTS.map((suspect) => suspect.id).filter((suspectId) => suspectId !== answer.suspectId),
+    4
+  );
+  const motiveSuspects = [answer.suspectId, ...innocentMotiveIds];
+  const motivePool = motiveRng.shuffle([...MOTIVE_CATALOG]);
   const motives = motiveSuspects.map((suspectId, index) => ({
     suspectId,
     motive: motivePool[index % motivePool.length],
@@ -518,6 +659,9 @@ export function simulateWorld(params: {
     gatherings,
     movement,
     transitionRemarks,
+    featuredCast,
+    episodes,
+    witnessAccounts,
     items,
     decoyItemIds,
     securedSet,
@@ -537,7 +681,7 @@ export function applyOccasionTexture(world: WorldState, proposed: OccasionTextur
   // excuses true. Dossier output is now cosmetic vocabulary only; allowing a
   // model response to rewrite movement truth here would recreate the old
   // theme-after-facts dependency that the occasion spine replaces.
-  world.occasionTexture = normalizeOccasionTexture(proposed);
+  world.occasionTexture = normalizeOccasionTexture(proposed, world.occasionSpine);
 }
 
 // ---------------------------------------------------------------------------
@@ -549,7 +693,7 @@ function buildMovementGrid(
   slots: TimePeriod[],
   answer: Answer,
   gatherings: Gathering[],
-  threads: InnocentThread[],
+  threads: SuspiciousThread[],
   arrival: WorldState["arrival"],
   departures: WorldState["departures"],
   occasionSpine: OccasionSpine
@@ -571,6 +715,7 @@ function buildMovementGrid(
   circles.push([...STAFF_SUSPECT_IDS]);
   const circleRooms = new Map<number, string>();
   const circleActivities = new Map<number, string>();
+  let plannedStepAwaysRemaining = rng.nextInt(1, 3);
 
   /** Groups from the previous non-gathering slot, for sticky carry-over. */
   let previousGroups: Array<{ members: string[]; locationId: string; activity: string }> = [];
@@ -633,6 +778,44 @@ function buildMovementGrid(
           activity: thread.cause,
         };
         unplaced = unplaced.filter((id) => id !== suspectId);
+      }
+    }
+
+    // Routine episode departures are generated before sticky carry-over, so
+    // the people left behind truly continue their shared activity. This is
+    // answer-blind social machinery: an innocent usually runs the errand; if
+    // the thief happens to peel away into the theft placement, the identical
+    // transition becomes a genuine glimpse of opportunity.
+    if (plannedStepAwaysRemaining > 0 && previousGroups.length > 0) {
+      const peelable = previousGroups.filter((group) =>
+        group.members.filter((member) => unplaced.includes(member)).length >= 3
+      );
+      for (const group of rng.shuffle(peelable)) {
+        if (plannedStepAwaysRemaining <= 0) break;
+        const eligible = group.members.filter((member) => unplaced.includes(member));
+        if (eligible.length < 3) continue;
+        const leaver = rng.pick(eligible);
+        const occupied = new Set(
+          Object.values(placements)
+            .map((placement) => placement.locationId)
+            .filter((locationId): locationId is string => Boolean(locationId))
+        );
+        const roomPool = socialRooms.filter((room) =>
+          room.id !== group.locationId &&
+          !occupied.has(room.id) &&
+          !(slot.id === answer.timeId && room.id === answer.locationId)
+        );
+        const destination = rng.pick(roomPool.length > 0 ? roomPool : socialRooms.filter((room) =>
+          room.id !== group.locationId && !(slot.id === answer.timeId && room.id === answer.locationId)
+        ));
+        placements[leaver] = {
+          locationId: destination.id,
+          social: "solo",
+          companions: [leaver],
+          activity: rng.pick(occasionSpine.soloActivities),
+        };
+        unplaced = unplaced.filter((member) => member !== leaver);
+        plannedStepAwaysRemaining -= 1;
       }
     }
 
@@ -766,6 +949,7 @@ function buildTransitionRemarks(
         after.social === "group" &&
         before.companions.slice().sort().join("+") === after.companions.slice().sort().join("+");
       if (sameCompany && before.locationId === after.locationId) continue;
+      if (after.locationId === before.locationId) continue;
       // Only create dialogue for a real handoff: at least two of the people
       // being left behind continue together in the same room next hour.
       const continuingCompanions = before.companions.filter((companionId) => {
@@ -787,6 +971,290 @@ function buildTransitionRemarks(
     }
   }
   return remarks;
+}
+
+function buildFeaturedCast(seed: number, attempt: number, spine: OccasionSpine): FeaturedSuspect[] {
+  const rng = new SeededRandom(hashSeed(seed ^ 0x39d47f21, attempt));
+  const count = rng.nextInt(3, 5);
+  const suspectIds = rng.pickMultiple(SUSPECTS.map((suspect) => suspect.id), count);
+  const chooseAssignments = (values: string[]): string[] => {
+    const unique = rng.shuffle([...new Set(values)]);
+    if (unique.length === 0) return Array.from({ length: count }, () => "the occasion materials");
+    return Array.from({ length: count }, (_, index) => unique[index % unique.length]);
+  };
+  const props = chooseAssignments(spine.setDressing);
+  // Solo occasion activities are also truthful private preoccupations. Using
+  // them beside the dedicated thread causes gives every featured suspect a
+  // distinct undercurrent instead of assigning two people the same secret.
+  const tensionPool = [...new Set([...spine.threadCauses, ...spine.soloActivities])];
+  const tensions = chooseAssignments(tensionPool);
+  return suspectIds.map((suspectId, index) => ({
+    suspectId,
+    recurringProp: props[index],
+    tension: tensions[index],
+  }));
+}
+
+type EpisodeCandidate = Omit<SceneEpisode, "id" | "prop" | "tension" | "tensionOwnerId" | "featuredSuspectIds">;
+type GroupMoment = {
+  timeId: string;
+  locationId: string;
+  memberIds: string[];
+  activity: string;
+};
+
+/**
+ * Convert the simulated movement grid into maximal continuing scenes. A scene
+ * survives people joining or leaving as long as at least two witnesses remain
+ * together in the same room. This is the world-level source for later linked
+ * fragments; the harvest no longer has to guess that two atoms belong together.
+ */
+function deriveSceneEpisodes(
+  rng: SeededRandom,
+  slots: TimePeriod[],
+  movement: Record<string, Record<string, Placement>>,
+  gatherings: Gathering[],
+  transitionRemarks: TransitionRemark[],
+  featuredCast: FeaturedSuspect[],
+  spine: OccasionSpine
+): SceneEpisode[] {
+  const gatheringTimes = new Set(gatherings.map((gathering) => gathering.timeId));
+  const momentsByTime = new Map<string, GroupMoment[]>();
+
+  for (const slot of slots) {
+    if (gatheringTimes.has(slot.id)) continue;
+    const moments: GroupMoment[] = [];
+    const seen = new Set<string>();
+    for (const placement of Object.values(movement[slot.id] ?? {})) {
+      if (placement.social !== "group" || !placement.locationId || placement.companions.length < 2) continue;
+      const members = placement.companions.slice().sort();
+      const key = `${placement.locationId}|${members.join("+")}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      moments.push({
+        timeId: slot.id,
+        locationId: placement.locationId,
+        memberIds: members,
+        activity: placement.activity,
+      });
+    }
+    momentsByTime.set(slot.id, moments);
+  }
+
+  const candidates: EpisodeCandidate[] = [];
+  for (let startIndex = 0; startIndex < slots.length - 1; startIndex += 1) {
+    const firstSlot = slots[startIndex];
+    for (const first of momentsByTime.get(firstSlot.id) ?? []) {
+      let core = [...first.memberIds];
+      const states = [first];
+      for (let index = startIndex + 1; index < slots.length; index += 1) {
+        const nextSlot = slots[index];
+        const next = (momentsByTime.get(nextSlot.id) ?? [])
+          .filter((moment) => moment.locationId === first.locationId)
+          .map((moment) => ({
+            moment,
+            overlap: core.filter((suspectId) => moment.memberIds.includes(suspectId)),
+          }))
+          .sort((a, b) => b.overlap.length - a.overlap.length)[0];
+        if (!next || next.overlap.length < 2) break;
+        core = next.overlap;
+        states.push(next.moment);
+      }
+      if (states.length < 2) continue;
+
+      const participants = [...new Set(states.flatMap((state) => state.memberIds))].sort();
+      let stepAway: SceneStepAway | null = null;
+      for (let index = 0; index < states.length - 1 && !stepAway; index += 1) {
+        const before = states[index];
+        const after = states[index + 1];
+        const leaver = before.memberIds.find((suspectId) => !after.memberIds.includes(suspectId));
+        if (!leaver) continue;
+        const remark = transitionRemarks.find(
+          (candidate) =>
+            candidate.suspectId === leaver &&
+            candidate.fromTimeId === before.timeId &&
+            candidate.toTimeId === after.timeId
+        );
+        if (!remark) continue;
+        const destination = movement[after.timeId]?.[leaver];
+        stepAway = {
+          suspectId: leaver,
+          fromTimeId: before.timeId,
+          absentFromTimeId: after.timeId,
+          excuse: remark.line,
+          destinationLocationId: destination?.locationId ?? null,
+          destinationActivity: destination?.activity ?? "away from the scene",
+          returnedDuringEpisode: states.slice(index + 2).some((state) => state.memberIds.includes(leaver)),
+        };
+      }
+
+      candidates.push({
+        locationId: first.locationId,
+        timeIds: states.map((state) => state.timeId),
+        participantIds: participants,
+        continuousParticipantIds: core.slice().sort(),
+        activity: states[0].activity,
+        continuationActivity: states[states.length - 1].activity,
+        stepAway,
+      });
+    }
+  }
+
+  // Longest truthful span wins. Shorter starts contained inside the same
+  // continuous scene add no material and would only create duplicate clues.
+  const maximal: EpisodeCandidate[] = [];
+  for (const candidate of candidates.sort((a, b) => b.timeIds.length - a.timeIds.length)) {
+    const contained = maximal.some((stronger) =>
+      stronger.locationId === candidate.locationId &&
+      candidate.timeIds.every((timeId) => stronger.timeIds.includes(timeId)) &&
+      candidate.continuousParticipantIds.every((suspectId) => stronger.continuousParticipantIds.includes(suspectId))
+    );
+    if (!contained) maximal.push(candidate);
+  }
+
+  const withStepAway = maximal.filter((candidate) => candidate.stepAway);
+  const stepAwayTarget = Math.min(withStepAway.length, rng.nextInt(1, 3));
+  const selected = rng.pickMultiple(withStepAway, stepAwayTarget);
+  const selectedSet = new Set(selected);
+  const remaining = maximal
+    .filter((candidate) => !selectedSet.has(candidate) && !candidate.stepAway)
+    .map((candidate) => ({
+      candidate,
+      score:
+        candidate.timeIds.length * 3 +
+        rng.next(),
+    }))
+    .sort((a, b) => b.score - a.score)
+    .map((entry) => entry.candidate);
+  const totalTarget = Math.min(maximal.length, 6);
+  selected.push(...remaining.slice(0, Math.max(0, totalTarget - selected.length)));
+
+  const usedPropOwners = new Map<string, string | null>();
+  const usedTensionOwners = new Map<string, string | null>();
+  const reservedFeaturedProps = new Set(featuredCast.map((entry) => entry.recurringProp));
+  const reservedFeaturedTensions = new Set(featuredCast.map((entry) => entry.tension));
+  return selected
+    .sort((a, b) => requireTime(a.timeIds[0]).order - requireTime(b.timeIds[0]).order)
+    .map((candidate, index) => {
+      const featuredInEpisode = featuredCast.filter((entry) =>
+        candidate.participantIds.includes(entry.suspectId)
+      );
+      const significantWords = (value: string): Set<string> => new Set(
+        (value.toLowerCase().match(/[a-z]+/g) ?? []).filter((word) => word.length >= 5)
+      );
+      const activityWords = significantWords(candidate.activity);
+      const isCompatible = (value: string): boolean =>
+        ![...significantWords(value)].some((word) => activityWords.has(word));
+      const compatibleFeaturedProps = featuredInEpisode.filter((entry) => isCompatible(entry.recurringProp));
+      const featuredPropOwner = compatibleFeaturedProps.find((entry) => {
+        const priorOwner = usedPropOwners.get(entry.recurringProp);
+        return priorOwner === undefined || priorOwner === entry.suspectId;
+      });
+      const shuffledProps = rng.shuffle([...new Set(spine.setDressing)]);
+      const prop = featuredPropOwner?.recurringProp ??
+        shuffledProps.find((entry) => isCompatible(entry) && !usedPropOwners.has(entry) && !reservedFeaturedProps.has(entry)) ??
+        shuffledProps.find((entry) => isCompatible(entry) && !usedPropOwners.has(entry)) ??
+        shuffledProps.find(isCompatible) ??
+        spine.setDressing[0];
+      if (!usedPropOwners.has(prop)) {
+        usedPropOwners.set(prop, featuredPropOwner?.suspectId ?? null);
+      }
+
+      const fallbackTensions = [...new Set([...spine.threadCauses, ...spine.soloActivities])];
+      const compatibleFallbacks = fallbackTensions.filter((entry) =>
+        isCompatible(entry)
+      );
+      const tensionOwner = featuredInEpisode.find((entry) => {
+        if (!isCompatible(entry.tension)) return false;
+        const priorOwner = usedTensionOwners.get(entry.tension);
+        return priorOwner === undefined || priorOwner === entry.suspectId;
+      });
+      const shuffledTensions = rng.shuffle(compatibleFallbacks.length > 0 ? compatibleFallbacks : fallbackTensions);
+      const tension = tensionOwner?.tension ??
+        shuffledTensions.find((entry) => !usedTensionOwners.has(entry) && !reservedFeaturedTensions.has(entry)) ??
+        shuffledTensions.find((entry) => !usedTensionOwners.has(entry)) ??
+        shuffledTensions[0];
+      if (!usedTensionOwners.has(tension)) {
+        usedTensionOwners.set(tension, tensionOwner?.suspectId ?? null);
+      }
+      return {
+        id: `EP${String(index + 1).padStart(2, "0")}`,
+        ...candidate,
+        prop,
+        tension,
+        tensionOwnerId: tensionOwner?.suspectId ?? null,
+        featuredSuspectIds: featuredInEpisode.map((entry) => entry.suspectId),
+      };
+    });
+}
+
+function buildWitnessAccounts(
+  rng: SeededRandom,
+  episodes: SceneEpisode[],
+  spine: OccasionSpine,
+  answer: Answer
+): WitnessAccount[] {
+  if (episodes.length === 0 || spine.anonymityDevices.length === 0) return [];
+  const accounts: WitnessAccount[] = [];
+  const count = rng.nextInt(2, 3);
+  // Choose the public scene scaffold before deciding whether the account is
+  // true. The scheduler sees episode linkage, so letting truth status choose
+  // the episode made accepted slates over-sample one private variant even
+  // though the prose wrappers were identical.
+  // When the day contains real step-aways, both truthful and fabricated
+  // accounts use those same episode shapes. A fabrication is an invented or
+  // mistaken *additional* departure, so its wrapper remains indistinguishable
+  // without making truth status correlate with scene richness.
+  const stepAwayEpisodes = episodes.filter((episode) => episode.stepAway);
+  const episodeOrder = rng.shuffle(stepAwayEpisodes.length > 0 ? stepAwayEpisodes : [...episodes]);
+  const fabricationReasons = [
+    "mistook movement at the edge of the gathering for a departure",
+    "embellished an uncertain glimpse to seem useful",
+    "confused two similar figures in the occasion's bustle",
+  ];
+
+  for (let index = 0; index < count; index += 1) {
+    const episode = episodeOrder[index % episodeOrder.length];
+    // A day with no real departure can still carry the exact same public
+    // witness wrapper, but every such account is necessarily mistaken or
+    // invented. Otherwise truth/fabrication is an independent texture draw.
+    const requestedFabrication = rng.nextBool(0.275);
+    const truthful = !requestedFabrication && Boolean(episode.stepAway);
+    const actualDeparterId = truthful ? episode.stepAway!.suspectId : null;
+    const timeId = truthful ? episode.stepAway!.absentFromTimeId : rng.pick(episode.timeIds);
+    const eligibleWitnesses = truthful
+      ? episode.continuousParticipantIds.filter((suspectId) => suspectId !== actualDeparterId)
+      : SUSPECTS.map((suspect) => suspect.id).filter((suspectId) => suspectId !== actualDeparterId);
+    // The plan deliberately tunes thief-as-witness accounts to be a regular
+    // red herring. Honest witnesses must actually be present; a fabricated
+    // account needs no such placement and is where that distribution is set.
+    const witnessId = truthful
+      ? rng.pick(eligibleWitnesses)
+      : rng.nextBool(0.85)
+        ? answer.suspectId
+        : rng.pick(eligibleWitnesses.filter((suspectId) => suspectId !== answer.suspectId));
+    const fabricatedByThief = !truthful && witnessId === answer.suspectId;
+    const variant: WitnessAccountVariant = truthful
+      ? actualDeparterId === answer.suspectId
+        ? "true_thief_departure"
+        : "true_innocent_departure"
+      : fabricatedByThief
+        ? "fabricated_thief_witness"
+        : "fabricated_innocent_witness";
+    accounts.push({
+      id: `WA${index + 1}`,
+      episodeId: episode.id,
+      witnessId,
+      timeId,
+      excuse: truthful ? episode.stepAway!.excuse : rng.pick(spine.excuses),
+      anonymityDevice: rng.pick(spine.anonymityDevices),
+      variant,
+      truthful,
+      actualDeparterId,
+      fabricationReason: truthful ? null : rng.pick(fabricationReasons),
+    });
+  }
+  return accounts;
 }
 
 function buildItemStates(
@@ -861,54 +1329,64 @@ function buildThreads(
   arrival: WorldState["arrival"],
   departures: WorldState["departures"],
   occasionSpine: OccasionSpine
-): InnocentThread[] {
-  const threads: InnocentThread[] = [];
+): SuspiciousThread[] {
+  const threads: SuspiciousThread[] = [];
   const count = rng.nextInt(2, 3);
-  const kinds = rng.shuffle(["private_errand", "borrowed_item", "quarrel", "surprise_task", "foggy_memory"] as const).slice(0, count);
-  const eligibleSuspects = SUSPECTS.map((s) => s.id).filter((id) => id !== answer.suspectId);
+  const kinds = rng.shuffle(["private_errand", "borrowed_item", "private_exchange", "surprise_task", "foggy_memory"] as const).slice(0, count);
+  const allSuspectIds = SUSPECTS.map((suspect) => suspect.id);
   const usedSuspects = new Set<string>();
-  const pickSuspects = (n: number): string[] => {
-    const pool = eligibleSuspects.filter((id) => !usedSuspects.has(id));
-    const chosen = rng.pickMultiple(pool.length >= n ? pool : eligibleSuspects, n);
+  const pickSuspects = (n: number, forbiddenIds: string[] = []): string[] => {
+    const allowed = allSuspectIds.filter((id) => !forbiddenIds.includes(id));
+    const pool = allowed.filter((id) => !usedSuspects.has(id));
+    const chosen = rng.pickMultiple(pool.length >= n ? pool : allowed, n);
     chosen.forEach((id) => usedSuspects.add(id));
     return chosen;
   };
-  const threadRooms = LOCATIONS.filter((location) => location.id !== answer.locationId);
+  const attendedTimes = (): TimePeriod[] =>
+    TIME_PERIODS.filter((slot) => isSlotAttendedStrict(slot.id, arrival, departures));
+  const forbiddenSuspectsAt = (timeId: string): string[] =>
+    timeId === answer.timeId ? [answer.suspectId] : [];
+  const threadRoomsAt = (timeId: string): Location[] =>
+    LOCATIONS.filter((location) => timeId !== answer.timeId || location.id !== answer.locationId);
 
   kinds.forEach((kind, index) => {
     const id = `TH${index + 1}`;
     if (kind === "private_errand") {
-      const timeId = rng.pick(TIME_PERIODS.filter((slot) => isSlotAttendedStrict(slot.id, arrival, departures))).id;
+      const timeId = rng.pick(attendedTimes()).id;
       threads.push({
         id,
         kind,
-        suspectIds: pickSuspects(1),
-        locationId: rng.pick(threadRooms).id,
+        suspectIds: pickSuspects(1, forbiddenSuspectsAt(timeId)),
+        locationId: rng.pick(threadRoomsAt(timeId)).id,
         timeId,
         cause: rng.pick(occasionSpine.threadCauses),
       });
     } else if (kind === "borrowed_item") {
       const item = rng.pick(ITEMS.filter((candidate) => candidate.id !== answer.itemId));
       threads.push({ id, kind, suspectIds: pickSuspects(1), itemId: item.id, cause: "borrowed openly, with Mr. Boddy's blessing" });
-    } else if (kind === "quarrel") {
-      const timeId = rng.pick(TIME_PERIODS.filter((slot) => isSlotAttendedStrict(slot.id, arrival, departures))).id;
+    } else if (kind === "private_exchange") {
+      const timeId = rng.pick(attendedTimes()).id;
+      const prop = rng.pick(occasionSpine.setDressing);
       threads.push({
         id,
         kind,
-        suspectIds: pickSuspects(2),
-        locationId: rng.pick(threadRooms).id,
+        suspectIds: pickSuspects(2, forbiddenSuspectsAt(timeId)),
+        locationId: rng.pick(threadRoomsAt(timeId)).id,
         timeId,
-        cause: `a disagreement over ${rng.pick(occasionSpine.setDressing)} and the day's arrangements`,
+        cause: rng.pick([
+          `discussing ${prop} in private`,
+          `comparing conflicting accounts of ${prop}`,
+          `sharing a confidence about ${prop}`,
+        ]),
       });
     } else if (kind === "foggy_memory") {
       // Fog of the day: a witness half-remembers something — at whatever
-      // hour their memory insists on. It is a statement, not evidence; it
-      // eliminates nothing. ANYONE may be the rememberer, the thief
-      // included, and about a third of the time the memory is anchored to
-      // the real theft hour — fog that happens to be true. No clue shape is
-      // reliably honest or reliably wrong.
-      const rememberer = rng.nextBool(0.15) ? answer.suspectId : pickSuspects(1)[0];
-      const memoryTimeId = rng.nextBool(0.3) ? answer.timeId : rng.pick(TIME_PERIODS).id;
+      // hour their memory insists on. It is a statement, not evidence, and
+      // eliminates nothing. Suspect and hour are selected without consulting
+      // the answer, so an accidental match occurs only at natural chance and
+      // the wrapper can never become a statistical theft-hour tell.
+      const rememberer = pickSuspects(1)[0];
+      const memoryTimeId = rng.pick(TIME_PERIODS).id;
       const occasionFog = occasionSpine.anonymityDevices.map((device) => `a figure obscured by ${device}`);
       threads.push({
         id,
@@ -918,14 +1396,15 @@ function buildThreads(
         cause: rng.pick([...occasionFog, ...FOGGY_SENSATIONS]),
       });
     } else {
-      const timeId = rng.pick(TIME_PERIODS.filter((slot) => isSlotAttendedStrict(slot.id, arrival, departures))).id;
+      const timeId = rng.pick(attendedTimes()).id;
       // One texture draw keeps world structure independent of whether this
       // catalog happens to offer one or several preparations.
       rng.pick(occasionSpine.threadCauses);
+      const threadRooms = threadRoomsAt(timeId);
       threads.push({
         id,
         kind,
-        suspectIds: pickSuspects(1),
+        suspectIds: pickSuspects(1, forbiddenSuspectsAt(timeId)),
         locationId: rng.pick([threadRooms.find((room) => room.id === "L04") ?? rng.pick(threadRooms), rng.pick(threadRooms)]).id,
         timeId,
         cause: `quietly preparing for ${occasionSpine.mainEvent}`,
@@ -946,28 +1425,74 @@ function hashSeed(seed: number, attempt: number): number {
   return h & 0x7fffffff;
 }
 
-function normalizeOccasionTexture(proposed: OccasionTexture): OccasionTexture {
+function normalizeOccasionTexture(proposed: OccasionTexture, occasionSpine: OccasionSpine): OccasionTexture {
   const forbidden = [
     ...SUSPECTS.flatMap((suspect) => [suspect.name, suspect.displayName]),
     ...ITEMS.flatMap((item) => [item.nameUS, item.nameUK]),
     ...LOCATIONS.map((location) => location.name),
     ...TIME_PERIODS.map((time) => time.name),
   ].map((name) => name.toLowerCase());
+  const cleanOne = (value: string | undefined): string | null => {
+    const cleaned = value?.trim().replace(/^["“]|["”]$/g, "").replace(/[.!]$/, "") ?? "";
+    if (cleaned.length < 4 || cleaned.length > 120) return null;
+    if (forbidden.some((name) => cleaned.toLowerCase().includes(name))) return null;
+    return cleaned;
+  };
   const clean = (values: string[] | undefined, fallback: string[]): string[] => {
     const accepted = (values ?? [])
-      .map((value) => value.trim().replace(/^["“]|["”]$/g, "").replace(/[.!]$/, ""))
-      .filter((value) => value.length >= 4 && value.length <= 120)
-      .filter((value) => !forbidden.some((name) => value.toLowerCase().includes(name)))
+      .map(cleanOne)
+      .filter((value): value is string => Boolean(value))
       .slice(0, 8);
     return accepted.length > 0 ? accepted : [...fallback];
   };
+  // The model occasionally chooses empty arrays rather than risk inventing
+  // world truth. Falling back to generic "programmes" would sever the clues
+  // from the opening, so derive every fallback from the already-authored,
+  // answer-blind spine instead. These remain cosmetic and cannot alter facts.
+  const props = occasionSpine.setDressing.length > 0
+    ? occasionSpine.setDressing
+    : ["the occasion materials"];
+  const spineFallback = {
+    inspectionContexts: props.slice(0, 4).map((prop) => `putting ${prop} back in order`),
+    observationContexts: props.slice(-4).map((prop) => `checking the arrangement of ${prop}`),
+  };
+  const timeAnchors: Array<{ pattern: RegExp; timeIds: string[] }> = [
+    { pattern: /\bdawn\b/i, timeIds: ["T01"] },
+    { pattern: /\bbreakfast\b/i, timeIds: ["T02"] },
+    { pattern: /\bmorning\b/i, timeIds: ["T02", "T03"] },
+    { pattern: /\b(?:midday|lunch)\b/i, timeIds: ["T04"] },
+    { pattern: /\bafternoon\b/i, timeIds: ["T05", "T06"] },
+    { pattern: /\btea(?:\s+time)?\b/i, timeIds: ["T06"] },
+    { pattern: /\bdusk\b/i, timeIds: ["T07"] },
+    { pattern: /\b(?:dinner|evening)\b/i, timeIds: ["T07", "T08", "T09"] },
+    { pattern: /\bnight\b/i, timeIds: ["T09", "T10"] },
+    { pattern: /\bmidnight\b/i, timeIds: ["T10"] },
+  ];
+  const gatheringDetails = occasionSpine.beats.map((beat, index) => {
+    const candidate = cleanOne(proposed?.gatheringDetails?.[index]);
+    const referencesAnotherPartOfDay = candidate && (
+      /\b(?:today's|day's|earlier|later|previous(?:ly)?|already finished)\b/i.test(candidate) ||
+      timeAnchors.some(({ pattern, timeIds }) =>
+        pattern.test(candidate) && !timeIds.some((timeId) => beat.timeIds.includes(timeId))
+      ) ||
+      occasionSpine.beats.some((otherBeat) =>
+        otherBeat.id !== beat.id &&
+        [otherBeat.name, otherBeat.gatheringLabel]
+          .map((label) => label.toLowerCase())
+          .some((label) => label.length >= 6 && candidate.toLowerCase().includes(label))
+      )
+    );
+    return candidate && !referencesAnotherPartOfDay
+      ? candidate
+      : beat.gatheringLabel || DEFAULT_OCCASION_TEXTURE.gatheringDetails[index % DEFAULT_OCCASION_TEXTURE.gatheringDetails.length];
+  });
+  const stageNeutralObservationContexts = (proposed?.observationContexts ?? []).filter(
+    (value) => !/\b(?:after|before|back|return(?:ed|ing)?|last|final|finish(?:ed|ing)?|ended|over|left\s+behind|abandoned|closing)\b/i.test(value)
+  );
   return {
-    groupActivities: clean(proposed?.groupActivities, DEFAULT_OCCASION_TEXTURE.groupActivities),
-    transitionRemarks: clean(proposed?.transitionRemarks, DEFAULT_OCCASION_TEXTURE.transitionRemarks),
-    gatheringDetails: clean(proposed?.gatheringDetails, DEFAULT_OCCASION_TEXTURE.gatheringDetails),
-    inspectionContexts: clean(proposed?.inspectionContexts, DEFAULT_OCCASION_TEXTURE.inspectionContexts),
-    observationContexts: clean(proposed?.observationContexts, DEFAULT_OCCASION_TEXTURE.observationContexts),
-    uncertainObservations: clean(proposed?.uncertainObservations, DEFAULT_OCCASION_TEXTURE.uncertainObservations),
+    gatheringDetails,
+    inspectionContexts: clean(proposed?.inspectionContexts, spineFallback.inspectionContexts),
+    observationContexts: clean(stageNeutralObservationContexts, spineFallback.observationContexts),
   };
 }
 

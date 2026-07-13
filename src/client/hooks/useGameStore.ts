@@ -254,9 +254,15 @@ class GameStore {
       onGenerationProgress,
     } = options;
 
-    const recentMysterySignatures = Object.values(this.games)
+    const recentGames = Object.values(this.games)
       .sort((left, right) => right.createdAt.localeCompare(left.createdAt))
+      .slice(0, 5);
+    const recentMysterySignatures = recentGames
       .map((game) => game.scenario.metadata.mysterySignature)
+      .filter((signature): signature is string => Boolean(signature))
+      .slice(0, 5);
+    const recentCluePatternSignatures = recentGames
+      .map((game) => game.scenario.metadata.cluePatternSignature)
       .filter((signature): signature is string => Boolean(signature))
       .slice(0, 5);
 
@@ -266,7 +272,7 @@ class GameStore {
     const response = await fetch(endpoint, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ themeId, difficulty, recentMysterySignatures }),
+      body: JSON.stringify({ themeId, difficulty, recentMysterySignatures, recentCluePatternSignatures }),
     });
 
     if (!response.ok) {

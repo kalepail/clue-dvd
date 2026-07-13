@@ -7,8 +7,8 @@
  *                        thread among many (world-sim.ts)
  *   2. harvestFacts      every tellable TRUE fact, with joint-cell semantics
  *                        and mention licenses (fact-harvest.ts)
- *   3. scheduleMystery   solver picks the 10 clues + 2 notes and their order
- *                        so the fair-play curve provably holds
+ *   3. scheduleMystery   story-first selector reserves a connected scene
+ *                        skeleton, then proves the fair-play curve around it
  *                        (clue-scheduler.ts) — retries are pure computation
  *   4. dossier (AI)      answer-blind: occasion, title, signature
  *   5. render (AI)       answer-blind: opening + 10 testimonies + 2 notes in
@@ -50,9 +50,10 @@ import { verifyClosing, verifyClueOpeningVariety, verifyClueText, verifyOpening,
 import { callStructured, MysteryStageError, type StructuredCallResult } from "./ai-mystery-provider";
 import type { MysterySetup } from "./ai-mystery-setup";
 import { SeededRandom } from "./seeded-random";
+import { SUSPECTS } from "../data/game-elements";
 
-export const ENGINE_VERSION = "3.0-world";
-const MAX_WORLD_ATTEMPTS = 30;
+export const ENGINE_VERSION = "3.1-scene";
+const MAX_WORLD_ATTEMPTS = 240;
 const MAX_REPAIRS_PER_TEXT = 2;
 
 export type MysteryProgressStage =
@@ -78,6 +79,7 @@ export type MysteryEngineResult = {
   inspectorNotes: Array<{ id: "N1" | "N2"; text: string; relatedClues: number[] }>;
   closing: string;
   mysterySignature: string;
+  cluePatternSignature: string;
 };
 
 type StageDebug<T> = {
@@ -100,6 +102,7 @@ export type MysteryEngineDebug = {
     occasionFamily: string;
     occasionSpine: OccasionSpine;
     recentSignatures: string[];
+    recentCluePatternSignatures: string[];
   };
   world?: WorldState;
   facts?: Fact[];
@@ -126,6 +129,7 @@ export function getLastMysteryEngineDebug(): MysteryEngineDebug | null {
 export async function generateMysteryV2(apiKey: string, params: {
   setup: MysterySetup;
   recentSignatures?: string[];
+  recentCluePatternSignatures?: string[];
   onProgress?: (event: MysteryProgressEvent) => void | Promise<void>;
   provider?: StructuredCaller;
 }): Promise<MysteryEngineResult> {
@@ -133,12 +137,13 @@ export async function generateMysteryV2(apiKey: string, params: {
   const provider = params.provider ?? callStructured;
   const answer: Answer = { ...params.setup.solution };
   const recentSignatures = (params.recentSignatures ?? []).filter(Boolean).slice(0, 5);
+  const recentCluePatternSignatures = (params.recentCluePatternSignatures ?? []).filter(Boolean).slice(0, 5);
   const occasionFamily = chooseOccasionFamily(params.setup.seed, recentSignatures);
   const occasionSpine = instantiateOccasionSpine(occasionFamily, params.setup.seed);
   const debug: MysteryEngineDebug = {
     engineVersion: ENGINE_VERSION,
     startedAt: new Date(startedAt).toISOString(),
-    setup: { seed: params.setup.seed, answer, occasionFamily, occasionSpine, recentSignatures },
+    setup: { seed: params.setup.seed, answer, occasionFamily, occasionSpine, recentSignatures, recentCluePatternSignatures },
   };
   lastMysteryEngineDebug = debug;
 
@@ -161,6 +166,8 @@ export async function generateMysteryV2(apiKey: string, params: {
         facts: candidateFacts,
         answer,
         seed: params.setup.seed * 31 + attempt,
+        featuredSuspectIds: candidateWorld.featuredCast.map((entry) => entry.suspectId),
+        recentCluePatternSignatures,
       });
       if (candidateSchedule) {
         world = candidateWorld;
@@ -217,20 +224,65 @@ export async function generateMysteryV2(apiKey: string, params: {
         `Occasion texture changed deterministic fact identity ${missingFact.factId}; this is a world-layer bug.`
       );
     }
+    const precedingClueByEpisode = new Map<string, { clueNumber: number; brief: string }>();
+    const seenSceneTextures = new Set<string>();
+    const occasionContexts = createOccasionContextBalancer(world, dossier.value.occasionSummary);
+    const scopedPresenceKinds = new Set<Fact["kind"]>([
+      "gathering",
+      "retired_gathering",
+      "group_presence",
+      "solo_presence",
+      "scene_continuation",
+      "scene_evidence",
+    ]);
+    const locksContinuousPresence = (fact: Fact): boolean => {
+      if (["gathering", "retired_gathering", "scene_continuation"].includes(fact.kind)) return true;
+      if (fact.kind === "group_presence") return !fact.suspectTimePairs;
+      if (fact.kind === "scene_evidence") {
+        return fact.components?.some((component) => locksContinuousPresence(component)) ?? false;
+      }
+      return false;
+    };
     const storySeeds: StorySeed[] = schedule.reveals.map((reveal) => {
       const fact = factById.get(reveal.factId)!;
-      return {
+      const preceding = fact.episodeId ? precedingClueByEpisode.get(fact.episodeId) : undefined;
+      const firstButlerFragment = reveal.slot === "clue" && Boolean(fact.episodeId) && !preceding;
+      const appliedSceneTexture = firstButlerFragment ? fact.sceneTexture : undefined;
+      const recurringSceneTexture = Boolean(appliedSceneTexture && seenSceneTextures.has(appliedSceneTexture));
+      if (appliedSceneTexture) {
+        seenSceneTextures.add(appliedSceneTexture);
+        occasionContexts.record(appliedSceneTexture);
+      }
+      const balancedBrief = occasionContexts.balance(fact.writerBrief);
+      const locationTypes = new Set(fact.locationIds.map((locationId) => requireLocation(locationId).type));
+      const storySeed: StorySeed = {
         position: reveal.position,
         deliverAs: reveal.slot === "clue" ? "butler" : reveal.slot,
         clueNumber: reveal.clueNumber,
-        brief: fact.writerBrief,
+        brief: appliedSceneTexture
+          ? recurringSceneTexture
+            ? `${balancedBrief} Recurring character thread (preserve the same underlying truth, but describe it from a fresh observational angle without copying its wording from another testimony): ${appliedSceneTexture}`
+            : `${balancedBrief} Additional truth within that same scene: ${appliedSceneTexture}`
+          : balancedBrief,
         allowedNames: [
           ...fact.mentions.suspects,
           ...fact.mentions.items,
           ...fact.mentions.locations,
           ...fact.mentions.times,
         ],
+        episodeId: fact.episodeId,
+        episodeRole: fact.episodeRole,
+        continuesClueNumber: reveal.slot === "clue" ? preceding?.clueNumber : undefined,
+        scopeMode: scopedPresenceKinds.has(fact.kind) && fact.suspectIds.length > 0
+          ? fact.suspectIds.length === SUSPECTS.length ? "whole_household" : "named_only"
+          : undefined,
+        mustRemainPresent: locksContinuousPresence(fact) || undefined,
+        locationSetting: locationTypes.size === 1 ? [...locationTypes][0] : locationTypes.size > 1 ? "mixed" : undefined,
       };
+      if (reveal.slot === "clue" && fact.episodeId && reveal.clueNumber) {
+        precedingClueByEpisode.set(fact.episodeId, { clueNumber: reveal.clueNumber, brief: fact.writerBrief });
+      }
+      return storySeed;
     });
     debug.world = world;
     debug.facts = facts;
@@ -258,6 +310,7 @@ export async function generateMysteryV2(apiKey: string, params: {
       time: requireTime(answer.timeId).name,
     };
     const thiefMotive = world.motives.find((entry) => entry.suspectId === answer.suspectId)?.motive;
+    const opportunityReveal = `At ${answerNames.time}, ${answerNames.suspect} had an unwitnessed opportunity at the ${answerNames.location}.`;
     const lieClaimWasDealt = schedule.reveals.some((reveal) => {
       const fact = factById.get(reveal.factId);
       return fact?.kind === "claim" && fact.threadId === "LIE";
@@ -267,14 +320,14 @@ export async function generateMysteryV2(apiKey: string, params: {
       return fact?.kind !== "claim" && fact?.threadId === "LIE";
     });
     const lieReveal = world.falseAlibi && lieClaimWasDealt && lieContradictionWasDealt
-      ? `${answerNames.suspect} claimed to have been in the ${requireLocation(world.falseAlibi.claimedLocationId).name} at the fatal hour — but the party actually in that room never saw them`
+      ? `${answerNames.suspect} claimed to have been in the ${requireLocation(world.falseAlibi.claimedLocationId).name} at the hour in question — but the party actually in that room never saw them`
       : undefined;
     const closingPrompt = buildClosingPrompt({
       answerNames,
       dossierTitle: dossier.value.title,
-      caseRecap: storySeeds.map((seed) => seed.brief),
       finalCandidates: schedule.finalCandidates,
       thiefMotive,
+      opportunityReveal,
       lieReveal,
       fewshotClosings: fewshots.closings,
     });
@@ -286,7 +339,7 @@ export async function generateMysteryV2(apiKey: string, params: {
       toolDescription: "Submit the closing reveal narration.",
       inputSchema: toToolInputSchema(ClosingSchema),
       outputSchema: ClosingSchema,
-      maxTokens: 800,
+      maxTokens: 550,
     });
     debug.closing = toStageDebug(closingPrompt, closing);
 
@@ -335,9 +388,9 @@ export async function generateMysteryV2(apiKey: string, params: {
           const retryPrompt = buildClosingPrompt({
             answerNames,
             dossierTitle: dossier.value.title,
-            caseRecap: storySeeds.map((seed) => seed.brief),
             finalCandidates: schedule.finalCandidates,
             thiefMotive,
+            opportunityReveal,
             lieReveal,
             fewshotClosings: fewshots.closings,
           });
@@ -350,7 +403,7 @@ export async function generateMysteryV2(apiKey: string, params: {
             toolDescription: "Submit the corrected closing reveal narration.",
             inputSchema: toToolInputSchema(ClosingSchema),
             outputSchema: ClosingSchema,
-            maxTokens: 800,
+            maxTokens: 550,
           });
           repairs.push({ target: "closing", attempt: round, problems: entry.problems, before: texts.closing, after: closing.value.closing });
           texts.closing = closing.value.closing;
@@ -363,7 +416,7 @@ export async function generateMysteryV2(apiKey: string, params: {
             position: 0,
             deliverAs: "butler",
             clueNumber: null,
-            brief: `${dossier.value.occasionSummary} End on the discovery that something has been stolen, without naming any card.`,
+            brief: `${dossier.value.occasionSummary} Describe only why everyone gathered and the social mood. Do not mention a theft, anything missing, a discovery, or an investigation, and do not name any card.`,
             allowedNames: [],
           };
           const repaired = await repairText(provider, apiKey, openingSeed, texts.opening, entry.problems, fewshots.clues);
@@ -376,7 +429,25 @@ export async function generateMysteryV2(apiKey: string, params: {
         const current =
           seed.deliverAs === "butler" ? texts.clues[(seed.clueNumber ?? 1) - 1] :
           seed.deliverAs === "note1" ? texts.note1 : texts.note2;
-        const repaired = await repairText(provider, apiKey, seed, current, entry.problems, fewshots.clues);
+        const earlierSceneText = seed.continuesClueNumber
+          ? texts.clues[seed.continuesClueNumber - 1]
+          : undefined;
+        const repeatedPhraseOwner = entry.problems
+          .map((problem) => problem.match(/from clue (\d+)/i)?.[1])
+          .find(Boolean);
+        const comparisonText = repeatedPhraseOwner
+          ? texts.clues[Number.parseInt(repeatedPhraseOwner, 10) - 1]
+          : undefined;
+        const repaired = await repairText(
+          provider,
+          apiKey,
+          seed,
+          current,
+          entry.problems,
+          fewshots.clues,
+          earlierSceneText,
+          comparisonText
+        );
         repairs.push({ target: entry.target, attempt: round, problems: entry.problems, before: current, after: repaired });
         if (seed.deliverAs === "butler") texts.clues[(seed.clueNumber ?? 1) - 1] = repaired;
         else if (seed.deliverAs === "note1") texts.note1 = repaired;
@@ -386,16 +457,16 @@ export async function generateMysteryV2(apiKey: string, params: {
     }
     debug.verification = verification;
 
-    // Never hard-fail on residual style problems: the puzzle is already
-    // sound. Log them for the diagnostics payload instead — with one
-    // exception: a closing that fails to name the answer is unusable.
+    // A package with a known prose defect is not "case ready." Repairs are
+    // surgical and inexpensive relative to a full generation; if the model
+    // still refuses the verified constraints, report the failed stage rather
+    // than quietly handing the player malformed or repetitive testimony.
     const unresolved = problematic();
     debug.unresolvedProblems = unresolved;
-    const closingStillBroken = unresolved.find((entry) => entry.target === "closing");
-    if (closingStillBroken) {
+    if (unresolved.length > 0) {
       throw new MysteryStageError(
-        "inspector",
-        `The closing failed to name the full solution after retries: ${closingStillBroken.problems.join(" ")}`
+        "revision",
+        `The rendered mystery still had unresolved prose problems after retries: ${unresolved.map((entry) => `${entry.target}: ${entry.problems.join(" ")}`).join(" | ")}`
       );
     }
 
@@ -408,6 +479,7 @@ export async function generateMysteryV2(apiKey: string, params: {
       ],
       closing: texts.closing.trim(),
       mysterySignature: dossier.value.mysterySignature.trim(),
+      cluePatternSignature: `${schedule.structuralPatternSignature}|${openingStyleSignature(texts.clues)}`,
     };
     debug.finalPackage = result;
     await emit("complete", "Case ready.", 100);
@@ -427,15 +499,96 @@ export async function generateMysteryV2(apiKey: string, params: {
 // Helpers
 // ---------------------------------------------------------------------------
 
+const OCCASION_CONTEXT_PATTERN = /Occasion context to weave into this recollection: Ashe was (.+?)\. Core fact: /;
+
+/**
+ * The dossier supplies several equally truthful ways Ashe could encounter an
+ * object or room fact. Harvest assigns one deterministically, then this final
+ * answer-blind pass balances only those cosmetic contexts across the clues
+ * that were actually selected. It prevents one prop (lanterns, ribbons, and
+ * so on) from swallowing a case simply because several unrelated fact hashes
+ * happened to choose it.
+ */
+function createOccasionContextBalancer(world: WorldState, openingSummary: string): {
+  record: (text: string) => void;
+  balance: (brief: string) => string;
+} {
+  const texture = world.occasionTexture;
+  const props = world.occasionSpine.setDressing
+    .map((prop) => prop.trim().toLowerCase())
+    .filter(Boolean);
+  const propUses = new Map<string, number>(props.map((prop) => [prop, 0]));
+  const exactUses = new Map<string, number>();
+
+  const occurrences = (text: string, phrase: string): number => {
+    if (!phrase) return 0;
+    let count = 0;
+    let from = 0;
+    const haystack = text.toLowerCase();
+    while ((from = haystack.indexOf(phrase, from)) >= 0) {
+      count += 1;
+      from += Math.max(1, phrase.length);
+    }
+    return count;
+  };
+  const record = (text: string): void => {
+    for (const prop of props) {
+      const count = occurrences(text, prop);
+      if (count > 0) propUses.set(prop, (propUses.get(prop) ?? 0) + count);
+    }
+  };
+  record(openingSummary);
+
+  const balance = (brief: string): string => {
+    const match = brief.match(OCCASION_CONTEXT_PATTERN);
+    if (!match || !texture) {
+      record(brief);
+      return brief;
+    }
+    const current = match[1];
+    const pool = texture.inspectionContexts.includes(current)
+      ? texture.inspectionContexts
+      : texture.observationContexts.includes(current)
+        ? texture.observationContexts
+        : [];
+    if (pool.length === 0) {
+      record(brief);
+      return brief;
+    }
+
+    const ranked = pool.map((candidate, index) => {
+      const lower = candidate.toLowerCase();
+      const propCost = props.reduce(
+        (sum, prop) => sum + (lower.includes(prop) ? (propUses.get(prop) ?? 0) : 0),
+        0
+      );
+      return {
+        candidate,
+        index,
+        score: (exactUses.get(lower) ?? 0) * 100 + propCost * 24,
+      };
+    }).sort((left, right) => left.score - right.score || left.index - right.index);
+
+    const chosen = ranked[0].candidate;
+    exactUses.set(chosen.toLowerCase(), (exactUses.get(chosen.toLowerCase()) ?? 0) + 1);
+    record(chosen);
+    return brief.replace(OCCASION_CONTEXT_PATTERN, `Occasion context to weave into this recollection: Ashe was ${chosen}. Core fact: `);
+  };
+
+  return { record, balance };
+}
+
 async function repairText(
   provider: StructuredCaller,
   apiKey: string,
   seed: StorySeed,
   previousText: string,
   problems: string[],
-  fewshotClues: string[]
+  fewshotClues: string[],
+  earlierSceneText?: string,
+  comparisonText?: string
 ): Promise<string> {
-  const prompt = buildClueRepairPrompt({ seed, previousText, problems, fewshotClues });
+  const prompt = buildClueRepairPrompt({ seed, previousText, problems, fewshotClues, earlierSceneText, comparisonText });
   const repaired = await provider({
     apiKey,
     stage: "revision",
@@ -447,6 +600,24 @@ async function repairText(
     maxTokens: 500,
   });
   return repaired.value.text;
+}
+
+function openingStyleSignature(clues: string[]): string {
+  const counts = new Map<string, number>();
+  const firstWords = new Set<string>();
+  for (const clue of clues) {
+    const first = clue.match(/[A-Za-z]+(?:'[A-Za-z]+)?/)?.[0]?.toLowerCase() ?? "other";
+    firstWords.add(first);
+    const style = /^(hello|coming|good)$/.test(first) ? "greeting" :
+      /^(during|before|after|by|at|as|when|later|toward|while)$/.test(first) ? "time" :
+      /^(in|near|outside|inside|from|along|beside|within)$/.test(first) ? "place" :
+      "direct";
+    counts.set(style, (counts.get(style) ?? 0) + 1);
+  }
+  const styles = ["direct", "time", "place", "greeting"]
+    .map((style) => `${style}:${counts.get(style) ?? 0}`)
+    .join(",");
+  return `openers:${styles},unique:${firstWords.size}`;
 }
 
 function chooseOccasionFamily(seed: number, recentSignatures: string[]): string {
