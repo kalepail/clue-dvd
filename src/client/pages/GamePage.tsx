@@ -14,7 +14,8 @@ import type { EliminationState } from "../../shared/api-types";
 import { getLocationName, getSuspectName } from "../../shared/game-elements";
 import { closeSession, sendAccusationResult, sendInspectorNoteResult, updateInspectorNoteAvailability, updateInterruptionStatus, updateSessionTurn } from "../phone/api";
 import { clearHostSessionCode, setHostAutoCreate } from "../phone/storage";
-import type { PhoneSessionStatus } from "../../phone/types";
+import type { PhoneEvent, PhonePlayer, PhoneSessionStatus } from "../../phone/types";
+import { isEventFresh, matchesPendingSource, resolveCurrentActor } from "../hooks/turn-authority";
 import { connectPhoneSessionSocket } from "../phone/ws";
 
 interface Props {
@@ -30,6 +31,30 @@ const SUGGESTION_CATEGORIES: Array<{ id: SuggestionCategory; label: string }> = 
   { id: "location", label: "WHERE" },
   { id: "time", label: "WHEN" },
 ];
+
+// The processed-event cursor is persisted per phone session so a host
+// refresh can never replay already-processed phone events.
+const eventCursorStorageKey = (code: string) => `clue-dvd-phone-event-cursor:${code}`;
+
+function loadEventCursor(code: string): number | null {
+  try {
+    const raw = localStorage.getItem(eventCursorStorageKey(code));
+    if (raw === null) return null;
+    const parsed = Number(raw);
+    return Number.isFinite(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function persistEventCursor(code: string, eventId: number): void {
+  try {
+    localStorage.setItem(eventCursorStorageKey(code), String(eventId));
+  } catch {
+    // Cursor persistence is best-effort; the in-memory cursor still guards
+    // this session and the store's token/actor checks guard a refresh.
+  }
+}
 
 const suspectColorById: Record<string, string> = {
   S01: "#da3f55",
@@ -114,8 +139,8 @@ export default function GamePage({ gameId, onNavigate, onMusicPauseChange }: Pro
     locationId: string;
     timeId: string;
   } | null>(null);
-  const [lastPhoneEventId, setLastPhoneEventId] = useState<number | null>(null);
-  const lastPhoneEventIdRef = useRef<number | null>(null);
+  const eventCursorRef = useRef<number | null>(null);
+  const cursorHydratedForRef = useRef<string | null>(null);
   const [phoneLobbyStatus, setPhoneLobbyStatus] = useState<PhoneSessionStatus | "missing" | null>(null);
   const [showNarrative, setShowNarrative] = useState(false);
   const [secretPassageResult, setSecretPassageResult] = useState<{
@@ -143,13 +168,17 @@ export default function GamePage({ gameId, onNavigate, onMusicPauseChange }: Pro
   const [pendingPhoneContinue, setPendingPhoneContinue] = useState<null | "use_secret_passage" | "make_suggestion" | "reveal_clue">(null);
   const previousTurnKey = useRef<string | null>(null);
   const gameRef = useRef<GameDataFormatted | null>(null);
+  const phonePlayersRef = useRef<PhonePlayer[]>([]);
+  const phoneEventChainRef = useRef<Promise<void>>(Promise.resolve());
+  const phoneAccusationActorRef = useRef<{ name: string; suspectId: string; eventId: number } | null>(null);
+  const accusationPenaltyTokenRef = useRef<string | null>(null);
   const pendingPhoneContinueRef = useRef<null | "use_secret_passage" | "make_suggestion" | "reveal_clue">(null);
   const revealingClueRef = useRef(false);
   const showInterruptionRef = useRef(false);
   const showInterruptionIntroRef = useRef(false);
   const handleStartGameRef = useRef<() => void>(() => undefined);
-  const handleRevealClueRef = useRef<() => void>(() => undefined);
-  const handleSecretPassageRef = useRef<() => void>(() => undefined);
+  const handleRevealClueRef = useRef<(sourceEventId?: number) => void>(() => undefined);
+  const handleSecretPassageRef = useRef<() => boolean>(() => false);
   const handleEndTurnRef = useRef<() => void>(() => undefined);
   const closeSecretPassageRef = useRef<() => void>(() => undefined);
   const acknowledgeInterruptionIntroRef = useRef<() => void>(() => undefined);
@@ -253,113 +282,247 @@ export default function GamePage({ gameId, onNavigate, onMusicPauseChange }: Pro
   useEffect(() => {
     const status = game?.status;
     if (!phoneSessionCode || (status !== "in_progress" && status !== "setup")) return;
+    if (cursorHydratedForRef.current !== phoneSessionCode) {
+      eventCursorRef.current = loadEventCursor(phoneSessionCode);
+      cursorHydratedForRef.current = phoneSessionCode;
+    }
+
+    const commitCursor = (eventId: number) => {
+      eventCursorRef.current = eventId;
+      persistEventCursor(phoneSessionCode, eventId);
+    };
+
+    /**
+     * Resolves and authorizes the phone player behind an event. The host's
+     * local game state is authoritative for whose turn it is; the phone
+     * session's currentTurn copy is UI sync only. Returns null (with a host
+     * notice) for unknown senders and out-of-turn actors.
+     */
+    const authorizePhoneActor = (
+      event: PhoneEvent,
+      expectedSuspectId?: string
+    ): { name: string; suspectId: string } | null => {
+      const local = gameStore.getGame(gameId);
+      if (!local) return null;
+      const actor = phonePlayersRef.current.find((entry) => entry.id === event.playerId);
+      if (!actor) {
+        setHostNotice("Ignored a phone action from an unrecognized player.");
+        return null;
+      }
+      const expected = expectedSuspectId ?? resolveCurrentActor(local)?.suspectId;
+      if (expected === undefined) {
+        setHostNotice("No detective currently holds the turn; the phone action was ignored.");
+        return null;
+      }
+      if (actor.suspectId !== expected) {
+        setHostNotice(`${actor.name || "A detective"} tried to act out of turn; the action was ignored.`);
+        return null;
+      }
+      return { name: actor.name, suspectId: actor.suspectId };
+    };
+
+    /**
+     * Processes one phone event. "handled" covers both success and definitive
+     * rejection — either way the event must never run again, so the cursor
+     * advances. "retry" means preconditions were missing (game or roster not
+     * loaded yet); the cursor stays put so a reconnect can redeliver.
+     */
+    const processPhoneEvent = async (event: PhoneEvent): Promise<"handled" | "retry"> => {
+      const currentGame = gameRef.current;
+      if (!currentGame) return "retry";
+
+      if (event.type === "turn_action") {
+        const action = event.payload.action;
+        if (typeof action !== "string") return "handled";
+
+        // Table-wide actions: any joined player may trigger these.
+        if (action === "begin_investigation") {
+          if (currentGame.status === "setup") handleStartGameRef.current();
+          return "handled";
+        }
+        if (action === "toggle_setup_symbols") {
+          if (currentGame.status === "setup") setForceRevealSymbols((prev) => !prev);
+          return "handled";
+        }
+        if (action === "show_story") {
+          if (currentGame.status === "in_progress") setShowNarrative((prev) => !prev);
+          return "handled";
+        }
+        if (action === "acknowledge_interruption") {
+          if (showInterruptionIntroRef.current) {
+            acknowledgeInterruptionIntroRef.current();
+          } else if (showInterruptionRef.current) {
+            closeInterruptionRef.current();
+          }
+          return "handled";
+        }
+
+        // Turn-owned actions: the sender must be the authoritative actor.
+        if (phonePlayersRef.current.length === 0) return "retry";
+
+        if (action === "continue_investigation") {
+          if (!authorizePhoneActor(event)) return "handled";
+          setShowAccusation(false);
+          setPhoneAccusation(null);
+          phoneAccusationActorRef.current = null;
+          if (pendingPhoneContinueRef.current === "reveal_clue") {
+            const local = gameStore.getGame(gameId);
+            if (local?.pendingPantryDrawToken) {
+              // The acknowledgement must be for the exact summon event that
+              // created this pending draw, not merely from the right player.
+              if (!matchesPendingSource(event.payload.forEventId, local.pendingPantryDrawSourceEventId)) {
+                setHostNotice("Ignored a stale Pantry-draw acknowledgement from an earlier summon.");
+                return "handled";
+              }
+              gameStore.acknowledgePantryDraw(gameId, local.pendingPantryDrawToken);
+            }
+            setShowClueReveal(false);
+            setPendingPhoneContinue(null);
+            loadGameRef.current();
+            return "handled";
+          }
+          if (showInterruptionIntroRef.current) {
+            acknowledgeInterruptionIntroRef.current();
+          } else if (showInterruptionRef.current) {
+            closeInterruptionRef.current();
+          }
+          if (pendingPhoneContinueRef.current === "make_suggestion") {
+            handleEndTurnRef.current();
+          } else if (pendingPhoneContinueRef.current === "use_secret_passage") {
+            closeSecretPassageRef.current();
+          }
+          setPendingPhoneContinue(null);
+          return "handled";
+        }
+
+        if (action === "reveal_clue") {
+          if (currentGame.status !== "in_progress" || revealingClueRef.current) return "handled";
+          if (!authorizePhoneActor(event)) return "handled";
+          handleRevealClueRef.current(event.id);
+          setPendingPhoneContinue("reveal_clue");
+          return "handled";
+        }
+
+        if (action === "resolve_accusation_penalty") {
+          if (currentGame.status !== "in_progress") return "handled";
+          const local = gameStore.getGame(gameId);
+          const pending = local?.pendingAccusationPenalty;
+          if (!pending) return "handled";
+          // Only the penalized detective may settle their own payment, and
+          // only for the exact accusation event that created this penalty.
+          if (!authorizePhoneActor(event, pending.playerSuspectId)) return "handled";
+          if (!matchesPendingSource(event.payload.forEventId, pending.sourceEventId)) {
+            setHostNotice("Ignored a stale payment confirmation from an earlier accusation.");
+            return "handled";
+          }
+          const resolution = event.payload.resolution === "unable" ? "unable" : "paid";
+          try {
+            gameStore.resolveAccusationPenalty(gameId, resolution, pending.token);
+          } catch (err) {
+            setHostNotice(err instanceof Error ? err.message : "Failed to resolve the accusation penalty.");
+          }
+          setShowAccusation(false);
+          setPhoneAccusation(null);
+          phoneAccusationActorRef.current = null;
+          loadGameRef.current();
+          return "handled";
+        }
+
+        if (action === "use_secret_passage") {
+          if (currentGame.status !== "in_progress") return "handled";
+          if (!authorizePhoneActor(event)) return "handled";
+          const passageUsed = handleSecretPassageRef.current();
+          if (passageUsed) setPendingPhoneContinue("use_secret_passage");
+          return "handled";
+        }
+
+        if (action === "read_inspector_note") {
+          if (currentGame.status !== "in_progress") return "handled";
+          const actor = authorizePhoneActor(event);
+          if (!actor) return "handled";
+          const noteId = typeof event.payload.noteId === "string" ? event.payload.noteId : "";
+          if (!noteId || !actor.suspectId) {
+            setHostNotice("Inspector note request was incomplete.");
+            return "handled";
+          }
+          try {
+            // The store commits the read and the turn advance atomically;
+            // result delivery happens after the committed state, and a
+            // delivery failure can be recovered by a free re-read.
+            const result = gameStore.readInspectorNote(gameId, noteId, actor.suspectId);
+            loadGameRef.current();
+            await sendInspectorNoteResult(phoneSessionCode, actor.suspectId, result.noteId, result.text);
+          } catch (err) {
+            setHostNotice(err instanceof Error ? err.message : "Unable to read inspector note.");
+          }
+          return "handled";
+        }
+
+        if (action === "make_suggestion") {
+          if (currentGame.status !== "in_progress") return "handled";
+          if (!authorizePhoneActor(event)) return "handled";
+          const categories = Array.isArray(event.payload.categories)
+            ? event.payload.categories.filter((category): category is SuggestionCategory =>
+                typeof category === "string" && SUGGESTION_CATEGORIES.some((option) => option.id === category)
+              )
+            : [];
+          if (categories.length === 3) setSuggestionCategories(categories);
+          setShowEndTurnConfirm(true);
+          setPendingPhoneContinue("make_suggestion");
+          return "handled";
+        }
+
+        return "handled";
+      }
+
+      if (event.type === "accusation") {
+        if (currentGame.status !== "in_progress") return "handled";
+        if (phonePlayersRef.current.length === 0) return "retry";
+        const actor = authorizePhoneActor(event);
+        if (!actor) return "handled";
+        const suspectId = typeof event.payload.suspectId === "string" ? event.payload.suspectId : "";
+        const itemId = typeof event.payload.itemId === "string" ? event.payload.itemId : "";
+        const locationId = typeof event.payload.locationId === "string" ? event.payload.locationId : "";
+        const timeId = typeof event.payload.timeId === "string" ? event.payload.timeId : "";
+        if (suspectId && itemId && locationId && timeId) {
+          // The accusation is attributed to its authorized sender, never
+          // blindly to whoever the UI believes is up; the event id lets a
+          // later penalty resolution correlate to this exact accusation.
+          phoneAccusationActorRef.current = { ...actor, eventId: event.id };
+          setPhoneAccusation({ suspectId, itemId, locationId, timeId });
+          setShowAccusation(true);
+        }
+        return "handled";
+      }
+
+      return "handled";
+    };
+
     const disconnect = connectPhoneSessionSocket(
       phoneSessionCode,
       {
-        onSession: ({ session }) => {
+        onSession: ({ session, players }) => {
           setPhoneLobbyStatus(session.status);
+          phonePlayersRef.current = players ?? [];
         },
         onEvent: (event) => {
-          const currentGame = gameRef.current;
-          if (!currentGame) return;
-          lastPhoneEventIdRef.current = event.id;
-          setLastPhoneEventId(event.id);
-          if (event.type === "turn_action") {
-            const action = event.payload.action;
-            if (typeof action !== "string") return;
-            if (action === "begin_investigation") {
-              if (currentGame.status === "setup") {
-                handleStartGameRef.current();
-              }
-            } else if (action === "toggle_setup_symbols" && currentGame.status === "setup") {
-              setForceRevealSymbols((prev) => !prev);
-            } else if (action === "continue_investigation") {
-              setShowAccusation(false);
-              setPhoneAccusation(null);
-              if (pendingPhoneContinueRef.current === "reveal_clue") {
-                gameStore.acknowledgePantryDraw(gameId);
-                setShowClueReveal(false);
-                setPendingPhoneContinue(null);
-                loadGameRef.current();
-                return;
-              }
-              if (showInterruptionIntroRef.current) {
-                acknowledgeInterruptionIntroRef.current();
-              } else if (showInterruptionRef.current) {
-                closeInterruptionRef.current();
-              }
-              if (pendingPhoneContinueRef.current === "make_suggestion") {
-                handleEndTurnRef.current();
-              } else if (pendingPhoneContinueRef.current === "use_secret_passage") {
-                closeSecretPassageRef.current();
-              }
-              setPendingPhoneContinue(null);
-            } else if (
-              action === "reveal_clue"
-              && currentGame.status === "in_progress"
-              && !revealingClueRef.current
-            ) {
-              handleRevealClueRef.current();
-              setPendingPhoneContinue("reveal_clue");
-            } else if (action === "resolve_accusation_penalty" && currentGame.status === "in_progress") {
-              const resolution = event.payload.resolution === "unable" ? "unable" : "paid";
-              gameStore.resolveAccusationPenalty(gameId, resolution);
-              setShowAccusation(false);
-              setPhoneAccusation(null);
-              loadGameRef.current();
-            } else if (action === "use_secret_passage" && currentGame.status === "in_progress") {
-              handleSecretPassageRef.current();
-              setPendingPhoneContinue("use_secret_passage");
-            } else if (action === "read_inspector_note" && currentGame.status === "in_progress") {
-              const noteId = typeof event.payload.noteId === "string" ? event.payload.noteId : "";
-              const readerId = currentGame.currentTurn?.suspectId || "";
-              if (!noteId || !readerId) {
-                setHostNotice("Inspector note request was incomplete.");
-                return;
-              }
-              void (async () => {
-                try {
-                  const result = gameStore.readInspectorNote(gameId, noteId, readerId);
-                  await sendInspectorNoteResult(phoneSessionCode, readerId, result.noteId, result.text);
-                  gameStore.endTurn(gameId);
-                  loadGameRef.current();
-                } catch (err) {
-                  setHostNotice(err instanceof Error ? err.message : "Unable to read inspector note.");
-                }
-              })();
-            } else if (action === "show_story" && currentGame.status === "in_progress") {
-              setShowNarrative((prev) => !prev);
-            } else if (action === "make_suggestion" && currentGame.status === "in_progress") {
-              const categories = Array.isArray(event.payload.categories)
-                ? event.payload.categories.filter((category): category is SuggestionCategory =>
-                    typeof category === "string" && SUGGESTION_CATEGORIES.some((option) => option.id === category)
-                  )
-                : [];
-              if (categories.length === 3) setSuggestionCategories(categories);
-              setShowEndTurnConfirm(true);
-              setPendingPhoneContinue("make_suggestion");
-            } else if (action === "acknowledge_interruption") {
-              if (showInterruptionIntroRef.current) {
-                acknowledgeInterruptionIntroRef.current();
-              } else if (showInterruptionRef.current) {
-                closeInterruptionRef.current();
-              }
-            }
-          } else if (event.type === "accusation") {
-            if (currentGame.status !== "in_progress") return;
-            const suspectId = typeof event.payload.suspectId === "string" ? event.payload.suspectId : "";
-            const itemId = typeof event.payload.itemId === "string" ? event.payload.itemId : "";
-            const locationId = typeof event.payload.locationId === "string" ? event.payload.locationId : "";
-            const timeId = typeof event.payload.timeId === "string" ? event.payload.timeId : "";
-            if (suspectId && itemId && locationId && timeId) {
-              setPhoneAccusation({ suspectId, itemId, locationId, timeId });
-              setShowAccusation(true);
-            }
-          }
+          // Events are processed strictly serially; the cursor advances only
+          // after a definitive success or rejection, so a host refresh or
+          // reconnect can never replay already-processed history.
+          phoneEventChainRef.current = phoneEventChainRef.current
+            .then(async () => {
+              if (!isEventFresh(eventCursorRef.current, event.id)) return;
+              const outcome = await processPhoneEvent(event);
+              if (outcome !== "retry") commitCursor(event.id);
+            })
+            .catch(() => {
+              // Unexpected failure: leave the cursor so a reconnect can
+              // redeliver this event.
+            });
         },
       },
       {
-        getLastEventId: () => lastPhoneEventIdRef.current,
+        getLastEventId: () => eventCursorRef.current,
       }
     );
     return () => disconnect();
@@ -590,11 +753,11 @@ export default function GamePage({ gameId, onNavigate, onMusicPauseChange }: Pro
     }
   };
 
-  const handleRevealClue = () => {
+  const handleRevealClue = (sourceEventId?: number) => {
     setRevealingClue(true);
     setLatestClue(null);
     try {
-      const result = gameStore.revealNextClue(gameId);
+      const result = gameStore.revealNextClue(gameId, { sourceEventId: sourceEventId ?? null });
       if (result.clue) {
         const speaker = result.clue.speaker?.toLowerCase() ?? "";
         const role = speaker.includes("inspector") ? "inspector" : "butler";
@@ -612,9 +775,9 @@ export default function GamePage({ gameId, onNavigate, onMusicPauseChange }: Pro
     setRevealingClue(false);
   };
 
-  const closeClueReveal = () => {
+  const closeClueReveal = (token: string | null) => {
     try {
-      gameStore.acknowledgePantryDraw(gameId);
+      if (token) gameStore.acknowledgePantryDraw(gameId, token);
       loadGame();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to record the Pantry draw");
@@ -627,20 +790,32 @@ export default function GamePage({ gameId, onNavigate, onMusicPauseChange }: Pro
     itemId: string;
     locationId: string;
     timeId: string;
-  }): Promise<{ correct: boolean; message: string; aiResponse?: string; correctCount: number; wrongCount: number }> => {
+  }): Promise<{ correct: boolean; message: string; aiResponse?: string; correctCount: number; wrongCount: number; rejected?: boolean }> => {
     if (!game) {
       setError("Game not found");
-      return { correct: false, message: "Game not found", correctCount: 0, wrongCount: 4 };
+      return { correct: false, message: "Game not found", correctCount: 0, wrongCount: 0, rejected: true };
     }
     try {
-      const result = gameStore.makeAccusation(gameId, {
-        player: game.currentTurn?.playerName || "Detective",
-        playerSuspectId: game.currentTurn?.suspectId,
-        ...accusation,
-      });
+      // Phone accusations are attributed to their authorized sender; only
+      // host-screen accusations fall back to the table's current turn.
+      const phoneContext = phoneAccusation ? phoneAccusationActorRef.current : null;
+      const accuser = phoneContext ?? {
+        name: game.currentTurn?.playerName || "Detective",
+        suspectId: game.currentTurn?.suspectId ?? "",
+      };
+      const result = gameStore.makeAccusation(
+        gameId,
+        {
+          player: accuser.name,
+          playerSuspectId: accuser.suspectId,
+          ...accusation,
+        },
+        { sourceEventId: phoneContext?.eventId ?? null }
+      );
+      accusationPenaltyTokenRef.current = result.penaltyToken ?? null;
       const code = phoneSessionCode;
-      if (code && game.currentTurn?.suspectId) {
-        sendAccusationResult(code, game.currentTurn.suspectId, {
+      if (code && accuser.suspectId) {
+        sendAccusationResult(code, accuser.suspectId, {
           correct: result.correct,
           correctCount: result.correctCount,
         }).catch(() => undefined);
@@ -652,29 +827,42 @@ export default function GamePage({ gameId, onNavigate, onMusicPauseChange }: Pro
         correctCount: result.correctCount,
         wrongCount: result.wrongCount,
       };
-    } catch {
-      return { correct: false, message: "Failed to make accusation", correctCount: 0, wrongCount: 4 };
+    } catch (err) {
+      // The store refused the accusation (out of turn, eliminated pawn,
+      // pending physical action). No penalty exists; the panel shows the
+      // rejection instead of a payment prompt.
+      return {
+        correct: false,
+        message: err instanceof Error ? err.message : "Failed to make accusation",
+        correctCount: 0,
+        wrongCount: 0,
+        rejected: true,
+      };
     }
   };
 
-  const handleResolveAccusationPenalty = (resolution: "paid" | "unable") => {
+  const handleResolveAccusationPenalty = (resolution: "paid" | "unable", token: string | null) => {
     try {
-      gameStore.resolveAccusationPenalty(gameId, resolution);
+      if (token) gameStore.resolveAccusationPenalty(gameId, resolution, token);
       setShowAccusation(false);
       setPhoneAccusation(null);
+      phoneAccusationActorRef.current = null;
+      accusationPenaltyTokenRef.current = null;
       loadGame();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to resolve the accusation penalty");
     }
   };
 
-  const handleSecretPassage = () => {
+  const handleSecretPassage = (): boolean => {
     try {
       const result = gameStore.useSecretPassage(gameId);
       setSecretPassageResult(result);
       loadGame();
+      return true;
     } catch (err) {
       setHostNotice(err instanceof Error ? err.message : "Secret passage already used this turn.");
+      return false;
     }
   };
 
@@ -713,14 +901,7 @@ export default function GamePage({ gameId, onNavigate, onMusicPauseChange }: Pro
   };
 
   const closeInspectorNotes = () => {
-    if (noteWasFirstRead) {
-      try {
-        gameStore.endTurn(gameId);
-        loadGame();
-      } catch (err) {
-        setError(err instanceof Error ? err.message : "Failed to end turn");
-      }
-    }
+    // A first-time read already ended the turn atomically inside the store.
     setShowInspectorNotes(false);
     setSelectedInspectorNote(null);
     setShowLookAway(false);
@@ -759,7 +940,7 @@ export default function GamePage({ gameId, onNavigate, onMusicPauseChange }: Pro
       const result = gameStore.readInspectorNote(gameId, selectedInspectorNote, readerId);
       setRevealedInspectorNote(result.text);
       setRevealedNoteId(selectedInspectorNote);
-      setNoteWasFirstRead(true);
+      setNoteWasFirstRead(result.firstRead);
       setShowLookAway(false);
       loadGame();
     } catch (err) {
@@ -1111,7 +1292,7 @@ export default function GamePage({ gameId, onNavigate, onMusicPauseChange }: Pro
                         title: revealingClue ? "Summoning..." : "Summon the Butler",
                         description: "Outside Evidence Room · draw top Pantry item card",
                         icon: Search,
-                        onClick: handleRevealClue,
+                        onClick: () => handleRevealClue(),
                         disabled: revealingClue || cluesRemaining === 0 || isPhoneLobbyActive,
                         highlight: !revealingClue && cluesRemaining > 0,
                       },
@@ -1334,9 +1515,10 @@ export default function GamePage({ gameId, onNavigate, onMusicPauseChange }: Pro
           onClose={() => {
             setShowAccusation(false);
             setPhoneAccusation(null);
+            phoneAccusationActorRef.current = null;
           }}
           onAccuse={handleAccusation}
-          onResolvePenalty={handleResolveAccusationPenalty}
+          onResolvePenalty={(resolution) => handleResolveAccusationPenalty(resolution, accusationPenaltyTokenRef.current)}
           presetAccusation={phoneAccusation}
           autoSubmit={Boolean(phoneAccusation)}
         />
@@ -1357,8 +1539,8 @@ export default function GamePage({ gameId, onNavigate, onMusicPauseChange }: Pro
               <p className="game-modal-text">Place the item cards face up in the Evidence Room. The app records only the count, never their identities.</p>
             </div>
             <div className="game-modal-footer game-modal-footer-split">
-              <button className="game-modal-btn" onClick={() => handleResolveAccusationPenalty("paid")}>Payment complete</button>
-              <button className="game-modal-btn game-modal-btn-outline" onClick={() => handleResolveAccusationPenalty("unable")}>Cannot pay — eliminate player</button>
+              <button className="game-modal-btn" onClick={() => handleResolveAccusationPenalty("paid", game.pendingAccusationPenalty?.token ?? null)}>Payment complete</button>
+              <button className="game-modal-btn game-modal-btn-outline" onClick={() => handleResolveAccusationPenalty("unable", game.pendingAccusationPenalty?.token ?? null)}>Cannot pay — eliminate player</button>
             </div>
           </div>
         </div>
@@ -1377,7 +1559,7 @@ export default function GamePage({ gameId, onNavigate, onMusicPauseChange }: Pro
               <p className="game-modal-text">The summoner takes the top item card from the Butler's Pantry. Do not show it and do not enter its identity in the app.</p>
             </div>
             <div className="game-modal-footer">
-              <button className="game-modal-btn" onClick={closeClueReveal}>I took the top Pantry item card</button>
+              <button className="game-modal-btn" onClick={() => closeClueReveal(game.pendingPantryDrawToken)}>I took the top Pantry item card</button>
             </div>
           </div>
         </div>
@@ -1484,7 +1666,7 @@ export default function GamePage({ gameId, onNavigate, onMusicPauseChange }: Pro
               />
             </div>
             <div className="game-modal-footer">
-              <button className="game-modal-btn" onClick={closeClueReveal}>I took the top Pantry item card</button>
+              <button className="game-modal-btn" onClick={() => closeClueReveal(game.pendingPantryDrawToken)}>I took the top Pantry item card</button>
             </div>
           </div>
         </div>

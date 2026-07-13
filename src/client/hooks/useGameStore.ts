@@ -26,6 +26,7 @@ import type {
   GameAction,
   ActionType,
 } from "../../shared/api-types";
+import { createActionToken, resolveCurrentActor } from "./turn-authority";
 
 // ============================================
 // LOCAL GAME TYPES
@@ -57,8 +58,13 @@ export interface LocalGame {
 
   // Revealed clues tracking
   revealedClueIds: string[];
-  // Butler summons stay pending until the physical Pantry draw is confirmed
+  // Butler summons stay pending until the physical Pantry draw is confirmed.
+  // The token correlates an acknowledgement to this exact pending draw; the
+  // source event id records which phone event initiated the summon (null for
+  // host-local summons) so phone acknowledgements can be matched exactly.
   pendingPantryDrawClueNumber: number | null;
+  pendingPantryDrawToken: string | null;
+  pendingPantryDrawSourceEventId: number | null;
 
   // Player setup
   players: {
@@ -78,11 +84,16 @@ export interface LocalGame {
   turnCount: number;
   // Pawns removed from rotation after failing to pay an accusation penalty
   eliminatedSuspectIds: string[];
-  // Wrong accusations stay pending until the item-card payment is resolved
+  // Wrong accusations stay pending until the item-card payment is resolved;
+  // the token correlates a payment confirmation to this exact penalty
   pendingAccusationPenalty: {
     playerName: string;
     playerSuspectId: string;
     wrongCount: number;
+    token: string;
+    turnCount: number;
+    // Phone event that initiated the accusation; null for host-local ones
+    sourceEventId: number | null;
   } | null;
   // Turn number of the last turn-consuming action (one action per turn)
   turnActionTakenAt: number | null;
@@ -155,8 +166,21 @@ function loadGamesFromStorage(): Record<string, LocalGame> {
       // Migrate games saved before the physical-workflow fields existed
       for (const game of Object.values(games)) {
         game.pendingPantryDrawClueNumber ??= null;
+        game.pendingPantryDrawToken ??= game.pendingPantryDrawClueNumber !== null
+          ? createActionToken("pantry", game.turnCount ?? 0, game.actions?.length ?? 0)
+          : null;
+        game.pendingPantryDrawSourceEventId ??= null;
         game.eliminatedSuspectIds ??= [];
         game.pendingAccusationPenalty ??= null;
+        if (game.pendingAccusationPenalty) {
+          game.pendingAccusationPenalty.token ??= createActionToken(
+            "penalty",
+            game.turnCount ?? 0,
+            game.actions?.length ?? 0
+          );
+          game.pendingAccusationPenalty.turnCount ??= game.turnCount ?? 0;
+          game.pendingAccusationPenalty.sourceEventId ??= null;
+        }
         game.turnActionTakenAt ??= null;
       }
       return games;
@@ -351,6 +375,8 @@ export class GameStore {
       startedAt: null,
       revealedClueIds: [],
       pendingPantryDrawClueNumber: null,
+      pendingPantryDrawToken: null,
+      pendingPantryDrawSourceEventId: null,
       players,
       phoneSessionCode,
       turnOrder: [],
@@ -389,6 +415,8 @@ export class GameStore {
     game.updatedAt = new Date().toISOString();
     game.interruptionCount = 0;
     game.pendingPantryDrawClueNumber = null;
+    game.pendingPantryDrawToken = null;
+    game.pendingPantryDrawSourceEventId = null;
     game.eliminatedSuspectIds = [];
     game.pendingAccusationPenalty = null;
     game.turnActionTakenAt = null;
@@ -427,8 +455,12 @@ export class GameStore {
     return game;
   }
 
-  // Reveal next clue
-  revealNextClue(id: string): { game: LocalGame; clue: GeneratedClue | null; dramaticEvent?: { description: string; affectedSuspects: string[] } } {
+  // Reveal next clue. options.sourceEventId records the phone event that
+  // initiated the summon so acknowledgements can be correlated exactly.
+  revealNextClue(
+    id: string,
+    options?: { sourceEventId?: number | null }
+  ): { game: LocalGame; clue: GeneratedClue | null; dramaticEvent?: { description: string; affectedSuspects: string[] } } {
     const game = this.games[id];
     if (!game) throw new Error("Game not found");
     if (game.status !== "in_progress") throw new Error("Game not in progress");
@@ -449,6 +481,8 @@ export class GameStore {
     game.currentClueIndex++;
     game.revealedClueIds.push(clue.id);
     game.pendingPantryDrawClueNumber = clue.position;
+    game.pendingPantryDrawToken = createActionToken("pantry", game.turnCount, game.actions.length);
+    game.pendingPantryDrawSourceEventId = options?.sourceEventId ?? null;
     game.updatedAt = new Date().toISOString();
 
     // Add clue revealed action
@@ -478,18 +512,27 @@ export class GameStore {
    * Records that the summoner physically took the top Butler's Pantry item
    * card. The card's identity is never entered into the app. The turn only
    * advances here, so a summon stays pending until the table confirms the
-   * draw. Idempotent: repeat acknowledgements are no-ops.
+   * draw.
+   *
+   * The token must match the pending draw's token, so a delayed or replayed
+   * acknowledgement can never resolve a later pending draw. Repeat
+   * acknowledgements after resolution are no-ops.
    */
-  acknowledgePantryDraw(id: string): void {
+  acknowledgePantryDraw(id: string, token: string): void {
     const game = this.games[id];
     if (!game) throw new Error("Game not found");
     const clueNumber = game.pendingPantryDrawClueNumber;
     if (clueNumber === null) return;
+    if (token !== game.pendingPantryDrawToken) {
+      throw new Error("This acknowledgement does not match the pending Pantry draw");
+    }
     this.addAction(game, "pantry_draw_acknowledged", "system", {
       clueNumber,
       identityTracked: false,
     });
     game.pendingPantryDrawClueNumber = null;
+    game.pendingPantryDrawToken = null;
+    game.pendingPantryDrawSourceEventId = null;
     if (game.status === "in_progress") this.advanceTurn(game);
     saveGamesToStorage(this.games);
   }
@@ -512,7 +555,7 @@ export class GameStore {
     }
     const allowed = new Set(["suspect", "item", "location", "time"]);
     const distinct = [...new Set(categories)];
-    if (distinct.length !== 3 || distinct.some((category) => !allowed.has(category))) {
+    if (categories.length !== 3 || distinct.length !== 3 || distinct.some((category) => !allowed.has(category))) {
       throw new Error("A suggestion must name cards from exactly three different categories");
     }
     this.markTurnAction(game);
@@ -606,11 +649,18 @@ export class GameStore {
     return { message };
   }
 
+  /**
+   * Reads an inspector note. A first-time read is the turn's official action
+   * and atomically ends the turn in the same committed state change, so a
+   * refresh or failed result delivery can never strand the game with the
+   * action marked but the turn never advanced. Re-reads of an already-read
+   * note stay free and never advance the turn.
+   */
   readInspectorNote(
     id: string,
     noteId: string,
     readerId: string
-  ): { noteId: string; text: string } {
+  ): { noteId: string; text: string; firstRead: boolean } {
     const game = this.games[id];
     if (!game) throw new Error("Game not found");
     if (game.status !== "in_progress") throw new Error("Game not in progress");
@@ -619,7 +669,7 @@ export class GameStore {
     if (!note) throw new Error("Inspector note not found");
     const alreadyRead = game.readInspectorNotes[readerId] || [];
     if (alreadyRead.includes(noteId)) {
-      return { noteId, text: note.text };
+      return { noteId, text: note.text, firstRead: false };
     }
     if (game.pendingPantryDrawClueNumber !== null || game.pendingAccusationPenalty) {
       throw new Error("Complete the current physical action before reading a note");
@@ -634,8 +684,6 @@ export class GameStore {
     if (game.inspectorNoteTurnUsedAt[readerId] === game.turnCount) {
       throw new Error("Inspector note already used this turn");
     }
-    // A first-time note read is the turn's official action; re-reads above
-    // stay free.
     this.markTurnAction(game);
 
     game.readInspectorNotes = {
@@ -652,10 +700,11 @@ export class GameStore {
       noteId,
       readerId,
     });
+    this.advanceTurn(game);
 
     saveGamesToStorage(this.games);
 
-    return { noteId, text: note.text };
+    return { noteId, text: note.text, firstRead: true };
   }
 
   announceInspectorNote(id: string, noteId: "N1" | "N2"): { message: string } {
@@ -689,17 +738,19 @@ export class GameStore {
     id: string,
     accusation: {
       player: string;
-      playerSuspectId?: string;
+      playerSuspectId: string;
       suspectId: string;
       itemId: string;
       locationId: string;
       timeId: string;
-    }
+    },
+    options?: { sourceEventId?: number | null }
   ): {
     correct: boolean;
     message: string;
     correctCount: number;
     wrongCount: number;
+    penaltyToken?: string;
     solution?: {
       suspectId: string;
       suspectName: string;
@@ -720,16 +771,18 @@ export class GameStore {
     if (game.pendingAccusationPenalty) {
       throw new Error("Resolve the previous accusation's item-card payment first");
     }
-    if (accusation.playerSuspectId) {
-      if (game.eliminatedSuspectIds.includes(accusation.playerSuspectId)) {
-        throw new Error("An eliminated detective cannot make an accusation");
-      }
-      const currentActor = game.turnOrder.length > 0
-        ? game.turnOrder[game.currentTurnIndex % game.turnOrder.length]
-        : null;
-      if (currentActor?.suspectId && currentActor.suspectId !== accusation.playerSuspectId) {
-        throw new Error("Only the detective whose turn it is may make an accusation");
-      }
+    if (typeof accusation.playerSuspectId !== "string") {
+      throw new Error("An accusation must identify the accusing detective's pawn");
+    }
+    if (game.eliminatedSuspectIds.includes(accusation.playerSuspectId)) {
+      throw new Error("An eliminated detective cannot make an accusation");
+    }
+    const currentActor = resolveCurrentActor(game);
+    if (!currentActor) {
+      throw new Error("No detective currently holds the turn");
+    }
+    if (currentActor.suspectId !== accusation.playerSuspectId) {
+      throw new Error("Only the detective whose turn it is may make an accusation");
     }
     this.markTurnAction(game);
 
@@ -773,8 +826,11 @@ export class GameStore {
       game.wrongAccusations++;
       game.pendingAccusationPenalty = {
         playerName: accusation.player,
-        playerSuspectId: accusation.playerSuspectId || "",
+        playerSuspectId: accusation.playerSuspectId,
         wrongCount,
+        token: createActionToken("penalty", game.turnCount, game.actions.length),
+        turnCount: game.turnCount,
+        sourceEventId: options?.sourceEventId ?? null,
       };
       this.addAction(game, "accusation_wrong", accusation.player, {
         message: "Wrong accusation!",
@@ -804,6 +860,7 @@ export class GameStore {
         : "That's not correct. The investigation continues...",
       correctCount,
       wrongCount,
+      penaltyToken: game.pendingAccusationPenalty?.token,
       solution: correct ? fullSolution : undefined,
     };
   }
@@ -811,14 +868,20 @@ export class GameStore {
   /**
    * Completes the physical wrong-accusation ritual without recording card
    * identities. The host/player declares whether the required item cards were
-   * paid; inability to pay removes that pawn from turn rotation. Idempotent:
-   * repeat resolutions are no-ops.
+   * paid; inability to pay removes that pawn from turn rotation.
+   *
+   * The token must match the pending penalty's token, so a delayed or
+   * replayed confirmation can never resolve a later penalty. Repeat
+   * resolutions after the penalty cleared are no-ops.
    */
-  resolveAccusationPenalty(id: string, resolution: "paid" | "unable"): void {
+  resolveAccusationPenalty(id: string, resolution: "paid" | "unable", token: string): void {
     const game = this.games[id];
     if (!game) throw new Error("Game not found");
     const pending = game.pendingAccusationPenalty;
     if (!pending) return;
+    if (token !== pending.token) {
+      throw new Error("This payment confirmation does not match the pending accusation penalty");
+    }
 
     if (resolution === "paid") {
       this.addAction(game, "card_shown", pending.playerName, {
@@ -1023,6 +1086,7 @@ export class GameStore {
       totalClues: scenario.clues.length,
       cluesRemaining: scenario.clues.length - game.currentClueIndex,
       pendingPantryDrawClueNumber: game.pendingPantryDrawClueNumber ?? null,
+      pendingPantryDrawToken: game.pendingPantryDrawToken ?? null,
       phase: game.phase,
       wrongAccusations: game.wrongAccusations,
       eliminatedSuspectIds: game.eliminatedSuspectIds ?? [],
@@ -1078,6 +1142,7 @@ export interface GameDataFormatted {
   totalClues: number;
   cluesRemaining: number;
   pendingPantryDrawClueNumber: number | null;
+  pendingPantryDrawToken: string | null;
   phase: GamePhase;
   wrongAccusations: number;
   eliminatedSuspectIds: string[];
@@ -1085,6 +1150,9 @@ export interface GameDataFormatted {
     playerName: string;
     playerSuspectId: string;
     wrongCount: number;
+    token: string;
+    turnCount: number;
+    sourceEventId: number | null;
   } | null;
   currentPlayer: string | null;
   eliminated: EliminationState;

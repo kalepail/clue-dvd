@@ -199,6 +199,32 @@ function storeAccusationMessageHistory(code: string, playerId: string, history: 
   }
 }
 
+function actionEventStorageKey(playerId: string): string {
+  return `clue-dvd-phone-action-events:${playerId}`;
+}
+
+function loadActionEventIds(playerId: string): { reveal: number | null; accusation: number | null } {
+  try {
+    const raw = localStorage.getItem(actionEventStorageKey(playerId));
+    if (!raw) return { reveal: null, accusation: null };
+    const parsed = JSON.parse(raw) as { reveal?: unknown; accusation?: unknown };
+    return {
+      reveal: typeof parsed.reveal === "number" ? parsed.reveal : null,
+      accusation: typeof parsed.accusation === "number" ? parsed.accusation : null,
+    };
+  } catch {
+    return { reveal: null, accusation: null };
+  }
+}
+
+function persistActionEventIds(playerId: string, ids: { reveal: number | null; accusation: number | null }): void {
+  try {
+    localStorage.setItem(actionEventStorageKey(playerId), JSON.stringify(ids));
+  } catch {
+    // Best-effort; the host's recoverable modals remain the fallback.
+  }
+}
+
 function clearAccusationMessageHistory(code: string, playerId: string): void {
   localStorage.removeItem(buildAccusationMessageKey(code, playerId));
 }
@@ -253,6 +279,11 @@ export default function PhonePlayerPage({ code, onNavigate }: Props) {
   const [pendingSuggestionConfirm, setPendingSuggestionConfirm] = useState(false);
   const [suggestionCategories, setSuggestionCategories] = useState<Array<"suspect" | "item" | "location" | "time">>(["suspect", "item", "location"]);
   const [interruptionConfirming, setInterruptionConfirming] = useState(false);
+  // Event ids of this player's own initiating actions, echoed back as
+  // forEventId so the host resolves exactly the pending action they created.
+  // Persisted per player so a phone refresh mid-ritual keeps the correlation.
+  const lastRevealEventIdRef = useRef<number | null>(null);
+  const lastAccusationEventIdRef = useRef<number | null>(null);
   const [accusationFeedback, setAccusationFeedback] = useState<{
     correct: boolean;
     correctCount: number;
@@ -528,11 +559,27 @@ export default function PhonePlayerPage({ code, onNavigate }: Props) {
     });
   };
 
+  const rememberActionEvent = (kind: "reveal" | "accusation", eventId: number) => {
+    if (kind === "reveal") lastRevealEventIdRef.current = eventId;
+    else lastAccusationEventIdRef.current = eventId;
+    if (player) {
+      persistActionEventIds(player.id, {
+        reveal: lastRevealEventIdRef.current,
+        accusation: lastAccusationEventIdRef.current,
+      });
+    }
+  };
+
   const sendAction = async (action: string) => {
     if (!player || !token) return;
+    if (action === "use_secret_passage" && secretPassageUsedThisTurn) {
+      setActionStatus("Secret passage already used this turn.");
+      return;
+    }
     setActionStatus("Sending to host...");
     try {
-      await sendPlayerAction(player.id, token, "turn_action", { action });
+      const event = await sendPlayerAction(player.id, token, "turn_action", { action });
+      if (action === "reveal_clue") rememberActionEvent("reveal", event.id);
       setActionStatus(null);
       if (action === "use_secret_passage") {
         setSecretPassageUsedThisTurn(true);
@@ -559,7 +606,8 @@ export default function PhonePlayerPage({ code, onNavigate }: Props) {
     }
     setActionStatus("Submitting accusation...");
     try {
-      await sendPlayerAction(player.id, token, "accusation", accusation);
+      const event = await sendPlayerAction(player.id, token, "accusation", accusation);
+      rememberActionEvent("accusation", event.id);
       setActionStatus(null);
       setAccusation({ suspectId: "", itemId: "", locationId: "", timeId: "" });
       setTab("turn");
@@ -575,6 +623,7 @@ export default function PhonePlayerPage({ code, onNavigate }: Props) {
       await sendPlayerAction(player.id, token, "turn_action", {
         action: "resolve_accusation_penalty",
         resolution,
+        forEventId: lastAccusationEventIdRef.current ?? undefined,
       });
       setShowAccusationNotice(false);
       setAccusationFeedback(null);
@@ -587,7 +636,10 @@ export default function PhonePlayerPage({ code, onNavigate }: Props) {
   const handleContinueInvestigation = async () => {
     if (!player || !token) return;
     try {
-      await sendPlayerAction(player.id, token, "turn_action", { action: "continue_investigation" });
+      await sendPlayerAction(player.id, token, "turn_action", {
+        action: "continue_investigation",
+        forEventId: lastRevealEventIdRef.current ?? undefined,
+      });
     } catch {
       // Ignore failures; host can still continue manually.
     } finally {
@@ -793,6 +845,7 @@ export default function PhonePlayerPage({ code, onNavigate }: Props) {
         categories: suggestionCategories,
       });
       setActionStatus(null);
+      setSuggestionCategories(["suspect", "item", "location"]);
       setActionContinueMessage("Announce one physical card from each selected category. Continue after the table resolves the suggestion.");
       setShowActionContinue(true);
     } catch (err) {
@@ -1119,6 +1172,14 @@ export default function PhonePlayerPage({ code, onNavigate }: Props) {
   );
   const leadPlayerId = sortedRoster[0]?.id;
   const playerId = player?.id;
+
+  useEffect(() => {
+    if (!playerId) return;
+    const stored = loadActionEventIds(playerId);
+    lastRevealEventIdRef.current = stored.reveal;
+    lastAccusationEventIdRef.current = stored.accusation;
+  }, [playerId]);
+
   const deductionPlayers = sortedRoster.filter((entry) => entry.id !== playerId);
   const isLead = playerId ? leadPlayerId === playerId : false;
   const isPlum = player?.suspectId === "S06";

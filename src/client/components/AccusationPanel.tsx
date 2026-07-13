@@ -20,7 +20,7 @@ interface Props {
     itemId: string;
     locationId: string;
     timeId: string;
-  }) => Promise<{ correct: boolean; message: string; aiResponse?: string; correctCount: number; wrongCount: number }>;
+  }) => Promise<{ correct: boolean; message: string; aiResponse?: string; correctCount: number; wrongCount: number; rejected?: boolean }>;
   presetAccusation?: {
     suspectId: string;
     itemId: string;
@@ -91,6 +91,7 @@ export default function AccusationPanel({
     aiResponse?: string;
     correctCount: number;
     wrongCount: number;
+    rejected?: boolean;
   } | null>(null);
 
   const canSubmit = suspectId && itemId && locationId && timeId && !submitting;
@@ -229,7 +230,7 @@ export default function AccusationPanel({
 
   return (
     <Dialog open={true} onOpenChange={(open) => {
-      if (!open && (!result || result.correct)) onClose();
+      if (!open && (!result || result.correct || result.rejected)) onClose();
     }}>
       <DialogContent className="sm:max-w-[900px]">
         <DialogHeader>
@@ -242,7 +243,16 @@ export default function AccusationPanel({
           </DialogDescription>
         </DialogHeader>
 
-        {result ? (
+        {result?.rejected ? (
+          <div className="text-center py-6 space-y-4">
+            <div className="flex items-center justify-center gap-2 text-2xl font-bold text-destructive">
+              <XCircle className="h-8 w-8" />
+              Accusation Not Allowed
+            </div>
+            <p className="text-muted-foreground">{result.message}</p>
+            <Button onClick={onClose} className="mt-4">Close</Button>
+          </div>
+        ) : result ? (
           <div className="text-center py-6 space-y-4">
             <div className={`flex items-center justify-center gap-2 text-2xl font-bold ${
               result.correct ? "text-success" : "text-destructive"

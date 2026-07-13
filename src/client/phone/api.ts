@@ -1,5 +1,6 @@
 import type {
   PhoneEliminations,
+  PhoneEvent,
   PhoneJoinResponse,
   PhoneSessionSummary,
   PhoneEventType,
@@ -75,7 +76,7 @@ export async function sendPlayerAction(
   reconnectToken: string,
   type: PhoneEventType,
   payload: Record<string, unknown>
-): Promise<void> {
+): Promise<PhoneEvent> {
   const response = await fetch(`/api/phone/players/${playerId}/actions`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -85,6 +86,8 @@ export async function sendPlayerAction(
     const data = (await response.json().catch(() => ({}))) as { error?: string };
     throw new Error(data.error || "Failed to send action");
   }
+  const data = (await response.json()) as { event: PhoneEvent };
+  return data.event;
 }
 
 export async function closeSession(code: string): Promise<void> {
