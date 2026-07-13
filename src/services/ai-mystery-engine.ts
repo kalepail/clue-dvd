@@ -96,6 +96,8 @@ type StageDebug<T> = {
   usage?: { inputTokens?: number; outputTokens?: number };
   stopReason?: string;
   strictSchema?: boolean;
+  model?: string;
+  transport?: StructuredCallResult<T>["transport"];
 };
 
 export type MysteryEngineDebug = {
@@ -691,5 +693,7 @@ function toStageDebug<T>(
     usage: result.usage,
     stopReason: result.stopReason,
     strictSchema: result.strictSchema,
+    model: result.model,
+    transport: result.transport,
   };
 }
