@@ -6,6 +6,7 @@ import {
   validateScenario,
 } from "../services/scenario-generator";
 import {
+  ENGINE_VERSION,
   generateMysteryV2,
   getLastMysteryEngineDebug,
   type MysteryEngineResult,
@@ -246,7 +247,7 @@ export function applyMysteryPackage(
     },
     metadata: {
       ...scenario.metadata,
-      engineVersion: "3.0-world",
+      engineVersion: ENGINE_VERSION,
       mysterySignature: story.mysterySignature,
     },
   };

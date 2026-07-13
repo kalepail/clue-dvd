@@ -47,7 +47,7 @@ describe("scenario V2 integration", () => {
     expect(applied.clues).toHaveLength(10);
     expect(applied.clues.every((clue) => !("eliminates" in clue))).toBe(true);
     expect(applied.dramaticEvents).toEqual([]);
-    expect(applied.metadata).toMatchObject({ engineVersion: "2.1-creative", mysterySignature: expect.any(String) });
+    expect(applied.metadata).toMatchObject({ engineVersion: "3.0-world", mysterySignature: expect.any(String) });
     expect(applied.inspectorNotes[0].relatedClues).toEqual([2, 5]);
   });
 });
