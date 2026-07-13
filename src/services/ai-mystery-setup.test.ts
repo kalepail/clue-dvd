@@ -26,7 +26,7 @@ describe("AI Mystery V2 deterministic setup", () => {
     const shell = createMysteryScenarioShell(createMysterySetup({ seed: 45 }));
     expect(shell.clues).toHaveLength(10);
     expect(shell.clues.every((clue) => clue.eliminates === undefined)).toBe(true);
-    expect(shell.metadata.engineVersion).toBe("3.0-world");
+    expect(shell.metadata.engineVersion).toBe("3.1-scene");
     expect(shell.dramaticEvents).toEqual([]);
   });
 });

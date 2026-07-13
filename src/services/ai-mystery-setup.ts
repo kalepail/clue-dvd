@@ -75,7 +75,7 @@ export function createMysteryScenarioShell(setup: MysterySetup): GeneratedScenar
       seed: setup.seed,
       createdAt,
       version: "3.0.0",
-      engineVersion: "3.0-world",
+      engineVersion: "3.1-scene",
     },
   };
 }

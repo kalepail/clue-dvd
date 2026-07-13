@@ -42,12 +42,17 @@ describe("scenario V2 integration", () => {
       ],
       closing: "The established evidence explains the theft.",
       mysterySignature: "occasion | motive | relationship | deception",
+      cluePatternSignature: "witness-centric|story:3|openers:direct:8,greeting:2",
     });
 
     expect(applied.clues).toHaveLength(10);
     expect(applied.clues.every((clue) => !("eliminates" in clue))).toBe(true);
     expect(applied.dramaticEvents).toEqual([]);
-    expect(applied.metadata).toMatchObject({ engineVersion: "3.0-world", mysterySignature: expect.any(String) });
+    expect(applied.metadata).toMatchObject({
+      engineVersion: "3.1-scene",
+      mysterySignature: expect.any(String),
+      cluePatternSignature: expect.stringContaining("witness-centric"),
+    });
     expect(applied.inspectorNotes[0].relatedClues).toEqual([2, 5]);
   });
 });

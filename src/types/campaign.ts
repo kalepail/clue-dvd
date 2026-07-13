@@ -390,8 +390,10 @@ export interface GenerateCampaignRequest {
   excludeLocations?: string[];
   /** Exclude specific times from solution */
   excludeTimes?: string[];
-  /** Recent V2 novelty signatures to avoid repeating across local games */
+  /** Recent occasion signatures to avoid repeating across local games */
   recentMysterySignatures?: string[];
+  /** Recent clue-composition signatures to vary recipes and scene shapes */
+  recentCluePatternSignatures?: string[];
 }
 
 /**
@@ -489,5 +491,7 @@ export interface GeneratedScenario {
     engineVersion?: string;
     /** Occasion/motive/relationship/deception novelty signature */
     mysterySignature?: string;
+    /** Story recipe, clue-kind mix, episode shapes, and opening-style mix */
+    cluePatternSignature?: string;
   };
 }

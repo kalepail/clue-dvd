@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod/v4";
-import { callStructured } from "./ai-mystery-provider";
+import { AI_MYSTERY_MODEL, callStructured } from "./ai-mystery-provider";
 import { toToolInputSchema } from "./ai-mystery-schemas";
 
 const OutputSchema = z.object({ value: z.string() });
@@ -35,7 +35,30 @@ describe("structured Anthropic provider", () => {
     expect(result.value).toEqual({ value: "valid" });
     expect(result.usage).toEqual({ inputTokens: 12, outputTokens: 4 });
     const requestBody = JSON.parse(String(fetchImpl.mock.calls[0][1]?.body));
+    expect(requestBody.model).toBe("claude-opus-4-8");
+    expect(AI_MYSTERY_MODEL).toBe("claude-opus-4-8");
     expect(requestBody.tools[0].strict).toBe(true);
+  });
+
+  it("decodes literal Unicode typography escapes at the provider boundary", async () => {
+    const fetchImpl = vi.fn(async () => successResponse({
+      value: "One hears \\u2014 and then \\u201cthis\\u201d happened\\u2026",
+    }));
+    const result = await callStructured({
+      apiKey: "test",
+      stage: "renderer",
+      system: "system",
+      prompt: "prompt",
+      toolName: "submit_test",
+      toolDescription: "test",
+      inputSchema: { type: "object" },
+      outputSchema: OutputSchema,
+      maxTokens: 100,
+      fetchImpl,
+    });
+
+    expect(result.value.value).toBe("One hears — and then “this” happened…");
+    expect(result.raw).not.toContain("\\\\u2014");
   });
 
   it("retries a transient provider failure and then succeeds", async () => {

@@ -41,6 +41,7 @@ async function generateForRequest(
     excludeLocations: body.excludeLocations,
     excludeTimes: body.excludeTimes,
     recentMysterySignatures: body.recentMysterySignatures?.slice(0, 5),
+    recentCluePatternSignatures: body.recentCluePatternSignatures?.slice(0, 5),
   };
 
   let scenario: GeneratedScenario;
@@ -52,6 +53,7 @@ async function generateForRequest(
     const mystery = await generateMysteryV2(apiKey, {
       setup,
       recentSignatures: request.recentMysterySignatures,
+      recentCluePatternSignatures: request.recentCluePatternSignatures,
       onProgress,
     });
     scenario = applyMysteryPackage(baseScenario, mystery);
@@ -249,6 +251,7 @@ export function applyMysteryPackage(
       ...scenario.metadata,
       engineVersion: ENGINE_VERSION,
       mysterySignature: story.mysterySignature,
+      cluePatternSignature: story.cluePatternSignature,
     },
   };
 }

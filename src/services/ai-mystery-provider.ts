@@ -1,6 +1,6 @@
 import type { z } from "zod/v4";
 
-export const AI_MYSTERY_MODEL = "claude-sonnet-5";
+export const AI_MYSTERY_MODEL = "claude-opus-4-8";
 const ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages";
 const RETRYABLE_STATUSES = new Set([429, 500, 502, 503, 529]);
 
@@ -31,6 +31,40 @@ export type StructuredCallResult<T> = {
   stopReason?: string;
   strictSchema?: boolean;
 };
+
+/**
+ * Anthropic occasionally returns typography escapes as literal text inside a
+ * tool string (for example the six characters `\\u2014`) instead of decoding
+ * them to punctuation.  Because this happens below the prompt layer, clean it
+ * once at the provider boundary before any schema, verifier, or renderer sees
+ * the value.
+ */
+const TYPOGRAPHY_ESCAPES: Record<string, string> = {
+  "2013": "–",
+  "2014": "—",
+  "2018": "‘",
+  "2019": "’",
+  "201c": "“",
+  "201d": "”",
+  "2026": "…",
+  "00a0": " ",
+};
+
+function normalizeStructuredTypography(value: unknown): unknown {
+  if (typeof value === "string") {
+    return value.replace(/\\u(2013|2014|2018|2019|201c|201d|2026|00a0)/gi, (_match, code: string) =>
+      TYPOGRAPHY_ESCAPES[code.toLowerCase()] ?? _match
+    );
+  }
+  if (Array.isArray(value)) return value.map(normalizeStructuredTypography);
+  if (value && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>)
+        .map(([key, entry]) => [key, normalizeStructuredTypography(entry)])
+    );
+  }
+  return value;
+}
 
 export async function callStructured<T>(params: {
   apiKey: string;
@@ -144,7 +178,8 @@ export async function callStructured<T>(params: {
       );
     }
 
-    const parsed = params.outputSchema.safeParse(toolInput);
+    const normalizedToolInput = normalizeStructuredTypography(toolInput);
+    const parsed = params.outputSchema.safeParse(normalizedToolInput);
     if (!parsed.success) {
       const issueText = parsed.error.issues
         .slice(0, 8)
@@ -154,13 +189,13 @@ export async function callStructured<T>(params: {
         params.stage,
         `Structured output failed validation: ${issueText}`,
         undefined,
-        JSON.stringify(toolInput, null, 2)
+        JSON.stringify(normalizedToolInput, null, 2)
       );
     }
 
     return {
       value: parsed.data,
-      raw: JSON.stringify(toolInput, null, 2),
+      raw: JSON.stringify(normalizedToolInput, null, 2),
       durationMs: Date.now() - startedAt,
       usage: {
         inputTokens: data.usage?.input_tokens,
