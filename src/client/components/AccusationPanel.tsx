@@ -28,6 +28,7 @@ interface Props {
     timeId: string;
   } | null;
   autoSubmit?: boolean;
+  onResolvePenalty: (resolution: "paid" | "unable") => void;
 }
 
 function AccusationCard({
@@ -76,6 +77,7 @@ export default function AccusationPanel({
   onAccuse,
   presetAccusation,
   autoSubmit = false,
+  onResolvePenalty,
 }: Props) {
   const [suspectId, setSuspectId] = useState("");
   const [itemId, setItemId] = useState("");
@@ -226,7 +228,9 @@ export default function AccusationPanel({
   const canContinue = Boolean(currentStep.value);
 
   return (
-    <Dialog open={true} onOpenChange={(open) => !open && onClose()}>
+    <Dialog open={true} onOpenChange={(open) => {
+      if (!open && (!result || result.correct)) onClose();
+    }}>
       <DialogContent className="sm:max-w-[900px]">
         <DialogHeader>
           <DialogTitle className="text-2xl flex items-center gap-2">
@@ -258,7 +262,7 @@ export default function AccusationPanel({
                   {result.correctCount}/4 correct
                 </p>
                 <p className="text-sm text-muted-foreground">
-                  Turn in {result.wrongCount} card{result.wrongCount === 1 ? "" : "s"} face up to the Evidence Room.
+                  Turn in {result.wrongCount} item card{result.wrongCount === 1 ? "" : "s"} face up to the Evidence Room.
                 </p>
                 <p className="text-xs text-muted-foreground">
                   Your turn is over.
@@ -270,9 +274,18 @@ export default function AccusationPanel({
                 "{result.aiResponse}"
               </div>
             )}
-            <Button onClick={onClose} className="mt-4">
-              {result.correct ? "View Solution" : "Continue Investigation"}
-            </Button>
+            {result.correct ? (
+              <Button onClick={onClose} className="mt-4">View Solution</Button>
+            ) : (
+              <div className="flex flex-col justify-center gap-2 sm:flex-row">
+                <Button onClick={() => onResolvePenalty("paid")}>
+                  I turned in {result.wrongCount} item card{result.wrongCount === 1 ? "" : "s"}
+                </Button>
+                <Button variant="outline" onClick={() => onResolvePenalty("unable")}>
+                  I cannot pay — eliminate me
+                </Button>
+              </div>
+            )}
           </div>
         ) : (
           <>

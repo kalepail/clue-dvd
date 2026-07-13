@@ -23,6 +23,14 @@ interface Props {
   onMusicPauseChange?: (paused: boolean) => void;
 }
 
+type SuggestionCategory = "suspect" | "item" | "location" | "time";
+const SUGGESTION_CATEGORIES: Array<{ id: SuggestionCategory; label: string }> = [
+  { id: "suspect", label: "WHO" },
+  { id: "item", label: "WHAT" },
+  { id: "location", label: "WHERE" },
+  { id: "time", label: "WHEN" },
+];
+
 const suspectColorById: Record<string, string> = {
   S01: "#da3f55",
   S02: "#dbad38",
@@ -131,6 +139,7 @@ export default function GamePage({ gameId, onNavigate, onMusicPauseChange }: Pro
   const [forceRevealSymbols, setForceRevealSymbols] = useState(false);
   const [hostNotice, setHostNotice] = useState<string | null>(null);
   const [showEndTurnConfirm, setShowEndTurnConfirm] = useState(false);
+  const [suggestionCategories, setSuggestionCategories] = useState<SuggestionCategory[]>(["suspect", "item", "location"]);
   const [pendingPhoneContinue, setPendingPhoneContinue] = useState<null | "use_secret_passage" | "make_suggestion" | "reveal_clue">(null);
   const previousTurnKey = useRef<string | null>(null);
   const gameRef = useRef<GameDataFormatted | null>(null);
@@ -268,8 +277,10 @@ export default function GamePage({ gameId, onNavigate, onMusicPauseChange }: Pro
               setShowAccusation(false);
               setPhoneAccusation(null);
               if (pendingPhoneContinueRef.current === "reveal_clue") {
+                gameStore.acknowledgePantryDraw(gameId);
                 setShowClueReveal(false);
                 setPendingPhoneContinue(null);
+                loadGameRef.current();
                 return;
               }
               if (showInterruptionIntroRef.current) {
@@ -290,6 +301,12 @@ export default function GamePage({ gameId, onNavigate, onMusicPauseChange }: Pro
             ) {
               handleRevealClueRef.current();
               setPendingPhoneContinue("reveal_clue");
+            } else if (action === "resolve_accusation_penalty" && currentGame.status === "in_progress") {
+              const resolution = event.payload.resolution === "unable" ? "unable" : "paid";
+              gameStore.resolveAccusationPenalty(gameId, resolution);
+              setShowAccusation(false);
+              setPhoneAccusation(null);
+              loadGameRef.current();
             } else if (action === "use_secret_passage" && currentGame.status === "in_progress") {
               handleSecretPassageRef.current();
               setPendingPhoneContinue("use_secret_passage");
@@ -313,6 +330,12 @@ export default function GamePage({ gameId, onNavigate, onMusicPauseChange }: Pro
             } else if (action === "show_story" && currentGame.status === "in_progress") {
               setShowNarrative((prev) => !prev);
             } else if (action === "make_suggestion" && currentGame.status === "in_progress") {
+              const categories = Array.isArray(event.payload.categories)
+                ? event.payload.categories.filter((category): category is SuggestionCategory =>
+                    typeof category === "string" && SUGGESTION_CATEGORIES.some((option) => option.id === category)
+                  )
+                : [];
+              if (categories.length === 3) setSuggestionCategories(categories);
               setShowEndTurnConfirm(true);
               setPendingPhoneContinue("make_suggestion");
             } else if (action === "acknowledge_interruption") {
@@ -589,6 +612,16 @@ export default function GamePage({ gameId, onNavigate, onMusicPauseChange }: Pro
     setRevealingClue(false);
   };
 
+  const closeClueReveal = () => {
+    try {
+      gameStore.acknowledgePantryDraw(gameId);
+      loadGame();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to record the Pantry draw");
+    }
+    setShowClueReveal(false);
+  };
+
   const handleAccusation = async (accusation: {
     suspectId: string;
     itemId: string;
@@ -621,6 +654,17 @@ export default function GamePage({ gameId, onNavigate, onMusicPauseChange }: Pro
       };
     } catch {
       return { correct: false, message: "Failed to make accusation", correctCount: 0, wrongCount: 4 };
+    }
+  };
+
+  const handleResolveAccusationPenalty = (resolution: "paid" | "unable") => {
+    try {
+      gameStore.resolveAccusationPenalty(gameId, resolution);
+      setShowAccusation(false);
+      setPhoneAccusation(null);
+      loadGame();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to resolve the accusation penalty");
     }
   };
 
@@ -739,10 +783,13 @@ export default function GamePage({ gameId, onNavigate, onMusicPauseChange }: Pro
 
   const handleEndTurn = () => {
     try {
-      gameStore.endTurn(gameId);
+      // recordSuggestion advances the turn; the expected turn count rejects a
+      // stale double submit racing the modal close.
+      gameStore.recordSuggestion(gameId, suggestionCategories, gameRef.current?.turnCount);
       loadGame();
       setShowEndTurnConfirm(false);
       setPendingPhoneContinue(null);
+      setSuggestionCategories(["suspect", "item", "location"]);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to end turn");
     }
@@ -1061,8 +1108,8 @@ export default function GamePage({ gameId, onNavigate, onMusicPauseChange }: Pro
                     {[
                       {
                         key: "reveal",
-                        title: revealingClue ? "Revealing..." : "Reveal Clue",
-                        description: "Share the next clue with the group",
+                        title: revealingClue ? "Summoning..." : "Summon the Butler",
+                        description: "Outside Evidence Room · draw top Pantry item card",
                         icon: Search,
                         onClick: handleRevealClue,
                         disabled: revealingClue || cluesRemaining === 0 || isPhoneLobbyActive,
@@ -1079,7 +1126,7 @@ export default function GamePage({ gameId, onNavigate, onMusicPauseChange }: Pro
                       {
                         key: "passage",
                         title: "Secret Passage",
-                        description: "Use a hidden passage",
+                        description: "Move to its paired room, then take an action",
                         icon: DoorOpen,
                         onClick: handleSecretPassage,
                         disabled: isPhoneLobbyActive || secretPassageUsedThisTurn,
@@ -1289,9 +1336,51 @@ export default function GamePage({ gameId, onNavigate, onMusicPauseChange }: Pro
             setPhoneAccusation(null);
           }}
           onAccuse={handleAccusation}
+          onResolvePenalty={handleResolveAccusationPenalty}
           presetAccusation={phoneAccusation}
           autoSubmit={Boolean(phoneAccusation)}
         />
+      )}
+
+      {/* Recoverable physical payment prompt (survives refresh/reconnect). */}
+      {!showAccusation && game.pendingAccusationPenalty && (
+        <div className="game-modal-overlay">
+          <div className="game-modal">
+            <div className="game-modal-header">
+              <div className="game-modal-icon"><Gavel className="w-6 h-6" /></div>
+              <h3 className="game-modal-title">Complete the Accusation Penalty</h3>
+              <p className="game-modal-subtitle">
+                {game.pendingAccusationPenalty.playerName} owes {game.pendingAccusationPenalty.wrongCount} item card{game.pendingAccusationPenalty.wrongCount === 1 ? "" : "s"}.
+              </p>
+            </div>
+            <div className="game-modal-body">
+              <p className="game-modal-text">Place the item cards face up in the Evidence Room. The app records only the count, never their identities.</p>
+            </div>
+            <div className="game-modal-footer game-modal-footer-split">
+              <button className="game-modal-btn" onClick={() => handleResolveAccusationPenalty("paid")}>Payment complete</button>
+              <button className="game-modal-btn game-modal-btn-outline" onClick={() => handleResolveAccusationPenalty("unable")}>Cannot pay — eliminate player</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Recoverable Pantry draw prompt (survives refresh/reconnect). */}
+      {!showClueReveal && !game.pendingAccusationPenalty && game.pendingPantryDrawClueNumber && (
+        <div className="game-modal-overlay">
+          <div className="game-modal">
+            <div className="game-modal-header">
+              <div className="game-modal-icon"><Search className="w-6 h-6" /></div>
+              <h3 className="game-modal-title">Complete the Butler Summon</h3>
+              <p className="game-modal-subtitle">Testimony {game.pendingPantryDrawClueNumber} is public; the physical draw is private.</p>
+            </div>
+            <div className="game-modal-body">
+              <p className="game-modal-text">The summoner takes the top item card from the Butler's Pantry. Do not show it and do not enter its identity in the app.</p>
+            </div>
+            <div className="game-modal-footer">
+              <button className="game-modal-btn" onClick={closeClueReveal}>I took the top Pantry item card</button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Secret Passage Modal */}
@@ -1303,11 +1392,7 @@ export default function GamePage({ gameId, onNavigate, onMusicPauseChange }: Pro
                 <DoorOpen className="w-6 h-6" />
               </div>
               <h3 className="game-modal-title">Secret Passage</h3>
-              <p className="game-modal-subtitle">
-                {secretPassageResult.outcome === "good" && "Fortune favors you."}
-                {secretPassageResult.outcome === "neutral" && "You pass unseen."}
-                {secretPassageResult.outcome === "bad" && "A complication arises."}
-              </p>
+              <p className="game-modal-subtitle">Use the passage shown on the physical board.</p>
             </div>
             <div className="game-modal-body">
               <p className="game-modal-text">{secretPassageResult.description}</p>
@@ -1383,8 +1468,8 @@ export default function GamePage({ gameId, onNavigate, onMusicPauseChange }: Pro
               <div className="game-modal-icon">
                 <Search className="w-6 h-6" />
               </div>
-              <h3 className="game-modal-title">New Clue Discovered</h3>
-              <p className="game-modal-subtitle">A fresh lead has emerged in the investigation.</p>
+              <h3 className="game-modal-title">Ashe's Testimony</h3>
+              <p className="game-modal-subtitle">Listen to the recollection, then complete the physical Pantry draw.</p>
             </div>
             <div className="game-modal-body">
               <img
@@ -1399,7 +1484,7 @@ export default function GamePage({ gameId, onNavigate, onMusicPauseChange }: Pro
               />
             </div>
             <div className="game-modal-footer">
-              <button className="game-modal-btn" onClick={() => setShowClueReveal(false)}>Continue</button>
+              <button className="game-modal-btn" onClick={closeClueReveal}>I took the top Pantry item card</button>
             </div>
           </div>
         </div>
@@ -1475,7 +1560,31 @@ export default function GamePage({ gameId, onNavigate, onMusicPauseChange }: Pro
                 <MessageCircle className="w-6 h-6" />
               </div>
               <h3 className="game-modal-title">Make Suggestion</h3>
-              <p className="game-modal-subtitle">Announce your suggestion to the table. Once resolved, click Confirm to end your turn.</p>
+              <p className="game-modal-subtitle">Choose exactly three categories, then announce one physical card from each to the table.</p>
+            </div>
+            <div className="game-modal-body">
+              <div className="grid grid-cols-2 gap-2">
+                {SUGGESTION_CATEGORIES.map((category) => {
+                  const selected = suggestionCategories.includes(category.id);
+                  return (
+                    <button
+                      key={category.id}
+                      type="button"
+                      className={`game-modal-note-btn ${selected ? "is-selected" : ""}`}
+                      aria-pressed={selected}
+                      onClick={() => setSuggestionCategories((current) =>
+                        current.includes(category.id)
+                          ? current.filter((id) => id !== category.id)
+                          : [...current, category.id]
+                      )}
+                    >
+                      <span className="game-modal-note-label">{category.label}</span>
+                      <span className="game-modal-note-status">{selected ? "Included" : "Omitted"}</span>
+                    </button>
+                  );
+                })}
+              </div>
+              <p className="game-modal-hint">The app records categories only, never the card identities or table response.</p>
             </div>
             <div className="game-modal-footer">
               {pendingPhoneContinue === "make_suggestion" ? (
@@ -1483,7 +1592,7 @@ export default function GamePage({ gameId, onNavigate, onMusicPauseChange }: Pro
               ) : (
                 <>
                   <button className="game-modal-btn game-modal-btn-outline" onClick={() => setShowEndTurnConfirm(false)}>Cancel</button>
-                  <button className="game-modal-btn" onClick={handleEndTurn}>Confirm Suggestion</button>
+                  <button className="game-modal-btn" disabled={suggestionCategories.length !== 3} onClick={handleEndTurn}>Suggestion resolved — end turn</button>
                 </>
               )}
             </div>

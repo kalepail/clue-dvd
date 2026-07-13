@@ -634,6 +634,9 @@ export class GameStore {
     if (game.inspectorNoteTurnUsedAt[readerId] === game.turnCount) {
       throw new Error("Inspector note already used this turn");
     }
+    // A first-time note read is the turn's official action; re-reads above
+    // stay free.
+    this.markTurnAction(game);
 
     game.readInspectorNotes = {
       ...game.readInspectorNotes,
@@ -716,6 +719,17 @@ export class GameStore {
     }
     if (game.pendingAccusationPenalty) {
       throw new Error("Resolve the previous accusation's item-card payment first");
+    }
+    if (accusation.playerSuspectId) {
+      if (game.eliminatedSuspectIds.includes(accusation.playerSuspectId)) {
+        throw new Error("An eliminated detective cannot make an accusation");
+      }
+      const currentActor = game.turnOrder.length > 0
+        ? game.turnOrder[game.currentTurnIndex % game.turnOrder.length]
+        : null;
+      if (currentActor?.suspectId && currentActor.suspectId !== accusation.playerSuspectId) {
+        throw new Error("Only the detective whose turn it is may make an accusation");
+      }
     }
     this.markTurnAction(game);
 

@@ -169,18 +169,18 @@ describe("physical turn rituals", () => {
     const solution = game.scenario.solution;
 
     const beforePayment = store.getGame("ritual")!.turnCount;
-    const result = store.makeAccusation("ritual", wrongAccusationFor(solution, { name: "Bert", suspectId: "S02" }));
+    const result = store.makeAccusation("ritual", wrongAccusationFor(solution, { name: "Ada", suspectId: "S01" }));
     expect(result.wrongCount).toBe(4);
     expect(store.getGame("ritual")?.turnCount).toBe(beforePayment);
     expect(store.getGame("ritual")?.pendingAccusationPenalty).toMatchObject({
-      playerName: "Bert",
-      playerSuspectId: "S02",
+      playerName: "Ada",
+      playerSuspectId: "S01",
       wrongCount: 4,
     });
 
     // No further accusation or clue until the payment is settled
     expect(() =>
-      store.makeAccusation("ritual", wrongAccusationFor(solution, { name: "Ada", suspectId: "S01" }))
+      store.makeAccusation("ritual", wrongAccusationFor(solution, { name: "Bert", suspectId: "S02" }))
     ).toThrow(/payment/i);
     expect(() => store.revealNextClue("ritual")).toThrow(/payment/i);
 
@@ -209,14 +209,55 @@ describe("physical turn rituals", () => {
     const store = await loadStore();
     const solution = game.scenario.solution;
 
-    store.makeAccusation("ritual", wrongAccusationFor(solution, { name: "Cy", suspectId: "S03" }));
+    store.makeAccusation("ritual", wrongAccusationFor(solution, { name: "Ada", suspectId: "S01" }));
     store.resolveAccusationPenalty("ritual", "unable");
 
     const state = store.getGame("ritual")!;
-    expect(state.eliminatedSuspectIds).toContain("S03");
-    expect(state.turnOrder.map((player) => player.suspectId)).not.toContain("S03");
+    expect(state.eliminatedSuspectIds).toContain("S01");
+    expect(state.turnOrder.map((player) => player.suspectId)).not.toContain("S01");
     expect(state.actions.some((action) => action.actionType === "player_eliminated")).toBe(true);
     expect(state.status).toBe("in_progress");
+
+    // An eliminated detective can never accuse again
+    expect(() =>
+      store.makeAccusation("ritual", wrongAccusationFor(solution, { name: "Ada", suspectId: "S01" }))
+    ).toThrow(/eliminated detective/i);
+  });
+
+  it("only lets the current turn's detective make an accusation", async () => {
+    const { game } = buildStoredGame();
+    storage.set("clue-dvd-games", JSON.stringify({ ritual: game }));
+    const store = await loadStore();
+
+    // Turn 0 belongs to Ada (S01); Bert may not accuse out of turn
+    expect(() =>
+      store.makeAccusation("ritual", wrongAccusationFor(game.scenario.solution, { name: "Bert", suspectId: "S02" }))
+    ).toThrow(/whose turn/i);
+    expect(store.getGame("ritual")?.pendingAccusationPenalty).toBeNull();
+  });
+
+  it("counts a first-time inspector note read as the turn's action", async () => {
+    const { scenario, game } = buildStoredGame();
+    const midGame = Math.ceil(scenario.clues.length * 0.5);
+    storage.set("clue-dvd-games", JSON.stringify({ ritual: { ...game, currentClueIndex: midGame } }));
+    const store = await loadStore();
+
+    const read = store.readInspectorNote("ritual", "N1", "S01");
+    expect(read.noteId).toBe("N1");
+    expect(store.getGame("ritual")?.turnActionTakenAt).toBe(0);
+
+    // The note consumed this turn's action; nothing else may happen
+    expect(() => store.recordSuggestion("ritual", ["suspect", "location", "time"])).toThrow(/already been taken/i);
+    expect(() => store.revealNextClue("ritual")).toThrow(/already been taken/i);
+
+    // Re-reading an already-read note stays free
+    expect(store.readInspectorNote("ritual", "N1", "S01").text).toBe(read.text);
+
+    // The turn still ends normally and the next player can act
+    store.endTurn("ritual");
+    expect(store.getGame("ritual")?.turnCount).toBe(1);
+    store.recordSuggestion("ritual", ["suspect", "location", "time"]);
+    expect(store.getGame("ritual")?.turnCount).toBe(2);
   });
 
   it("ends the case when every pawn is eliminated", async () => {
@@ -280,10 +321,11 @@ describe("physical turn rituals", () => {
     expect(data.pendingAccusationPenalty).toBeNull();
     expect(data.eliminatedSuspectIds).toEqual([]);
 
+    // Acknowledging advanced the turn to Bert (S02)
     store.acknowledgePantryDraw("ritual");
-    store.makeAccusation("ritual", wrongAccusationFor(game.scenario.solution, { name: "Ada", suspectId: "S01" }));
+    store.makeAccusation("ritual", wrongAccusationFor(game.scenario.solution, { name: "Bert", suspectId: "S02" }));
     data = store.getGameData("ritual")!;
     expect(data.pendingPantryDrawClueNumber).toBeNull();
-    expect(data.pendingAccusationPenalty).toMatchObject({ playerName: "Ada", wrongCount: 4 });
+    expect(data.pendingAccusationPenalty).toMatchObject({ playerName: "Bert", wrongCount: 4 });
   });
 });
