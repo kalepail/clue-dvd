@@ -166,20 +166,44 @@ Add to `FactKind` with `factKillsCell` entries:
   mention-only.
 
 Generation site: world-sim step-away episodes + the existing lie machinery
-(beside `falseAlibi`/`trueStatements`). Texture budget: witness_account and
-excuse_given share the EXISTING texture slots with claim/fog/motive — rank
-fairly among them (remember the fog-starvation incident: adding a texture kind
-without rebalancing starves another; verify all kinds still appear across a
-sweep).
+(beside `falseAlibi`/`trueStatements`). Do NOT allocate these from leftover
+pad slots — that is the current design's central flaw (texture fights for
+scraps after eliminations feast; fog starved to zero this way once). Phase 3
+inverts the priority.
 
-## Phase 3 — Scheduler + renderer
+## Phase 3 — Story-first scheduler (the "smart selector")
 
-- **Coherence bonus:** in `runPhase` scoring, small multiplicative/additive
-  bonus per already-chosen fragment sharing `episodeId` (generalize the
-  late-theft basket idea), capped so one episode cannot swallow the schedule
-  (≤3 fragments per episode dealt). Ordering: `scene_setup` before its
-  continuation/departure/witness fragments (extend the even-share ordering,
-  don't replace it).
+This is the inversion the whole plan exists for. Today the greedy satisfies
+elimination windows first and story gets 2–3 leftover pad slots; a game can
+come out as twelve tidy eliminations with no lie, no witness, no red herring.
+Replace that allocation order with a two-pass scheduler:
+
+- **Pass 1 — story skeleton first.** Before any elimination scoring, deal the
+  narrative core: sample a per-game RECIPE from a tuned distribution — e.g.
+  one game is witness-centric (witness_account + its episode's setup +
+  excuse), another lie-driven (false alibi + motive), another motive-and-fog.
+  Reserve 3–5 of the 10 butler slots for it: the episode arc fragments plus
+  2–3 deception/texture facts. The recipe is sampled ANSWER-BLIND from world
+  supply, so it cannot correlate with the solution — games differ from each
+  other (variance is itself anti-meta-gaming), and `cluePatternSignature`
+  (below) nudges consecutive games onto different recipes.
+- **Pass 2 — feasibility fill around the skeleton.** The existing greedy
+  completes the fair-play checkpoints and final windows with the remaining
+  slots. Prefer elimination facts that ALSO carry story — episode-linked
+  continuations (which retire 2–3 hours of pairs in one lived scene),
+  beat-dressed gatherings, wing closures — over naked bookkeeping; notes still
+  absorb the lists. The scene shapes exist precisely so elimination work per
+  slot goes UP, which is what frees slots for deception in the first place.
+- **Repair, don't surrender:** if Pass 2 cannot reach the windows around the
+  skeleton, drop the skeleton's least-connected piece and refill; only then
+  burn a world attempt (budget 120, attempts cost microseconds). The fairness
+  floors always win a true conflict — but a floor on story slots is
+  answer-independent, so this is composition, not a tell.
+- **Coherence bonus:** within both passes, bonus per already-chosen fragment
+  sharing `episodeId` (generalize the late-theft basket idea), capped so one
+  episode cannot swallow the schedule (≤3 fragments per episode dealt).
+  Ordering: `scene_setup` before its continuation/departure/witness fragments
+  (extend the even-share ordering, don't replace it).
 - **Renderer context:** when a clue's fragment shares an episode with an
   earlier reveal, the render prompt includes the earlier rendered text with
   "this continues that scene — connect naturally, do not recap". Still
@@ -201,6 +225,11 @@ sandbox): copy `src/{services,data}` to /tmp, `sed` relative imports to add
 must match clue-scheduler.test.ts (`seed * 7_919 + 13`, engine budget 120
 attempts). Metrics to print per 80–120 seed sweep:
 
+- **story-slot floor: every game deals ≥3 narrative reveals** (episode
+  fragments + deception/texture), and ≥80% of games contain at least one
+  statement-shaped fact (claim/witness_account) — no more all-elimination
+  games;
+- recipe distribution across the sweep (no single recipe >40% of games);
 - % of games with ≥1 episode of ≥2 dealt fragments (target ≥60%);
 - witness_account truth-variant distribution vs targets; thief-as-witness rate;
 - every texture kind (claim/fog/motive/witness/excuse) still appears across
@@ -243,7 +272,8 @@ theory dominates by clue 5; the closing feels earned.
 
 ## Suggested order of work
 
-Phase 3's opening-variety fix first (one sitting, independent) → Phase 0 →
-Phase 1 → Phase 2 → rest of Phase 3 → Phase 4. Typecheck + sweep + eyeball a
+The opening-variety fix first (one sitting, independent) → Phase 0 →
+Phase 1 → Phase 2 → Phase 3 (the story-first scheduler is the heart of this
+plan — do not ship the round without it) → Phase 4. Typecheck + sweep + eyeball a
 rendered sample + commit after every phase. Update AI_ENGINE.md and
 CHANGELOG.md as you go; note new tuning knobs in the "Tuning knobs" section.
