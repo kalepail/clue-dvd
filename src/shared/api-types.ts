@@ -263,6 +263,7 @@ export interface ToggleMarkResponse extends ApiResponse {
 export type ActionType =
   | "game_started"
   | "clue_revealed"
+  | "pantry_draw_acknowledged"
   | "suggestion_made"
   | "suggestion_disproved"
   | "accusation_made"
