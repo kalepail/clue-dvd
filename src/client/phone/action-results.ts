@@ -54,7 +54,10 @@ export function classifyActionResult(
   if (seenKey === key) return null;
   const resultRequestId = result.requestId ?? null;
   if (resultRequestId !== null) {
-    if (own.requestId === null) return { decision: "ignore", key };
+    // With no own request id yet (e.g. persistence not hydrated after a
+    // refresh), correlation is undecidable: defer without marking seen so a
+    // later evaluation with the hydrated id can still apply this result.
+    if (own.requestId === null) return { decision: "defer", key };
     return { decision: resultRequestId === own.requestId ? "apply" : "ignore", key };
   }
   if (result.forEventId === null) return { decision: "ignore", key };

@@ -43,12 +43,23 @@ describe("classifyActionResult", () => {
       .toMatchObject({ decision: "apply" });
   });
 
-  it("ignores request-tagged results for a different or absent own request", () => {
+  it("ignores request-tagged results for a different own request", () => {
     const r = result({ requestId: "pr-abc12345" });
     expect(classifyActionResult(r, { eventId: 42, requestId: "pr-zzz99999" }, null))
       .toMatchObject({ decision: "ignore" });
+  });
+
+  it("defers request-tagged results until the own request id hydrates, then applies", () => {
+    // A snapshot with a request-tagged result can arrive before the phone's
+    // persisted request id has been rehydrated after a refresh. Marking it
+    // seen would drop it forever; it must defer instead.
+    const r = result({ requestId: "pr-abc12345" });
     expect(classifyActionResult(r, { eventId: 42, requestId: null }, null))
-      .toMatchObject({ decision: "ignore" });
+      .toMatchObject({ decision: "defer" });
+
+    // The same never-seen result applies once hydration supplies the id.
+    expect(classifyActionResult(r, { eventId: 42, requestId: "pr-abc12345" }, null))
+      .toMatchObject({ decision: "apply" });
   });
 
   it("defers by event id when the result arrives before the POST response (no request id)", () => {

@@ -84,6 +84,20 @@ export async function updatePlayer(
   }
 }
 
+/**
+ * Thrown only when the server definitively rejected an action (non-2xx
+ * response): no event was created, so optimistic state may be rolled back.
+ * Any other failure (network error, aborted response, unparsable 2xx body)
+ * is ambiguous — the event may exist server-side — and callers must keep
+ * their pending state so the eventual snapshot can settle it.
+ */
+export class PhoneActionRejectedError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "PhoneActionRejectedError";
+  }
+}
+
 export async function sendPlayerAction(
   playerId: string,
   reconnectToken: string,
@@ -97,7 +111,7 @@ export async function sendPlayerAction(
   });
   if (!response.ok) {
     const data = (await response.json().catch(() => ({}))) as { error?: string };
-    throw new Error(data.error || "Failed to send action");
+    throw new PhoneActionRejectedError(data.error || "Failed to send action");
   }
   const data = (await response.json()) as { event: PhoneEvent };
   return data.event;

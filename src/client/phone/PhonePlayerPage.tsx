@@ -2,7 +2,7 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { DIFFICULTIES, ITEMS, LOCATIONS, SUSPECTS, THEMES, TIMES } from "../../shared/game-elements";
 import type { EliminationState } from "../../shared/api-types";
 import type { PhonePlayer, PhoneSessionSummary } from "../../phone/types";
-import { getSession, reconnectSession, sendPlayerAction, updatePlayer } from "./api";
+import { getSession, PhoneActionRejectedError, reconnectSession, sendPlayerAction, updatePlayer } from "./api";
 import {
   classifyActionResult,
   loadActionEventIds,
@@ -663,14 +663,24 @@ export default function PhonePlayerPage({ code, onNavigate }: Props) {
       }
     } catch (err) {
       if (action === "use_secret_passage") {
-        // The POST never created an event; roll back the optimistic pending
-        // state so the player can retry.
-        passageRequestIdRef.current = null;
-        passageTurnNumberRef.current = null;
-        updatePassagePending(false);
-        setSecretPassageUsedThisTurn(false);
-        setShowActionContinue(false);
-        setActionContinueMessage(null);
+        if (err instanceof PhoneActionRejectedError) {
+          // Definitive server rejection: no event exists, so the optimistic
+          // pending state can be rolled back and the player may retry.
+          passageRequestIdRef.current = null;
+          passageTurnNumberRef.current = null;
+          updatePassagePending(false);
+          setSecretPassageUsedThisTurn(false);
+          setShowActionContinue(false);
+          setActionContinueMessage(null);
+          setActionStatus(err.message);
+        } else {
+          // Transport/unknown failure: the event may have been created and
+          // the host may still resolve it. Keep the persisted pending state,
+          // request id, and waiting guard so the eventual snapshot settles
+          // it, and be honest about the connection.
+          setActionStatus("Connection problem — the passage request may still reach the host. Waiting for the result...");
+        }
+        return;
       }
       setActionStatus(err instanceof Error ? err.message : "Failed to send action.");
     }
