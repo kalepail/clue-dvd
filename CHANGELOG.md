@@ -1,3 +1,12 @@
+07/13/26 (6)
+- Reconciled the stacked gameplay work with the Scene & Occasion V3.1 engine
+        - Preserved V3.1's scene-first scheduler, truth model, causal episodes, renderer, repair locks, and evaluator instead of replacing them with the older V3.0 branch
+        - Retained the research packet, exact closing verification, Cloudflare Unified Billing provider path, secret-safe build handling, and physical table rituals that remained semantically compatible
+        - Added fail-closed host authorization, D1 turn authority, ordered phone-event replay, request/result correlation, exact Pantry and accusation acknowledgments, and refresh-safe secret-passage recovery
+        - Added opt-in evaluation support for Opus 4.8, Sonnet 5, GPT-5.6 Luna/Terra/Sol, GPT-5.4, Grok 4.3, and selected Workers AI models without changing the Opus production default or silently substituting models
+        - Adversarial Fable and GPT-5.6 Sol review closed actor, replay, result-delivery, stale-event, hydration, and ambiguous-transport failure modes before integration
+        - Final gates passed: 120/120 deterministic schedules, 184 unit tests, typecheck, production build, artifact and secret checks, plus browser verification of Pantry, suggestion, passage, and wrong-accusation workflows
+
 07/13/26 (5)
 - Scene & Occasion V3.1 live Opus acceptance and temporal-source hardening
         - Ran and manually audited repeated live `claude-opus-4-8` generations against their private movement grids, including targeted charity, reunion, tournament, and masquerade regressions

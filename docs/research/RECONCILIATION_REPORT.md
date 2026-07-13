@@ -106,5 +106,91 @@ The reconciled tree must pass:
 - Several live generations through the configured real gateway, without
   changing the production default model.
 
-Final command results and merge identifiers are recorded in the pull request
-that lands this reconciliation.
+## Adversarial review outcomes
+
+Fable implemented the physical-companion reconciliation in an isolated
+worktree while GPT-5.6 Sol repeatedly reviewed the result against the V3.1
+engine and the physical table rules. The review found and closed several
+issues before integration:
+
+- host actions now require a per-session token and the server rejects the
+  wrong actor, eliminated players, and out-of-turn actions;
+- D1, rather than a phone client, is authoritative for the current turn;
+- phone actions have a persisted request ID, ordered event cursor, replay
+  protection, and exact source-event correlation;
+- Pantry draws and accusation penalties require the exact physical ritual
+  and cannot be satisfied by a stale or unrelated event;
+- passage results are stored durably, delivered exactly once, and survive a
+  refresh or an ambiguous transport failure without permitting a second move;
+- only a definite 4xx rejection clears a pending request; 5xx, network, and
+  unparsable-success responses remain pending until reconciled; and
+- suggestions contain exactly three distinct categories, while passage copy
+  says truthfully that the move is free and the player's action remains.
+
+Sol's final review approved the complete physical series without outstanding
+blockers. Migrations `0009_phone_host_auth_action_results.sql` and
+`0010_phone_turn_number.sql` add the host token, durable action result, and
+server turn number. Sessions created before migration 0009 have no host token
+and must be recreated; this is intentionally fail-closed.
+
+## Deterministic release evidence
+
+The final 120-mystery V3.1 sweep passed all 120 schedules in 3176.9 ms per
+mystery. Statement-shaped games were 114/120 (95.0%) and linked or
+multi-fragment games were 118/120 (98.3%). The dealt witness portfolio
+contained 36 true-innocent, 5 fabricated-innocent, 15 true-thief-departure,
+and 22 fabricated-thief accounts. Fabricated accounts were 27/78 (34.6%), the
+thief spoke 23/78 (29.5%), and the thief was featured in 45 games versus 48
+expected. Story-floor, spine-overlap, hour-audit, inventory, malformed-brief,
+fairness, chronology, and leakage gates reported zero failures.
+
+The exact closing verifier also passed focused name and polarity tests. It
+rejects near matches, negated answers, and answer-shaped prose that does not
+affirm all four exact solution cards.
+
+## Live provider matrix
+
+Live calls used the configured Cloudflare AI Gateway REST endpoint. There was
+no direct Anthropic key, so the Opus result also exercised the gateway path.
+These are smoke tests, not statistical gameplay qualification, and no truth
+gate was relaxed to make a model pass.
+
+| Model | Result | Notes |
+| --- | --- | --- |
+| `anthropic/claude-opus-4.8` | Pass | First attempt; 86.6 s; 3 repairs |
+| `openai/gpt-5.6-sol` | Pass | First attempt; 70.4 s; 3 repairs |
+| `openai/gpt-5.6-terra` | Pass | First attempt; 25.6 s; 0 repairs |
+| `openai/gpt-5.4` | Pass | First attempt; 24.4 s; 4 repairs |
+| `anthropic/claude-sonnet-5` | Provisional pass | Second attempt; 55.3 s; 1 repair |
+| `openai/gpt-5.6-luna` | Provisional pass | Second attempt; 12.7 s; 1 repair |
+| `xai/grok-4.3` | Pass | First attempt; 56.9 s; 2 repairs |
+| `@cf/meta/llama-3.3-70b-instruct-fp8-fast` | Pass | First attempt; 84.5 s; 1 repair |
+| `@cf/openai/gpt-oss-120b` | Unqualified | Returned a tool call instead of the required dossier |
+| `@cf/moonshotai/kimi-k2.6` | Unqualified | Exceeded the dossier repair cap |
+| `@cf/qwen/qwen3-30b-a3b-fp8` | Unqualified | Exceeded the dossier repair cap |
+
+Sonnet 5 and Luna remain provisional because each passed only one of two
+attempts. The three failed Workers AI candidates remain explicitly
+unqualified. Production continues to default to Opus 4.8, and a requested
+model cannot silently fall through to another model.
+
+## Final repository and browser validation
+
+- `pnpm typecheck`: passed.
+- `pnpm test`: 16 files and 184 tests passed (354.40 s, including the
+  import-time 120-seed scheduler sweep).
+- `pnpm build`: passed.
+- `pnpm check:artifacts`: passed after proving `.dev.vars*` is ignored and
+  absent from the final build artifacts.
+- `git diff --check`: passed, and a tracked-file secret-pattern scan found no
+  candidate gateway or provider credentials.
+- Browser smoke test: created and persisted the developer case; completed the
+  Butler/Pantry acknowledgment; enforced exactly three suggestion categories;
+  used a passage as movement while retaining the turn across refresh; and
+  resolved an incorrect accusation only after the exact four-card payment.
+  The browser console contained no application errors.
+
+`wrangler secret list` returned no deployed secrets and the account has no
+existing `clue-dvd` Worker. Nothing was deployed and no secret was created as
+part of reconciliation. Deployment therefore remains an explicit operator
+step after configuring the intended Worker and secrets.
