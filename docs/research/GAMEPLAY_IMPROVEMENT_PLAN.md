@@ -4,6 +4,11 @@ Date: 2026-07-13
 Status: research synthesis; no product-code changes  
 Mission: make cases and rounds feel more organic without weakening deterministic truth, fair deduction, or the physical-card finish
 
+> **Historical baseline:** This plan describes V3.0 before Lawson's Scene &
+> Occasion V3.1 engine landed. Its evidence and product goals remain useful,
+> but its engine-specific prescriptions are not current. See
+> [`RECONCILIATION_REPORT.md`](RECONCILIATION_REPORT.md).
+
 ## Executive decision
 
 Do not replace the V3 deduction engine. Its world-first generation, joint-cell scheduler, answer-blind clue renderer, and physical-card finish are the correct foundation. The engine generated 500/500 valid mysteries in the audit, all 69 tests passed, and TypeScript typechecking passed.

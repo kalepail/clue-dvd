@@ -1,13 +1,19 @@
 # Clue DVD Gameplay Research Index
 
 Date: 2026-07-13  
-Scope: repository-grounded research and planning; no product-code changes
+Scope: historical repository-grounded research and planning
+
+> **V3.1 status note:** This packet was authored against the earlier V3.0
+> branch. Lawson's Scene & Occasion V3.1 engine later became authoritative.
+> Read [`RECONCILIATION_REPORT.md`](RECONCILIATION_REPORT.md) before treating
+> any implementation recommendation here as current.
 
 ## Start here
 
 - [`GAMEPLAY_IMPROVEMENT_PLAN.md`](GAMEPLAY_IMPROVEMENT_PLAN.md) — reconciled concern ledger, target experience, architecture, roadmap, gates, and first tickets.
 - [`GAMEPLAY_RESEARCH_BRIEF.md`](GAMEPLAY_RESEARCH_BRIEF.md) — verified project map, rule corrections, measurements, and questions given to the panel.
 - [`EXTERNAL_DESIGN_EVIDENCE.md`](EXTERNAL_DESIGN_EVIDENCE.md) — official-rule and primary-research evidence, with project-specific inferences clearly separated.
+- [`RECONCILIATION_REPORT.md`](RECONCILIATION_REPORT.md) — what survived the V3.1 reconciliation, what was adapted, and what was deliberately deferred.
 
 ## Independent high-reasoning panel
 
